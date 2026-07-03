@@ -54,7 +54,9 @@ router.post('/logo', requireAuth, (req: Request, res: Response) => {
         console.error('[uploads/logo] tenant update failed', err)
       }
     }
-    return res.status(201).json({ success: true, data: { url: dataUrl } })
+    // Return minimal response — client re-fetches tenant to get the data URL
+    // (avoids sending 2MB+ base64 blob back over the wire)
+    return res.status(201).json({ success: true, data: { stored: true } })
   })
 }) // end router.post('/logo')
 

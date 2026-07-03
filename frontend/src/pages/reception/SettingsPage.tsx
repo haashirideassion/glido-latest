@@ -605,17 +605,15 @@ export default function SettingsPage() {
       const formData = new FormData()
       formData.append('file', file)
       formData.append('tenantId', DEFAULT_TENANT_ID)
-      formData.append('type', 'logo')
       const res = await rawFetcher('/api/uploads/logo', { method: 'POST', body: formData })
       if (!res) throw new Error('Upload failed')
-      const json = await res.json()
-      const logoUrl = json?.data?.url ?? json?.url
-      if (!logoUrl) throw new Error('No URL returned')
+      // Backend stores data URL in DB and returns { success: true }
+      // Re-fetch tenant to get the updated logo_url (avoids sending 2MB+ base64 back)
+      const tenant = await fetcher(`/api/tenants/${DEFAULT_TENANT_ID}`)
+      const logoUrl = tenant?.data?.logo_url ?? tenant?.logo_url ?? ''
       logoJustUploaded.current = true
       setGeneral(g => ({ ...g, logoUrl }))
-      await updateTenant(DEFAULT_TENANT_ID, { logo_url: logoUrl })
       toast('Logo uploaded', 'success')
-      window.location.reload()
     } catch (err: any) {
       toast(err?.message ?? 'Logo upload failed', 'error')
     } finally {
