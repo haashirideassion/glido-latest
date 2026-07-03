@@ -5,7 +5,7 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { initToast, toast } from '@/lib/toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { useReceptionAuth } from '@/contexts/ReceptionAuthContext'
-import { fetcher, patchFetcher } from '@/lib/fetcher'
+import { fetcher, patchFetcher, resolveUploadUrl } from '@/lib/fetcher'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
 
@@ -347,7 +347,7 @@ export default function ReceptionLayout() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             {tenant?.logoUrl && (
               <>
-                <img src={tenant.logoUrl} alt="Company logo" style={{ height: 30, objectFit: 'contain', maxWidth: 100 }} />
+                <img src={resolveUploadUrl(tenant.logoUrl)} alt="Company logo" style={{ height: 30, objectFit: 'contain', maxWidth: 100 }} />
                 <span style={{ width: 1, height: 26, background: 'rgba(0,0,0,0.10)', flexShrink: 0 }} />
               </>
             )}
