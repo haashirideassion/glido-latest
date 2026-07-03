@@ -8,13 +8,21 @@ import { pool } from '../db'
 const router = Router()
 // POST / is public (guest booking doc uploads); POST /logo requires auth
 
-// Store uploads in ./uploads/ relative to where the server runs (used for booking docs)
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+// On Vercel use /tmp (writable), locally use ./uploads
+const UPLOADS_DIR = process.env.VERCEL === '1'
+  ? '/tmp/uploads'
+  : path.join(process.cwd(), 'uploads')
 
-// Disk storage — for booking documents
+// Disk storage — for booking documents (dir created lazily on first upload)
 const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  destination: (_req, _file, cb) => {
+    try {
+      if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+      cb(null, UPLOADS_DIR)
+    } catch (e) {
+      cb(e as Error, UPLOADS_DIR)
+    }
+  },
   filename: (_req, file, cb) => {
     const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
     cb(null, `${unique}${path.extname(file.originalname)}`)
