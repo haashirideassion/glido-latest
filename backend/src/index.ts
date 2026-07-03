@@ -74,6 +74,11 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   res.status(500).json({ success: false, error: { message: 'Internal server error' } })
 })
 
-app.listen(PORT, () => {
-  console.log(`[glido-backend] Running on http://localhost:${PORT}`)
-})
+// Local dev — only listen when run directly (not on Vercel)
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`[glido-backend] Running on http://localhost:${PORT}`)
+  })
+}
+
+export default app
