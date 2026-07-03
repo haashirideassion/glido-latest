@@ -5,7 +5,8 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { initToast, toast } from '@/lib/toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { useReceptionAuth } from '@/contexts/ReceptionAuthContext'
-import { fetcher, patchFetcher, resolveUploadUrl } from '@/lib/fetcher'
+import { fetcher, patchFetcher } from '@/lib/fetcher'
+import { useSignedUrl } from '@/lib/useSignedUrl'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
 
@@ -53,6 +54,7 @@ export default function ReceptionLayout() {
   // Staff name from JWT — no network call needed
   const staffName = user?.name ?? null
   const tenant = useTenantInfo()
+  const logoSrc = useSignedUrl(tenant?.logoUrl)
   const profileLoading = false
 
   // Apply tenant brand colour to CSS variables whenever it loads
@@ -345,9 +347,9 @@ export default function ReceptionLayout() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            {tenant?.logoUrl && (
+            {logoSrc && (
               <>
-                <img src={resolveUploadUrl(tenant.logoUrl)} alt="Company logo" style={{ height: 30, objectFit: 'contain', maxWidth: 100 }} />
+                <img src={logoSrc} alt="Company logo" style={{ height: 30, objectFit: 'contain', maxWidth: 100 }} />
                 <span style={{ width: 1, height: 26, background: 'rgba(0,0,0,0.10)', flexShrink: 0 }} />
               </>
             )}

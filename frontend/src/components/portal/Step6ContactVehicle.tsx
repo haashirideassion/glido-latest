@@ -4,6 +4,7 @@ import type { DocumentFile } from '@/contexts/WizardContext'
 import { Icon, ICONS } from '@/lib/Icon'
 import documentsImg from '@/assets/documents.png'
 import { rawFetcher } from '@/lib/fetcher'
+import { openSignedUrl } from '@/lib/useSignedUrl'
 import { toast } from '@/lib/toast'
 import { todaySydney } from '@/lib/time'
 
@@ -241,7 +242,7 @@ export function Step6ContactVehicle() {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
                         <button type="button"
-                          onClick={() => window.open(`/api/uploads/files/${doc.storagePath}`, '_blank')}
+                          onClick={() => openSignedUrl(doc.storagePath ?? '')}
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 13, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-sm)', cursor: 'pointer' }}
                           onMouseOver={e => { e.currentTarget.style.background = '#E5E7EB' }} onMouseOut={e => { e.currentTarget.style.background = '#F3F4F6' }}>
                           <Icon name={ICONS.eye} size={13} />View
@@ -292,7 +293,7 @@ export function Step6ContactVehicle() {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 12, flexShrink: 0 }}>
                 <button type="button"
-                  onClick={() => window.open(`/api/uploads/files/${doc.storagePath}`, '_blank')}
+                  onClick={() => openSignedUrl(doc.storagePath ?? '')}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', fontSize: 13, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-sm)', cursor: 'pointer' }}
                   onMouseOver={e => { e.currentTarget.style.background = '#E5E7EB' }} onMouseOut={e => { e.currentTarget.style.background = '#F3F4F6' }}>
                   <Icon name={ICONS.eye} size={13} />View
@@ -396,7 +397,7 @@ function SlotDocSection({ slotIndex, docFiles, docSlots, onAdd, onRemove }: {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
                         <button type="button"
-                          onClick={() => window.open(`/api/uploads/files/${doc.storagePath}`, '_blank')}
+                          onClick={() => openSignedUrl(doc.storagePath ?? '')}
                           style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 9px', fontSize: 13, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-sm)', cursor: 'pointer' }}
                           onMouseOver={e => { e.currentTarget.style.background = '#E5E7EB' }} onMouseOut={e => { e.currentTarget.style.background = '#F3F4F6' }}>
                           <Icon name={ICONS.eye} size={12} />View

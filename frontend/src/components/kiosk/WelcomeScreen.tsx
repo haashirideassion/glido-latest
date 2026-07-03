@@ -4,12 +4,13 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { useKiosk } from '@/contexts/KioskContext'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { getTenant } from '@/lib/db/tenants'
-import { resolveUploadUrl } from '@/lib/fetcher'
+import { useSignedUrl } from '@/lib/useSignedUrl'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 
 export function WelcomeScreen() {
   const { state, startBookingLookup, startVisitingFlow } = useKiosk()
   const tenant = useTenantInfo()
+  const logoSrc = useSignedUrl(tenant?.logoUrl)
   const [time,       setTime]       = useState('')
   const [todayHours, setTodayHours] = useState('')
 
@@ -48,7 +49,7 @@ export function WelcomeScreen() {
       <div style={{ marginBottom: 40, textAlign: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
           {tenant?.logoUrl
-            ? <img src={resolveUploadUrl(tenant.logoUrl)} alt={tenant.name || 'Logo'} style={{ maxHeight: 56, objectFit: 'contain', display: 'block' }} />
+            ? <img src={logoSrc} alt={tenant.name || 'Logo'} style={{ maxHeight: 56, objectFit: 'contain', display: 'block' }} />
             : <GlidoLogo height={56} />
           }
         </div>

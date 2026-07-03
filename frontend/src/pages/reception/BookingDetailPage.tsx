@@ -5,6 +5,7 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { fmtDateTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
 import { fetcher } from '@/lib/fetcher'
+import { openSignedUrl } from '@/lib/useSignedUrl'
 import { generateQRDataURL } from '@/lib/qr'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { loadLogoDataUrl, glidoLogoPng } from '@/lib/pdfBranding'
@@ -625,7 +626,7 @@ export default function BookingDetailPage() {
                                         </div>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                                           {doc.file_size_bytes ? <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{(doc.file_size_bytes / 1024).toFixed(0)} KB</span> : null}
-                                          <a href={publicUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, fontWeight: 600, color: 'var(--brand-color)', textDecoration: 'none' }}>View</a>
+                                          <button onClick={() => openSignedUrl(docKey)} style={{ fontSize: 14, fontWeight: 600, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>View</button>
                                         </div>
                                       </div>
                                     )
@@ -690,7 +691,7 @@ export default function BookingDetailPage() {
                       </p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {slotDocs.map((doc: any) => {
-                          const publicUrl = `/api/files/${doc.storage_path}`
+                          const docKey = doc.storage_path
                           return (
                             <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: '#F7F6F5', borderRadius: 'var(--r-sm)', padding: '10px 14px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -702,7 +703,7 @@ export default function BookingDetailPage() {
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                                 {doc.file_size_bytes ? <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>{(doc.file_size_bytes / 1024).toFixed(0)} KB</span> : null}
-                                <a href={publicUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, fontWeight: 600, color: 'var(--brand-color)', textDecoration: 'none' }}>View</a>
+                                <button onClick={() => openSignedUrl(docKey)} style={{ fontSize: 14, fontWeight: 600, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>View</button>
                               </div>
                             </div>
                           )
@@ -715,7 +716,7 @@ export default function BookingDetailPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {bookingDocs.map((doc: any) => {
-                  const publicUrl = `/api/files/${doc.storage_path}`
+                  const docKey = doc.storage_path
                   return (
                     <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: '#F7F6F5', borderRadius: 'var(--r-sm)', padding: '10px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
@@ -727,7 +728,7 @@ export default function BookingDetailPage() {
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                         {doc.file_size_bytes ? <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>{(doc.file_size_bytes / 1024).toFixed(0)} KB</span> : null}
-                        <a href={publicUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, fontWeight: 600, color: 'var(--brand-color)', textDecoration: 'none' }}>View</a>
+                        <button onClick={() => openSignedUrl(docKey)} style={{ fontSize: 14, fontWeight: 600, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>View</button>
                       </div>
                     </div>
                   )
