@@ -386,8 +386,8 @@ export default function ReceptionLayout() {
                     {/* List */}
                     <div style={{ overflowY: 'auto', flex: 1 }}>
                       {notifs.length === 0 ? (
-                        <div style={{ padding: '40px 16px', textAlign: 'center' }}>
-                          <Icon name={ICONS.bell} size={32} style={{ color: 'rgba(0,0,0,0.12)', display: 'block', margin: '0 auto 10px' }} />
+                        <div style={{ padding: '40px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                          <Icon name={ICONS.bell} size={32} style={{ color: 'rgba(0,0,0,0.12)' }} />
                           <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0 }}>No notifications yet</p>
                         </div>
                       ) : notifs.map(n => {
