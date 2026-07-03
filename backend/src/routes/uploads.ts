@@ -1,47 +1,42 @@
 import { Router, Request, Response } from 'express'
 import multer from 'multer'
-import path from 'path'
-import fs from 'fs'
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { requireAuth } from '../middleware/auth'
 import { pool } from '../db'
 
 const router = Router()
-// POST / is public (guest booking doc uploads); POST /logo requires auth
 
-// On Vercel use /tmp (writable), locally use ./uploads
-const UPLOADS_DIR = process.env.VERCEL === '1'
-  ? '/tmp/uploads'
-  : path.join(process.cwd(), 'uploads')
-
-// Disk storage — for booking documents (dir created lazily on first upload)
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    try {
-      if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
-      cb(null, UPLOADS_DIR)
-    } catch (e) {
-      cb(e as Error, UPLOADS_DIR)
-    }
-  },
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
-    cb(null, `${unique}${path.extname(file.originalname)}`)
+// ── S3 client ─────────────────────────────────────────────────
+const s3 = new S3Client({
+  region: process.env.AWS_REGION || 'ap-south-1',
+  credentials: {
+    accessKeyId:     process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
 })
 
-const upload = multer({
-  storage,
+const BUCKET = process.env.AWS_S3_BUCKET || 'glido-demo'
+const S3_BASE = `https://${BUCKET}.s3.${process.env.AWS_REGION || 'ap-south-1'}.amazonaws.com`
+
+// All uploads go through memory — S3 handles persistence
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 })
 
-// Memory storage — for logo (stored as base64 data URL in DB, no filesystem needed)
-const memoryUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB for logos
-})
+// Upload a buffer to S3, return public URL
+async function uploadToS3(buffer: Buffer, filename: string, mimetype: string): Promise<string> {
+  const key = `uploads/${Date.now()}-${filename}`
+  await s3.send(new PutObjectCommand({
+    Bucket:      BUCKET,
+    Key:         key,
+    Body:        buffer,
+    ContentType: mimetype,
+  }))
+  return `${S3_BASE}/${key}`
+}
 
-// POST /api/uploads/logo — staff only
-// Converts to base64 data URL and stores directly in tenants.logo_url
+// ── POST /api/uploads/logo — staff only ───────────────────────
 router.post('/logo', requireAuth, (req: Request, res: Response) => {
   memoryUpload.single('file')(req, res, async (err: any) => {
     if (err) {
@@ -51,55 +46,47 @@ router.post('/logo', requireAuth, (req: Request, res: Response) => {
     if (!req.file) {
       return res.status(400).json({ success: false, error: { message: 'No file uploaded' } })
     }
-    // Store as data URL — persists in DB, no filesystem dependency
-    const mime = req.file.mimetype || 'image/jpeg'
-    const dataUrl = `data:${mime};base64,${req.file.buffer.toString('base64')}`
-    const { tenantId } = req.body
-    if (tenantId) {
-      try {
-        await pool.query('UPDATE tenants SET logo_url = $1, updated_at = NOW() WHERE id = $2', [dataUrl, tenantId])
-      } catch (err) {
-        console.error('[uploads/logo] tenant update failed', err)
+    try {
+      const url = await uploadToS3(req.file.buffer, req.file.originalname, req.file.mimetype)
+      const { tenantId } = req.body
+      if (tenantId) {
+        await pool.query('UPDATE tenants SET logo_url = $1, updated_at = NOW() WHERE id = $2', [url, tenantId])
       }
+      return res.status(201).json({ success: true, data: { stored: true } })
+    } catch (e: any) {
+      console.error('[uploads/logo] S3 error:', e.message)
+      return res.status(500).json({ success: false, error: { message: 'Upload failed' } })
     }
-    // Return minimal response — client re-fetches tenant to get the data URL
-    // (avoids sending 2MB+ base64 blob back over the wire)
-    return res.status(201).json({ success: true, data: { stored: true } })
   })
-}) // end router.post('/logo')
+})
 
-// POST /api/v2/uploads — multipart/form-data, field name: "file"
+// ── POST /api/uploads — booking documents ────────────────────
 router.post('/', (req: Request, res: Response) => {
-  upload.single('file')(req, res, (err: any) => {
+  memoryUpload.single('file')(req, res, async (err: any) => {
     if (err) {
-      // Multer errors (file too large, wrong field name, etc.) — return 400 not 500
       console.error('[uploads] multer error:', err.message)
       return res.status(400).json({ success: false, error: { message: err.message ?? 'Upload error' } })
     }
     if (!req.file) {
       return res.status(400).json({ success: false, error: { message: 'No file uploaded' } })
     }
-    const url = `/api/uploads/files/${req.file.filename}`
-    return res.status(201).json({ success: true, data: { url, filename: req.file.filename } })
+    try {
+      const url = await uploadToS3(req.file.buffer, req.file.originalname, req.file.mimetype)
+      const filename = url.split('/').pop()!
+      return res.status(201).json({ success: true, data: { url, filename } })
+    } catch (e: any) {
+      console.error('[uploads] S3 error:', e.message)
+      return res.status(500).json({ success: false, error: { message: 'Upload failed' } })
+    }
   })
 })
 
-// GET /api/v2/uploads/signed-url?key=
-// Returns a direct URL — in production replace with a real signed URL from S3/GCS
+// ── GET /api/uploads/signed-url?key= ─────────────────────────
 router.get('/signed-url', (req: Request, res: Response) => {
   const { key } = req.query
   if (!key) return res.status(400).json({ success: false, error: { message: 'key is required' } })
-  const url = `/api/uploads/files/${key}`
+  const url = `${S3_BASE}/uploads/${key}`
   return res.json({ success: true, data: { url } })
-})
-
-// Serve uploaded files (dev convenience — in production serve from CDN/S3)
-router.use('/files', (req: Request, res: Response) => {
-  const filePath = path.join(UPLOADS_DIR, path.basename(req.path))
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ success: false, error: { message: 'File not found' } })
-  }
-  res.sendFile(filePath)
 })
 
 export default router
