@@ -1564,7 +1564,7 @@ export default function SettingsPage() {
                     <Field label="Logo">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {general.logoUrl && (
-                          <img src={`${resolveUploadUrl(general.logoUrl)}?t=${Date.now()}`} alt="Logo" style={{ height: 48, objectFit: 'contain', maxWidth: 160, borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.08)', background: '#f9fafb' }} />
+                          <img src={resolveUploadUrl(general.logoUrl)} alt="Logo" style={{ height: 48, objectFit: 'contain', maxWidth: 160, borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.08)', background: '#f9fafb' }} />
                         )}
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 15, fontWeight: 600, color: '#374151', background: '#FFFFFF', border: '1px solid #E2E0DD', borderRadius: 'var(--r-full)', cursor: logoUploading ? 'not-allowed' : 'pointer', opacity: logoUploading ? 0.6 : 1, alignSelf: 'flex-start' }}>
                           {logoUploading ? 'Uploading…' : general.logoUrl ? 'Change Logo' : 'Upload Logo'}
