@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useBlocker } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { getTenant, updateTenant } from '@/lib/db/tenants'
-import { fetcher, postFetcher, patchFetcher, deleteFetcher, rawFetcher } from '@/lib/fetcher'
+import { fetcher, postFetcher, patchFetcher, deleteFetcher, rawFetcher, resolveUploadUrl } from '@/lib/fetcher'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { toast } from '@/lib/toast'
@@ -1564,7 +1564,7 @@ export default function SettingsPage() {
                     <Field label="Logo">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {general.logoUrl && (
-                          <img src={`${general.logoUrl}?t=${Date.now()}`} alt="Logo" style={{ height: 48, objectFit: 'contain', maxWidth: 160, borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.08)', background: '#f9fafb' }} />
+                          <img src={`${resolveUploadUrl(general.logoUrl)}?t=${Date.now()}`} alt="Logo" style={{ height: 48, objectFit: 'contain', maxWidth: 160, borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.08)', background: '#f9fafb' }} />
                         )}
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 15, fontWeight: 600, color: '#374151', background: '#FFFFFF', border: '1px solid #E2E0DD', borderRadius: 'var(--r-full)', cursor: logoUploading ? 'not-allowed' : 'pointer', opacity: logoUploading ? 0.6 : 1, alignSelf: 'flex-start' }}>
                           {logoUploading ? 'Uploading…' : general.logoUrl ? 'Change Logo' : 'Upload Logo'}

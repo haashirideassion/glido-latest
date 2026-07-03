@@ -35,6 +35,17 @@ export const deleteFetcher = async <T = any>(url: string): Promise<any> => {
  */
 const RAW_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
+/**
+ * Resolve a backend-relative path (e.g. /api/uploads/files/logo.png)
+ * to an absolute URL using the configured API base.
+ * Pass-through for already-absolute URLs.
+ */
+export const resolveUploadUrl = (url: string | null | undefined): string => {
+  if (!url) return ''
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  return RAW_BASE + (url.startsWith('/') ? url : `/${url}`)
+}
+
 export const rawFetcher = async (url: string, options?: RequestInit) => {
   const token = getToken()
   const headers = new Headers(options?.headers)
