@@ -8,10 +8,11 @@ import { pool } from '../db'
 const router = Router()
 // POST / is public (guest booking doc uploads); POST /logo requires auth
 
-// Store uploads in ./uploads/ relative to where the server runs
+// Store uploads in ./uploads/ relative to where the server runs (used for booking docs)
 const UPLOADS_DIR = path.join(process.cwd(), 'uploads')
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 
+// Disk storage — for booking documents
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
   filename: (_req, file, cb) => {
@@ -25,27 +26,36 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 })
 
-// POST /api/v2/uploads/logo — staff only
+// Memory storage — for logo (stored as base64 data URL in DB, no filesystem needed)
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB for logos
+})
+
+// POST /api/uploads/logo — staff only
+// Converts to base64 data URL and stores directly in tenants.logo_url
 router.post('/logo', requireAuth, (req: Request, res: Response) => {
-  upload.single('file')(req, res, async (err: any) => {
-  if (err) {
-    console.error('[uploads/logo] multer error:', err.message)
-    return res.status(400).json({ success: false, error: { message: err.message ?? 'Upload error' } })
-  }
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: { message: 'No file uploaded' } })
-  }
-  const url = `/api/uploads/files/${req.file.filename}`
-  const { tenantId } = req.body
-  if (tenantId) {
-    try {
-      await pool.query('UPDATE tenants SET logo_url = $1, updated_at = NOW() WHERE id = $2', [url, tenantId])
-    } catch (err) {
-      console.error('[uploads/logo] tenant update failed', err)
+  memoryUpload.single('file')(req, res, async (err: any) => {
+    if (err) {
+      console.error('[uploads/logo] multer error:', err.message)
+      return res.status(400).json({ success: false, error: { message: err.message ?? 'Upload error' } })
     }
-  }
-  return res.status(201).json({ success: true, data: { url, filename: req.file.filename } })
-  }) // end upload callback
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: { message: 'No file uploaded' } })
+    }
+    // Store as data URL — persists in DB, no filesystem dependency
+    const mime = req.file.mimetype || 'image/jpeg'
+    const dataUrl = `data:${mime};base64,${req.file.buffer.toString('base64')}`
+    const { tenantId } = req.body
+    if (tenantId) {
+      try {
+        await pool.query('UPDATE tenants SET logo_url = $1, updated_at = NOW() WHERE id = $2', [dataUrl, tenantId])
+      } catch (err) {
+        console.error('[uploads/logo] tenant update failed', err)
+      }
+    }
+    return res.status(201).json({ success: true, data: { url: dataUrl } })
+  })
 }) // end router.post('/logo')
 
 // POST /api/v2/uploads — multipart/form-data, field name: "file"
