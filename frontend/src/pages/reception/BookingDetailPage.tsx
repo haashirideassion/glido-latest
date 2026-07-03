@@ -262,9 +262,10 @@ export default function BookingDetailPage() {
       doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5)
 
       const serviceLabel = `${slot.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off'} · ${slot.loadType?.toUpperCase()}`
-      const slotDriver = slot.driverName || b?.driverName || ''
-      const slotDriverPhone = slot.driverPhone || b?.driverPhone || ''
-      const slotVehicle = slot.vehicleRegistration || b?.vehicleRegistration || ''
+      // Always use primary booking's contact info — all slots share the same guest/driver
+      const slotDriver = b?.driverName || ''
+      const slotDriverPhone = b?.driverPhone || ''
+      const slotVehicle = b?.vehicleRegistration || ''
 
       const rows: [string, string][] = [
         ...(b?.guestName && b.guestName !== b.guestEmail ? [['Guest Name',      b.guestName]                                as [string,string]] : []),
@@ -478,9 +479,9 @@ export default function BookingDetailPage() {
                     doc.setFontSize(10); doc.setFont('helvetica', 'bold'); doc.setTextColor(28, 25, 23)
                     doc.text('Booking Details', 20, y); y += 6
                     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5)
-                    const slotDriver = slot.driverName || b?.driverName || ''
-                    const slotDriverPhone = slot.driverPhone || b?.driverPhone || ''
-                    const slotVehicle = slot.vehicleRegistration || b?.vehicleRegistration || ''
+                    const slotDriver = b?.driverName || ''
+                    const slotDriverPhone = b?.driverPhone || ''
+                    const slotVehicle = b?.vehicleRegistration || ''
                     const rows: [string, string][] = [
                       ...(b?.guestName && b.guestName !== b.guestEmail ? [['Guest Name',      b.guestName]                              as [string,string]] : []),
                       ...(b?.guestEmail        ? [['Guest Email',     b.guestEmail]                             as [string,string]] : []),
