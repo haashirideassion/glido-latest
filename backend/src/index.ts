@@ -30,12 +30,7 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
   .map(o => o.trim())
 
 const corsOptions = {
-  origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
-    // allow requests with no origin (curl, mobile apps, same-origin)
-    if (!origin) return cb(null, true)
-    if (allowedOrigins.includes(origin)) return cb(null, true)
-    cb(new Error(`CORS: origin ${origin} not allowed`))
-  },
+  origin: true,   // reflect request origin — safe for credentialed private app
   credentials: true,
 }
 
