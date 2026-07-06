@@ -48,12 +48,13 @@ export const router = createBrowserRouter([
     path: '/reception',
     element: <ReceptionGuard />,
     children: [
+      /* Full-screen immersive wizard — no sidebar/header chrome, matches the public /book flow */
+      { path: 'bookings/new',                             element: <NewBookingPage /> },
       {
         element: <ReceptionLayout />,
         children: [
           { index: true,                                   element: <DashboardPage /> },
           { path: 'bookings',                              element: <BookingsPage /> },
-          { path: 'bookings/new',                          element: <NewBookingPage /> },
           { path: 'bookings/:id',                          element: <BookingDetailPage /> },
           { path: 'bookings/group/:groupRef',              element: <BookingDetailPage /> },
           { path: 'visitors',                              element: <WalkInsPage /> },
