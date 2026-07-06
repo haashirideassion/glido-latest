@@ -202,7 +202,16 @@ export function Step6ContactVehicle() {
           const isUploaded  = uploaded.length > 0
 
           return (
-            <div key={slot.docType} style={{ background: '#fff', border: `1.5px solid ${isMissing ? '#EF4444' : isUploaded ? 'rgba(34,197,94,0.35)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 'var(--r-lg)', padding: '14px 16px', transition: 'border-color 0.15s ease' }}>
+            <div key={slot.docType} style={{
+              background: 'linear-gradient(160deg, #FFFFFF 0%, #FAFAF9 100%)',
+              border: `1.5px solid ${isMissing ? '#EF4444' : isUploaded ? 'rgba(34,197,94,0.35)' : 'rgba(0,0,0,0.08)'}`,
+              borderRadius: 'var(--r-lg)', padding: '14px 16px', transition: 'all 0.15s ease',
+              boxShadow: isMissing
+                ? '0 1px 2px rgba(0,0,0,0.03), 0 3px 10px rgba(239,68,68,0.10), inset 0 1px 0 rgba(255,255,255,0.7)'
+                : isUploaded
+                ? '0 1px 2px rgba(0,0,0,0.03), 0 3px 10px rgba(34,197,94,0.10), inset 0 1px 0 rgba(255,255,255,0.7)'
+                : '0 1px 2px rgba(0,0,0,0.03), 0 3px 10px rgba(0,0,0,0.045), inset 0 1px 0 rgba(255,255,255,0.7)',
+            }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -219,10 +228,10 @@ export function Step6ContactVehicle() {
                     {slot.helpText ?? 'PDF, JPG, PNG · Max 10 MB'}
                   </p>
                 </div>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', flexShrink: 0, transition: 'all 0.12s ease', cursor: uploading[slot.docType] ? 'not-allowed' : 'pointer', opacity: uploading[slot.docType] ? 0.6 : 1 }}
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: 'linear-gradient(160deg, #FFFFFF 0%, #F7F6F5 100%)', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', flexShrink: 0, transition: 'all 0.12s ease', cursor: uploading[slot.docType] ? 'not-allowed' : 'pointer', opacity: uploading[slot.docType] ? 0.6 : 1, boxShadow: '0 1px 2px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.8)' }}
                   onClick={uploading[slot.docType] ? e => e.preventDefault() : undefined}
                   onMouseOver={e => { if (!uploading[slot.docType]) { e.currentTarget.style.background = '#EBEBEA'; e.currentTarget.style.borderColor = 'rgba(0,0,0,0.18)' } }}
-                  onMouseOut={e  => { e.currentTarget.style.background = '#F7F6F5'; e.currentTarget.style.borderColor = 'rgba(0,0,0,0.10)' }}>
+                  onMouseOut={e  => { e.currentTarget.style.background = 'linear-gradient(160deg, #FFFFFF 0%, #F7F6F5 100%)'; e.currentTarget.style.borderColor = 'rgba(0,0,0,0.10)' }}>
                   <Icon name={ICONS.upload} size={13} />
                   {uploading[slot.docType] ? 'Uploading…' : 'Upload'}
                   <input type="file" multiple accept={slot.acceptAttr ?? '.pdf,.jpg,.jpeg,.png'} style={{ display: 'none' }} disabled={uploading[slot.docType]}
@@ -364,7 +373,16 @@ function SlotDocSection({ slotIndex, docFiles, docSlots, onAdd, onRemove }: {
           const isMissing  = slot.required && uploaded.length === 0
           const isUploaded = uploaded.length > 0
           return (
-            <div key={slot.docType} style={{ background: '#fff', border: `1.5px solid ${isMissing ? '#EF4444' : isUploaded ? 'rgba(34,197,94,0.35)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 'var(--r-lg)', padding: '12px 14px' }}>
+            <div key={slot.docType} style={{
+              background: 'linear-gradient(160deg, #FFFFFF 0%, #FAFAF9 100%)',
+              border: `1.5px solid ${isMissing ? '#EF4444' : isUploaded ? 'rgba(34,197,94,0.35)' : 'rgba(0,0,0,0.08)'}`,
+              borderRadius: 'var(--r-lg)', padding: '12px 14px',
+              boxShadow: isMissing
+                ? '0 1px 2px rgba(0,0,0,0.03), 0 3px 10px rgba(239,68,68,0.10), inset 0 1px 0 rgba(255,255,255,0.7)'
+                : isUploaded
+                ? '0 1px 2px rgba(0,0,0,0.03), 0 3px 10px rgba(34,197,94,0.10), inset 0 1px 0 rgba(255,255,255,0.7)'
+                : '0 1px 2px rgba(0,0,0,0.03), 0 3px 10px rgba(0,0,0,0.045), inset 0 1px 0 rgba(255,255,255,0.7)',
+            }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

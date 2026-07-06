@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { Icon, ICONS } from '@/lib/Icon'
 import { fmtDateTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
@@ -35,9 +36,11 @@ interface Props {
   booking: Booking
   onClose: () => void
   onUpdated: (b: Booking) => void
+  /** When true, render inline as a docked split-pane (no fixed positioning, no backdrop). */
+  docked?: boolean
 }
 
-export function BookingSlideOver({ booking: initial, onClose, onUpdated }: Props) {
+export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked = false }: Props) {
   const [b, setB] = useState<Booking>(initial)
   const [loading, setLoading] = useState('')
   const perms = useStaffPermissions()
@@ -80,16 +83,28 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated }: Props
 
   const icsStyle = ICS_BADGE[b.icsStatus ?? ''] ?? ICS_BADGE.unavailable
 
+  const panelStyle: React.CSSProperties = docked
+    ? { position: 'relative', height: '100%', width: '100%', zIndex: 1, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(480px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }
+
   return (
     <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(28,25,23,0.35)', backdropFilter: 'blur(4px)' }}
-      />
+      {/* Backdrop — overlay mode only */}
+      {!docked && (
+        <motion.div
+          onClick={onClose}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }}
+          style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(28,25,23,0.35)', backdropFilter: 'blur(4px)' }}
+        />
+      )}
 
       {/* Panel */}
-      <div style={{ position: 'fixed', right: 0, top: 0, height: '100%', width: 480, zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <motion.div
+        style={panelStyle}
+        initial={docked ? { opacity: 0, x: 16 } : { x: '100%' }}
+        animate={docked ? { opacity: 1, x: 0 } : { x: 0 }}
+        transition={docked ? { duration: 0.24, ease: [0.16, 1, 0.3, 1] } : { type: 'spring', stiffness: 400, damping: 40 }}
+      >
 
         {/* ── Sticky header ── */}
         <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 10px 20px', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#FFFFFF', flexShrink: 0, gap: 12 }}>
@@ -283,7 +298,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated }: Props
             </ActionBtn>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* ── Reschedule modal ── */}
       {rescheduleModal && (
@@ -415,12 +430,15 @@ function ActionBtn({ color, onClick, loading, children }: { color: 'orange' | 'g
     danger: { background: 'rgba(239,68,68,0.08)', color: '#DC2626', border: '1px solid rgba(239,68,68,0.25)' },
   }
   return (
-    <button
+    <motion.button
       onClick={onClick}
       disabled={loading}
-      style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 16px', fontSize: 15, fontWeight: 600, borderRadius: 'var(--r-full)', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, transition: 'all 0.15s', fontFamily: 'inherit', ...styles[color] }}
+      whileTap={loading ? undefined : { scale: 0.95 }}
+      whileHover={loading ? undefined : { scale: 1.02 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30, mass: 0.6 }}
+      style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 16px', fontSize: 15, fontWeight: 600, borderRadius: 'var(--r-full)', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, fontFamily: 'inherit', ...styles[color] }}
     >
       {children}
-    </button>
+    </motion.button>
   )
 }

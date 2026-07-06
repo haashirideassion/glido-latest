@@ -18,6 +18,8 @@ import carriersRoutes from './routes/carriers'
 import broadcastRoutes from './routes/broadcast'
 import notificationsRoutes from './routes/notifications'
 import kioskDevicesRoutes from './routes/kiosk-devices'
+import wizardDraftsRoutes from './routes/wizard-drafts'
+import analyticsRoutes from './routes/analytics'
 
 dotenv.config()
 
@@ -49,6 +51,8 @@ app.use('/api/carriers', carriersRoutes)
 app.use('/api/broadcasts', broadcastRoutes)
 app.use('/api/notifications', notificationsRoutes)
 app.use('/api/kiosk/devices', kioskDevicesRoutes)
+app.use('/api/wizard-drafts', wizardDraftsRoutes)
+app.use('/api/analytics', analyticsRoutes)
 
 // ── Health check ─────────────────────────────────────────────
 app.get('/health', (_req, res) => {

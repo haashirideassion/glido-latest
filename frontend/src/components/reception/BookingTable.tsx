@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { EmptyState } from '@/components/reception/EmptyState'
 import { todaySydney } from '@/lib/time'
 import { toast } from '@/lib/toast'
 import type { Booking } from '@/data/types'
@@ -33,9 +34,12 @@ interface Props {
   groupSlots?: Record<string, Booking[]>
   currentDate?: string
   loading?: boolean
+  /** When provided, row clicks open a split-view pane instead of navigating away. */
+  onSelect?: (b: Booking) => void
+  selectedId?: string
 }
 
-export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, loading }: Props) {
+export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, loading, onSelect, selectedId }: Props) {
   const today = todaySydney()
   const displayDate = currentDate ?? today
   const navigate = useNavigate()
@@ -85,7 +89,7 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
       {loading ? (
         <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>Loading…</div>
       ) : bookings.length === 0 ? (
-        <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>No bookings for today.</div>
+        <EmptyState compact title="No bookings for today" subtitle="Scheduled visits will appear here as they come in." />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 10px' }}>
           {bookings.map(b => {
@@ -102,8 +106,8 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
             return (
               <div
                 key={b.id}
-                onClick={() => navigate(navTarget)}
-                style={{ display: 'flex', cursor: 'pointer', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', background: '#fff', transition: 'box-shadow 0.15s' }}
+                onClick={() => (onSelect ? onSelect(b) : navigate(navTarget))}
+                style={{ display: 'flex', cursor: 'pointer', border: `1px solid ${selectedId === b.id ? 'rgba(var(--brand-rgb),0.35)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', background: selectedId === b.id ? 'rgba(var(--brand-rgb),0.05)' : '#fff', transition: 'box-shadow 0.15s, background 0.12s, border-color 0.12s' }}
                 onMouseOver={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.10)')}
                 onMouseOut={e  => (e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)')}
               >

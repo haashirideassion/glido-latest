@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useKiosk } from '@/contexts/KioskContext'
 import { Icon, ICONS } from '@/lib/Icon'
 import { getBookingByRego } from '@/lib/db/bookings'
+import { playSuccessTone, playErrorTone } from '@/lib/kioskSound'
 
 function getStatusBlockMessage(status: string): string | null {
   switch (status) {
@@ -22,8 +23,6 @@ export function LookupScreen() {
   const [regoLoading,      setRegoLoading]      = useState(false)
   const [regoError,        setRegoError]        = useState(false)
   const [regoBlockMessage, setRegoBlockMessage] = useState<string | null>(null)
-
-  if (state.currentScreen !== 'lookup') return null
 
   const formatRef = (raw: string) => {
     const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -58,6 +57,7 @@ export function LookupScreen() {
       if (!booking) {
         dispatch({ type: 'SET_LOOKUP', result: null, error: true, loading: false })
         setRegoError(true)
+        playErrorTone()
         return
       }
 
@@ -66,6 +66,7 @@ export function LookupScreen() {
       if (blockMsg) {
         dispatch({ type: 'SET_LOOKUP', result: null, error: false, loading: false })
         setRegoBlockMessage(blockMsg)
+        playErrorTone()
         return
       }
 
@@ -84,10 +85,12 @@ export function LookupScreen() {
           status:     booking.status,
         },
       })
+      playSuccessTone()
       dispatch({ type: 'GO_TO', screen: 'confirm' })
     } catch {
       dispatch({ type: 'SET_LOOKUP', result: null, error: true, loading: false })
       setRegoError(true)
+      playErrorTone()
     } finally {
       setRegoLoading(false)
     }

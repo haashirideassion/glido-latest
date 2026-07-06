@@ -3,7 +3,7 @@ import { Icon, ICONS } from '@/lib/Icon'
 
 export function ConfirmScreen() {
   const { state, confirmBooking, goTo } = useKiosk()
-  if (state.currentScreen !== 'confirm' || !state.lookupResult) return null
+  if (!state.lookupResult) return null
   const r = state.lookupResult
 
   return (

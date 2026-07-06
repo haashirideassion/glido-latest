@@ -3,6 +3,7 @@ import { Html5Qrcode } from 'html5-qrcode'
 import { useKiosk } from '@/contexts/KioskContext'
 import { Icon, ICONS } from '@/lib/Icon'
 import { toast } from '@/lib/toast'
+import { playErrorTone } from '@/lib/kioskSound'
 
 // Stable DOM id for the html5-qrcode mount point.
 const QR_ELEMENT_ID = 'kiosk-qr-reader'
@@ -70,6 +71,7 @@ export function ScanScreen() {
           // Reject QR codes that clearly aren't booking references
           if (!val.startsWith('GLD-')) {
             toast('Invalid QR code format. Please scan your booking QR code.', 'error')
+            playErrorTone()
             // Camera keeps running — do not stop or switch tabs
             return
           }
@@ -135,10 +137,8 @@ export function ScanScreen() {
     }
   }, [state.lookupError, state.lookupLoading])
 
-  // ── Guard: only render on this screen ───────────────────────────────────────
-  if (state.currentScreen !== 'scan') return null
-
   // ── Render — mirrors LookupScreen layout exactly ─────────────────────────────
+  // (Screen visibility is controlled by the parent via AnimatePresence — see KioskPage.tsx)
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 32px' }}>
       <div style={{ width: '100%', maxWidth: 448, textAlign: 'center' }}>

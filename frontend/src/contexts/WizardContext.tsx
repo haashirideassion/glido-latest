@@ -4,6 +4,7 @@ import {
 } from 'react'
 import { todaySydney } from '@/lib/time'
 import { getTenant } from '@/lib/db/tenants'
+import { loadWizardDraft } from '@/lib/db/wizard-drafts'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import type { TimeSlot } from '@/data/types'
 import type { ShipmentLookupResult } from '@/lib/db/cfs-shipments'
@@ -178,6 +179,10 @@ export interface WizardState {
   bookingConfirmed: boolean             // true after successful submission — suppresses leave-page blocker
   // Step 5 — active slot tab index (lifted so BookingWizard footer can react to it)
   step5ActiveSlot: number
+  // Steps 2-4 — active slot tab index (lifted so the 3D scene can focus on the slot being edited)
+  step2ActiveSlot: number
+  step3ActiveSlot: number
+  step4ActiveSlot: number
   // Tenant pricing config (loaded on wizard mount)
   tenantPricing: TenantPricing | null
   // Tenant document requirements (loaded on wizard mount)
@@ -200,6 +205,7 @@ export type WizardAction =
   | { type: 'DESELECT_SLOT' }
   | { type: 'PATCH_SLOT_AVAILABILITY'; slots: TimeSlot[] }
   | { type: 'RESET' }
+  | { type: 'RESTORE'; state: Partial<WizardState> }
 
 const DEFAULT_HOLD_MIN = 10   // fallback when tenant config not yet loaded
 
@@ -232,6 +238,9 @@ export const INITIAL_STATE: WizardState = {
   confirmationRefs: [],
   bookingConfirmed: false,
   step5ActiveSlot: 0,
+  step2ActiveSlot: 0,
+  step3ActiveSlot: 0,
+  step4ActiveSlot: 0,
   tenantPricing: null,
   tenantDocs: null,
 }
@@ -315,6 +324,9 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
     case 'RESET':
       try { sessionStorage.removeItem('glido_wizard_v2') } catch { /* noop */ }
       return { ...INITIAL_STATE, selectedDate: getDefaultDate() }
+    case 'RESTORE':
+      // Loaded from a "resume link" draft — never restore into a confirmed/payment state
+      return { ...INITIAL_STATE, ...action.state, step: Math.min(action.state.step ?? 1, 7), bookingConfirmed: false, submitting: false }
     default:
       return state
   }
@@ -353,6 +365,19 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* noop */ }
   }, [state])
+
+  // Resume from a saved draft link — /book?resume=<token>
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('resume')
+    if (!token) return
+    loadWizardDraft(token).then(draft => {
+      if (draft) dispatch({ type: 'RESTORE', state: draft as Partial<WizardState> })
+      // Strip the token from the URL either way so a refresh doesn't re-trigger it
+      const url = new URL(window.location.href)
+      url.searchParams.delete('resume')
+      window.history.replaceState({}, '', url.toString())
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch tenant config once on mount — pricing for calcCharges + docs for Step 6
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { motion } from 'motion/react'
 import { NavLink, Outlet, useLocation, Link, useNavigate } from 'react-router-dom'
 import { GlidoLogo } from '@/lib/GlidoLogo'
 import { Icon, ICONS } from '@/lib/Icon'
@@ -14,19 +15,29 @@ const NAV = [
   { to: '/reception/bookings',  label: 'Bookings',  icon: ICONS.bookings, badge: false },
   { to: '/reception/visitors',  label: 'Visitors',  icon: ICONS.walkIn,   badge: true  },
   { to: '/reception/reports',   label: 'Reports & Analytics',   icon: ICONS.reports,  badge: false, children: [
-    { to: '/reception/reports/analytics',    label: 'Analytics'         },
-    { to: '/reception/reports/visitor-log',  label: 'ABF Visitor Log'   },
-    { to: '/reception/reports/configure',    label: 'Configure Reports' },
+    { to: '/reception/reports/analytics',    label: 'Analytics',         icon: ICONS.chartBar },
+    { to: '/reception/reports/visitor-log',  label: 'ABF Visitor Log',   icon: ICONS.document },
+    { to: '/reception/reports/configure',    label: 'Configure Reports', icon: ICONS.settings },
   ]},
   { to: '/reception/carriers',   label: 'Carriers',   icon: ICONS.truck,    badge: false },
   { to: '/reception/broadcast',  label: 'Broadcast',  icon: ICONS.email,    badge: false },
-  { to: '/reception/settings',   label: 'Settings',   icon: ICONS.settings, badge: false },
+  { to: '/reception/settings',   label: 'Settings',   icon: ICONS.settings, badge: false, children: [
+    { to: '/reception/settings#general',          label: 'General',        icon: ICONS.info },
+    { to: '/reception/settings#working-hours',    label: 'Working Hours',  icon: ICONS.clock },
+    { to: '/reception/settings#slot-config',      label: 'Slot Config',    icon: ICONS.calendar },
+    { to: '/reception/settings#pricing',          label: 'Pricing',        icon: ICONS.percent },
+    { to: '/reception/settings#payment',          label: 'Payment',        icon: ICONS.confirmed },
+    { to: '/reception/settings#doc-requirements', label: 'Documents',      icon: ICONS.document },
+    { to: '/reception/settings#integrations',     label: 'Integrations',   icon: ICONS.transshipment },
+    { to: '/reception/settings#user-management',  label: 'Team',           icon: ICONS.users },
+  ]},
 ] as const
 
 declare global { interface Window { __echarts?: any } }
 
 export default function ReceptionLayout() {
-  const { pathname } = useLocation()
+  const routerLocation = useLocation()
+  const { pathname } = routerLocation
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { isStaff, role: staffRole } = useReceptionAuth()
@@ -42,6 +53,16 @@ export default function ReceptionLayout() {
 
   const handleSignOut = () => logout()
   const [open, setOpen] = useState(() => localStorage.getItem('glido-sidebar') !== '0')
+  // Responsive: below 900px the sidebar becomes an off-canvas drawer
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 900 : false))
+  const [mobileOpen, setMobileOpen] = useState(false)
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 900)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  useEffect(() => { if (!isMobile) setMobileOpen(false) }, [isMobile])
+  useEffect(() => { setMobileOpen(false) }, [pathname])
   const [walkInCount, setWalkInCount] = useState(0)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -49,6 +70,15 @@ export default function ReceptionLayout() {
   const [notifs, setNotifs] = useState<any[]>([])
   const [sidebarExtra, setSidebarExtra] = useState<React.ReactNode>(null)
   const setSidebarExtraStable = useCallback((node: React.ReactNode) => setSidebarExtra(node), [])
+  const [density, setDensity] = useState<'comfortable' | 'compact'>(
+    () => (localStorage.getItem('glido-density') === 'compact' ? 'compact' : 'comfortable')
+  )
+
+  // Apply density preference to <html> so the CSS density-scale vars cascade everywhere
+  useEffect(() => {
+    document.documentElement.setAttribute('data-density', density)
+    localStorage.setItem('glido-density', density)
+  }, [density])
 
   // Staff name from JWT — no network call needed
   const staffName = user?.name ?? null
@@ -122,11 +152,11 @@ export default function ReceptionLayout() {
       } catch { /* ignore */ }
     }
     load()
-    const interval = setInterval(load, 30_000)
+    const interval = setInterval(load, 15_000)
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
-  // Notifications — poll unread count every 30s
+  // Notifications — poll unread count every 15s
   useEffect(() => {
     let cancelled = false
     const loadCount = async () => {
@@ -165,18 +195,37 @@ export default function ReceptionLayout() {
         *, *::before, *::after { font-family: 'Red Hat Display', ui-sans-serif, system-ui, sans-serif; }
         .sidebar-col { position: sticky; top: 0; height: 100vh; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding: 20px 12px; gap: 12px; width: 72px; transition: width 0.28s cubic-bezier(0.16,1,0.3,1); background: #f9f9f9; }
         .sidebar-col.is-open { width: 232px; }
-        .nav-pill { background: #1C1917; border-radius: 28px; padding: 6px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 8px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.07); width: 52px; transition: width 0.28s cubic-bezier(0.16,1,0.3,1), border-radius 0.28s ease; }
+        .nav-pill { position: relative; background: linear-gradient(168deg, #2a2622 0%, #1b1714 58%, #131110 100%); border-radius: 28px; padding: 6px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 10px 34px rgba(0,0,0,0.32), 0 2px 8px rgba(0,0,0,0.16), inset 0 1px 0 rgba(255,255,255,0.10), inset 0 0 0 1px rgba(255,255,255,0.03); width: 52px; transition: width 0.28s cubic-bezier(0.16,1,0.3,1), border-radius 0.28s ease; }
+        .nav-pill::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(135% 52% at 50% 0%, rgba(var(--brand-rgb),0.20), transparent 66%); pointer-events: none; z-index: 0; }
+        .nav-pill::after { content: ''; position: absolute; left: 14%; right: 14%; bottom: 0; height: 1px; border-radius: 1px; background: linear-gradient(90deg, transparent, rgba(var(--brand-rgb),0.35), transparent); pointer-events: none; z-index: 0; opacity: 0.6; }
+        .nav-pill > div { position: relative; z-index: 1; }
         .sidebar-col.is-open .nav-pill { width: 208px; border-radius: 20px; }
         .nav-item { display: flex; align-items: center; gap: 0; padding: 0; border-radius: 22px; text-decoration: none; transition: background 0.15s ease, border-radius 0.28s ease, gap 0.28s cubic-bezier(0.16,1,0.3,1); overflow: hidden; flex-shrink: 0; position: relative; }
         .sidebar-col:not(.is-open) .nav-item { overflow: visible; }
         .sidebar-col.is-open .nav-item { gap: 6px; border-radius: 14px; }
-        .nav-item-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 19px; transition: background 0.15s ease; }
+        .nav-item-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 19px; transition: background 0.18s ease, transform 0.24s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease; }
+        .nav-item:hover .nav-item-icon { transform: scale(1.09); }
+        .nav-item:active .nav-item-icon { transform: scale(0.94); transition: transform 0.08s ease; }
         .nav-item-label { font-size: 13px; font-weight: 500; white-space: nowrap; color: #ffffff; padding-right: 10px; flex: 1; opacity: 0; max-width: 0; overflow: hidden; pointer-events: none; transition: color 0.15s ease, opacity 0.14s ease, max-width 0.28s cubic-bezier(0.16,1,0.3,1); }
         .sidebar-col.is-open .nav-item-label { opacity: 1; max-width: 160px; pointer-events: auto; transition: color 0.15s ease, opacity 0.2s ease 0.14s, max-width 0.28s cubic-bezier(0.16,1,0.3,1); }
-        .nav-item.active .nav-item-icon { background: rgba(255,255,255,0.12); }
-        .sidebar-col.is-open .nav-item.active { background: rgba(255,255,255,0.09); }
+        .nav-item.active .nav-item-icon { background: linear-gradient(155deg, color-mix(in srgb, var(--brand-color) 78%, #ffffff), var(--brand-color) 55%, color-mix(in srgb, var(--brand-color) 82%, #000000)); box-shadow: 0 5px 16px rgba(var(--brand-rgb),0.50), 0 1px 3px rgba(var(--brand-rgb),0.40), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -2px 4px rgba(0,0,0,0.22); }
+        .sidebar-col.is-open .nav-item.active { background: rgba(255,255,255,0.05); }
         .nav-item.active .nav-item-label { color: #ffffff; font-weight: 600; }
         .nav-item:not(.active):hover .nav-item-icon { background: rgba(255,255,255,0.06); }
+        /* ── Expand hint caret (parents with sub-pages) ── */
+        .nav-caret { display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-right: 8px; color: rgba(255,255,255,0.45); opacity: 0; max-width: 0; overflow: hidden; transform: rotate(0deg); transition: opacity 0.16s ease, max-width 0.28s cubic-bezier(0.16,1,0.3,1), transform 0.24s cubic-bezier(0.16,1,0.3,1), color 0.15s ease; }
+        .sidebar-col.is-open .nav-item .nav-caret { opacity: 1; max-width: 18px; }
+        .nav-item:hover .nav-caret { color: rgba(255,255,255,0.75); }
+        .nav-item.active .nav-caret { transform: rotate(90deg); color: var(--brand-color); }
+        /* ── Sub-pages (clean indented items, no rail/dots) ── */
+        .nav-subgroup { margin: 3px 0 5px 0; padding-left: 24px; display: flex; flex-direction: column; gap: 2px; animation: navSubIn 0.22s cubic-bezier(0.16,1,0.3,1); }
+        .nav-subitem { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.58); border-radius: 8px; padding: 7px 11px; text-decoration: none; line-height: 1.2; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease; }
+        .nav-subitem-icon { display: flex; align-items: center; flex-shrink: 0; color: rgba(255,255,255,0.4); transition: color 0.15s ease; }
+        .nav-subitem:hover { color: #ffffff; background: rgba(255,255,255,0.055); }
+        .nav-subitem:hover .nav-subitem-icon { color: rgba(255,255,255,0.72); }
+        .nav-subitem.active { color: #ffffff; font-weight: 600; background: rgba(var(--brand-rgb),0.20); }
+        .nav-subitem.active .nav-subitem-icon { color: var(--brand-color); }
+        @keyframes navSubIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
         .sidebar-col.is-open .nav-item:not(.active):hover { background: rgba(255,255,255,0.05); }
         .nav-item:not(.active):hover .nav-item-label { color: #ffffff; }
         /* Tooltip for collapsed sidebar */
@@ -222,10 +271,88 @@ export default function ReceptionLayout() {
         .user-menu-item:hover { background: rgba(0,0,0,0.04); }
         .user-menu-item.danger { color: #EF4444; }
         .user-menu-item.danger:hover { background: rgba(239,68,68,0.07); }
+        /* ── Responsive: hide desktop sidebar on mobile (full-screen menu instead) ── */
+        @media (max-width: 900px) {
+          .sidebar-col { display: none; }
+        }
+        @keyframes menuFade { from { opacity: 0; } to { opacity: 1; } }
+        .mobile-menu-item { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 15px 18px; border-radius: 14px; text-decoration: none; font-size: 17px; font-weight: 600; color: #1C1917; transition: background 0.15s ease; }
+        .mobile-menu-item:active { background: rgba(0,0,0,0.05); }
       `}</style>
 
+      {/* Full-screen mobile menu — blurred white overlay, centered */}
+      {isMobile && mobileOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(250,250,249,0.94)', backdropFilter: 'blur(28px) saturate(140%)', WebkitBackdropFilter: 'blur(28px) saturate(140%)', display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto', animation: 'menuFade 0.2s ease' }}>
+          {/* Close */}
+          <button onClick={() => setMobileOpen(false)} aria-label="Close menu"
+            style={{ position: 'fixed', top: 16, right: 16, width: 44, height: 44, borderRadius: '50%', border: '1px solid rgba(0,0,0,0.10)', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.08)', zIndex: 1 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1C1917" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+
+          {/* Big logo, centered */}
+          <div style={{ marginTop: 80, marginBottom: 40, flexShrink: 0 }}>
+            <GlidoLogo height={40} onDark={false} />
+          </div>
+
+          {/* Centered nav */}
+          <nav style={{ width: '100%', maxWidth: 360, padding: '0 22px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {NAV.filter(item => !(item.to === '/reception/settings' && isStaff)).map(item => {
+              const isActive = item.to === '/reception'
+                ? pathname === '/reception'
+                : pathname.startsWith(item.to) && pathname !== '/reception/bookings/new'
+              const hasChildren = 'children' in item && item.children
+              return (
+                <div key={item.to} style={{ display: 'flex', flexDirection: 'column' }}>
+                  <NavLink
+                    to={item.to}
+                    end={item.to === '/reception'}
+                    onClick={() => setMobileOpen(false)}
+                    className="mobile-menu-item"
+                    style={{ color: isActive ? 'var(--brand-color)' : '#1C1917', background: isActive ? 'rgba(var(--brand-rgb),0.12)' : 'transparent' }}
+                  >
+                    <Icon name={item.icon} size={21} style={{ color: isActive ? 'var(--brand-color)' : '#57534E' }} />
+                    <span>{item.label}</span>
+                    {'badge' in item && item.badge && walkInCount > 0 && (
+                      <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 999, background: '#EF4444', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{walkInCount}</span>
+                    )}
+                  </NavLink>
+                  {hasChildren && isActive && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, margin: '2px 0 6px' }}>
+                      {(item as any).children.map((sub: { to: string; label: string; icon?: string }) => (
+                        <NavLink
+                          key={sub.to}
+                          to={sub.to}
+                          onClick={() => setMobileOpen(false)}
+                          style={({ isActive: a }) => ({ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, padding: '11px 16px', borderRadius: 11, textDecoration: 'none', fontSize: 15, fontWeight: 500, color: a ? 'var(--brand-color)' : '#57534E', background: a ? 'rgba(var(--brand-rgb),0.10)' : 'transparent' })}
+                        >
+                          {sub.icon && <Icon name={sub.icon} size={17} />}
+                          <span>{sub.label}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </nav>
+
+          {/* New Booking */}
+          {perms.can_create_manual_booking && (
+            <div style={{ width: '100%', maxWidth: 360, padding: '24px 22px 40px', marginTop: 'auto', flexShrink: 0 }}>
+              <button type="button" onClick={() => { setMobileOpen(false); navigate('/reception/bookings/new') }}
+                style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '15px', borderRadius: 999, background: 'var(--brand-color)', color: 'var(--brand-text)', border: 'none', cursor: 'pointer', fontSize: 16, fontWeight: 700, boxShadow: '0 8px 24px rgba(var(--brand-rgb),0.35)' }}>
+                <Icon name={ICONS.add} size={19} style={{ color: 'var(--brand-text)' }} /> New Booking
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Sidebar ── */}
-      <aside className={`sidebar-col${open ? ' is-open' : ''}`}>
+      <aside
+        className={`sidebar-col${(open || isMobile) ? ' is-open' : ''}${mobileOpen ? ' mobile-open' : ''}`}
+        onClick={() => { if (isMobile) setMobileOpen(false) }}
+      >
 
         {/* Logo */}
         <Link to="/reception" style={{ display: 'flex', alignItems: 'center', width: 40, justifyContent: 'center', transition: 'width 0.28s cubic-bezier(0.16,1,0.3,1)', ...(open ? { width: '100%' } : {}) }}>
@@ -248,7 +375,7 @@ export default function ReceptionLayout() {
                   data-label={item.label}
                 >
                   <div className="nav-item-icon">
-                    <Icon name={item.icon} size={18} style={{ color: isActive ? '#fff' : '#C7C7C6' }} />
+                    <Icon name={item.icon} size={18} style={{ color: isActive ? 'var(--brand-text)' : '#C7C7C6' }} />
                   </div>
                   <span className="nav-item-label">{item.label}</span>
                   {'badge' in item && item.badge && walkInCount > 0 && (
@@ -256,27 +383,33 @@ export default function ReceptionLayout() {
                       {walkInCount}
                     </span>
                   )}
+                  {hasChildren && (
+                    <span className="nav-caret" aria-hidden="true">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+                    </span>
+                  )}
                 </NavLink>
 
-                {/* Sub-items — only visible when sidebar is open and parent is active */}
+                {/* Sub-items — segmented tree group, visible when sidebar is open and parent is active */}
                 {hasChildren && isActive && open && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '2px 4px 4px 44px' }}>
-                    {(item as any).children.map((sub: { to: string; label: string }) => (
-                      <NavLink
-                        key={sub.to}
-                        to={sub.to}
-                        className={({ isActive: a }) => a ? 'nav-subitem active' : 'nav-subitem'}
-                        style={({ isActive: a }) => ({
-                          fontSize: 13, fontWeight: a ? 600 : 400,
-                          color: a ? '#ffffff' : 'rgba(255,255,255,0.75)',
-                          textDecoration: 'none', padding: '4px 0',
-                          whiteSpace: 'normal', lineHeight: 1.3, transition: 'color 0.15s ease',
-                          display: 'block',
-                        })}
-                      >
-                        {sub.label}
-                      </NavLink>
-                    ))}
+                  <div className="nav-subgroup">
+                    {(item as any).children.map((sub: { to: string; label: string; icon?: string }) => {
+                      const hashIdx = sub.to.indexOf('#')
+                      const subHash = hashIdx >= 0 ? sub.to.slice(hashIdx) : ''
+                      const subActive = subHash
+                        ? (pathname.startsWith('/reception/settings') && (routerLocation.hash || '#general') === subHash)
+                        : undefined
+                      return (
+                        <NavLink
+                          key={sub.to}
+                          to={sub.to}
+                          className={({ isActive: a }) => ((subActive ?? a) ? 'nav-subitem active' : 'nav-subitem')}
+                        >
+                          {sub.icon && <span className="nav-subitem-icon"><Icon name={sub.icon} size={15} /></span>}
+                          <span>{sub.label}</span>
+                        </NavLink>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -285,10 +418,10 @@ export default function ReceptionLayout() {
         </nav>
 
         {perms.can_create_manual_booking && (
-          <button type="button" className="action-btn" onClick={() => navigate('/reception/bookings/new')}>
+          <motion.button type="button" className="action-btn" onClick={() => navigate('/reception/bookings/new')} whileTap={{ scale: 0.95 }} transition={{ type: 'spring', stiffness: 500, damping: 30 }}>
             <Icon name={ICONS.add} size={18} style={{ color: 'var(--brand-text)', flexShrink: 0 }} />
             <span className="action-btn-label">New Booking</span>
-          </button>
+          </motion.button>
         )}
 
         {/* Page-injected sidebar slot */}
@@ -320,10 +453,14 @@ export default function ReceptionLayout() {
       {/* ── Main area ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, background: '#f9f9f9' }}>
         {/* Header */}
-        <header style={{ height: 72, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', background: '#f9f9f9', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <button className="sidebar-toggle-btn" type="button" onClick={() => setOpen(v => !v)} title="Toggle sidebar">
-              {open ? (
+        <header style={{ height: 'var(--dash-header-h)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 var(--dash-main-pad-x)', background: '#f9f9f9', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0, flex: 1 }}>
+            <button className="sidebar-toggle-btn" type="button" onClick={() => (isMobile ? setMobileOpen(v => !v) : setOpen(v => !v))} title="Toggle sidebar">
+              {isMobile ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>
+                </svg>
+              ) : open ? (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="3" y="3" width="18" height="18" rx="2"/>
                   <path d="M9 3v18"/>
@@ -337,15 +474,15 @@ export default function ReceptionLayout() {
                 </svg>
               )}
             </button>
-            <div>
-              <h1 style={{ fontSize: 26, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.02em', margin: 0, lineHeight: 1.15 }}>{title}</h1>
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.02em', margin: 0, lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h1>
               {subtitle && (
-                <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: '2px 0 0', lineHeight: 1.2 }}>{subtitle}</p>
+                <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: '1px 0 0', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{subtitle}</p>
               )}
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            {tenant?.logoUrl && (
+            {tenant?.logoUrl && !isMobile && (
               <>
                 <img src={tenant.logoUrl} alt="Company logo" style={{ height: 30, objectFit: 'contain', maxWidth: 100 }} />
                 <span style={{ width: 1, height: 26, background: 'rgba(0,0,0,0.10)', flexShrink: 0 }} />
@@ -355,8 +492,10 @@ export default function ReceptionLayout() {
             {/* Bell + notifications */}
             <div style={{ position: 'relative' }}>
               <button
+                type="button"
                 onClick={openNotifications}
                 title="Notifications"
+                aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
                 style={{ width: 36, height: 36, borderRadius: 'var(--r-full)', border: '1px solid rgba(0,0,0,0.09)', background: notifOpen ? 'rgba(var(--brand-rgb),0.07)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.13s' }}
               >
                 <Icon name={ICONS.bell} size={17} style={{ color: notifOpen ? 'var(--brand-color)' : '#6B7280' }} />
@@ -507,6 +646,32 @@ export default function ReceptionLayout() {
                         <p style={{ fontSize: 13, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{tenantLine}</p>
                       </div>
                     </div>
+                    {/* Density preference */}
+                    <div style={{ padding: '10px 12px 6px' }}>
+                      <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 7px' }}>Density</p>
+                      <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.04)', borderRadius: 'var(--r-md)', padding: 3 }}>
+                        {(['comfortable', 'compact'] as const).map(mode => {
+                          const active = density === mode
+                          return (
+                            <button
+                              key={mode}
+                              onClick={() => setDensity(mode)}
+                              style={{
+                                flex: 1, padding: '6px 8px', borderRadius: 'var(--r-sm)', border: 'none', cursor: 'pointer',
+                                fontSize: 12, fontWeight: 600, fontFamily: 'inherit', textTransform: 'capitalize',
+                                background: active ? '#FFFFFF' : 'transparent',
+                                color: active ? '#1C1917' : 'var(--text-tertiary)',
+                                boxShadow: active ? '0 1px 3px rgba(0,0,0,0.10)' : 'none',
+                                transition: 'background 0.13s ease, color 0.13s ease',
+                              }}
+                            >
+                              {mode}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '2px 0' }} />
                     <div style={{ padding: 6 }}>
                       <button onClick={handleSignOut} className="user-menu-item danger" style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
                         <Icon name={ICONS.logout} size={15} style={{ flexShrink: 0 }} />
@@ -516,20 +681,24 @@ export default function ReceptionLayout() {
                   </div>
                 </>
               )}
-              <div
+              <button
+                type="button"
                 onClick={() => setUserMenuOpen(v => !v)}
                 title="Account menu"
-                style={{ width: 36, height: 36, borderRadius: 'var(--r-full)', background: 'var(--brand-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'var(--brand-text)', flexShrink: 0, cursor: 'pointer' }}
+                aria-label="Account menu"
+                aria-haspopup="true"
+                aria-expanded={userMenuOpen}
+                style={{ width: 36, height: 36, borderRadius: 'var(--r-full)', border: 'none', background: 'var(--brand-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: 'var(--brand-text)', flexShrink: 0, cursor: 'pointer', fontFamily: 'inherit' }}
               >
                 {profileLoading ? '·' : initials}
-              </div>
+              </button>
             </div>
 
           </div>
         </header>
 
         {/* Content */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '14px 22px 22px' }}>
+        <main style={{ flex: 1, overflowY: 'auto', padding: 'var(--dash-main-pad-y) var(--dash-main-pad-x) var(--dash-main-pad-x)' }}>
           <Outlet context={{ setSidebarExtra: setSidebarExtraStable }} />
         </main>
       </div>

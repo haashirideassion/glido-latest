@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { fetcher, postFetcher, patchFetcher, deleteFetcher } from '@/lib/fetcher'
 import { Icon, ICONS } from '@/lib/Icon'
+import { AnimatedNumber, motion } from '@/lib/motion'
+import { EmptyState } from '@/components/reception/EmptyState'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -542,11 +544,7 @@ function TemplatesTab({
   if (loading) return <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>Loading…</div>
 
   if (templates.length === 0) return (
-    <div style={{ padding: '60px 0', textAlign: 'center' }}>
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}><Icon name={ICONS.document} size={40} style={{ color: 'rgba(0,0,0,0.12)' }} /></div>
-      <p style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No templates yet</p>
-      <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Save a broadcast as a template to reuse it quickly.</p>
-    </div>
+    <EmptyState variant="inbox" title="No templates yet" subtitle="Save a broadcast as a template to reuse it quickly." />
   )
 
   return (
@@ -641,67 +639,133 @@ function EditTemplateModal({ template, onClose, onSaved }: {
 
 // ── History Tab ───────────────────────────────────────────────────────────────
 
+function BroadcastPane({ broadcast, carriers, docked, onClose }: { broadcast: Broadcast; carriers: Carrier[]; docked?: boolean; onClose: () => void }) {
+  const rLabel = recipientLabel(broadcast.recipients as any, carriers)
+  const PANEL: React.CSSProperties = { background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-sm)', padding: '12px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }
+  const SL: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }
+  const meta = [
+    { label: 'Recipients', value: rLabel, icon: ICONS.users },
+    { label: 'Template',   value: broadcast.template_name, icon: ICONS.document },
+    { label: 'Date',       value: fmtDate(broadcast.created_at), icon: ICONS.calendar },
+    { label: 'Sent by',    value: broadcast.sent_by, icon: ICONS.user },
+  ].filter(m => m.value)
+  const panelStyle: React.CSSProperties = docked
+    ? { position: 'relative', height: '100%', width: '100%', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(480px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }
+  return (
+    <>
+      {!docked && <motion.div onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(28,25,23,0.35)', backdropFilter: 'blur(4px)' }} />}
+      <motion.div
+        style={panelStyle}
+        initial={docked ? { opacity: 0, x: 16 } : { x: '100%' }}
+        animate={docked ? { opacity: 1, x: 0 } : { x: 0 }}
+        transition={docked ? { duration: 0.24, ease: [0.16, 1, 0.3, 1] } : { type: 'spring', stiffness: 400, damping: 40 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 12px 18px', borderBottom: '1px solid rgba(0,0,0,0.07)', gap: 12, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(var(--brand-rgb),0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Icon name={ICONS.email} size={18} style={{ color: 'var(--brand-color)' }} />
+            </div>
+            <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{broadcast.subject}</h3>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <span style={{ padding: '3px 10px', borderRadius: 'var(--r-full)', fontSize: 12, fontWeight: 600, background: '#F0FDF4', color: '#15803D', border: '1px solid rgba(34,197,94,0.2)' }}>Sent</span>
+            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 'var(--r-full)', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name={ICONS.close} size={16} />
+            </button>
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16, background: '#F5F4F3', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <section>
+            <p style={SL}>Details</p>
+            <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {meta.map(m => (
+                <div key={m.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0 }}><Icon name={m.icon} size={14} style={{ color: 'var(--text-secondary)' }} />{m.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1917', textAlign: 'right', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section>
+            <p style={SL}>Message</p>
+            <div style={{ ...PANEL, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{broadcast.body}</div>
+          </section>
+        </div>
+      </motion.div>
+    </>
+  )
+}
+
 function HistoryTab({ broadcasts, carriers, loading }: { broadcasts: Broadcast[]; carriers: Carrier[]; loading: boolean }) {
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Broadcast | null>(null)
+  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true))
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   if (loading) return <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>Loading…</div>
 
   if (broadcasts.length === 0) return (
-    <div style={{ padding: '60px 0', textAlign: 'center' }}>
-      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}><Icon name={ICONS.email} size={40} style={{ color: 'rgba(0,0,0,0.12)' }} /></div>
-      <p style={{ fontSize: 16, fontWeight: 600, color: '#374151', marginBottom: 6 }}>No broadcasts sent yet</p>
-      <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Broadcasts you send will appear here.</p>
-    </div>
+    <EmptyState title="No broadcasts sent yet" subtitle="Broadcasts you send will appear here." />
   )
 
+  const paneOpen = !!selected && isWide
+  const TH: React.CSSProperties = { textAlign: 'left', padding: '8px 14px', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#FAFAF9', position: 'sticky', top: 0, zIndex: 1 }
+  const TD: React.CSSProperties = { padding: '10px 14px', fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.05)' }
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {broadcasts.map(b => {
-        const isOpen = expanded === b.id
-        const rLabel = recipientLabel(b.recipients as any, carriers)
-        return (
-          <div key={b.id} style={{ ...CARD, overflow: 'hidden', cursor: 'pointer' }} onClick={() => setExpanded(isOpen ? null : b.id)}>
-            <div style={{ padding: '16px 20px', display: 'flex', gap: 14, alignItems: 'center' }}>
-              <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: 'rgba(var(--brand-rgb),0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon name={ICONS.email} size={16} style={{ color: 'var(--brand-color)' }} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.subject}</p>
-                <div style={{ display: 'flex', gap: 14, marginTop: 3, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Icon name={ICONS.users} size={12} style={{ opacity: 0.6 }} />
-                    {rLabel}
-                  </span>
-                  {b.template_name && (
-                    <span style={{ fontSize: 12, color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Icon name={ICONS.document} size={12} style={{ opacity: 0.6 }} />
-                      {b.template_name}
-                    </span>
-                  )}
-                  <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{fmtDate(b.created_at)}</span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ padding: '3px 10px', borderRadius: 'var(--r-full)', fontSize: 12, fontWeight: 600, background: '#F0FDF4', color: '#15803D', border: '1px solid rgba(34,197,94,0.2)' }}>
-                  Sent
-                </span>
-                <Icon name={isOpen ? ICONS.arrowUp : ICONS.arrowDown} size={16} style={{ color: '#9CA3AF' }} />
-              </div>
-            </div>
-            {isOpen && (
-              <div style={{ padding: '0 20px 18px 70px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 14, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{b.body}</p>
-                {b.sent_by && (
-                  <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 10 }}>
-                    Sent by <strong style={{ color: '#374151' }}>{b.sent_by}</strong>
-                  </p>
-                )}
-              </div>
-            )}
+    <>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1, minWidth: 0, ...CARD, padding: 0, overflow: 'hidden' }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={TH}>Subject</th>
+                  <th style={TH}>Recipients</th>
+                  {!paneOpen && <th style={TH}>Template</th>}
+                  <th style={TH}>Date</th>
+                  <th style={TH}>Status</th>
+                  <th style={{ ...TH, textAlign: 'right' }} />
+                </tr>
+              </thead>
+              <tbody>
+                {broadcasts.map(b => {
+                  const isSel = selected?.id === b.id
+                  return (
+                    <tr key={b.id} onClick={() => setSelected(b)}
+                      style={{ cursor: 'pointer', background: isSel ? 'rgba(var(--brand-rgb),0.06)' : 'transparent', transition: 'background 0.12s' }}
+                      onMouseOver={e => { if (!isSel) e.currentTarget.style.background = '#FAFAF9' }}
+                      onMouseOut={e  => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <td style={{ ...TD, color: '#1C1917', fontWeight: 600, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.subject}</td>
+                      <td style={TD}>{recipientLabel(b.recipients as any, carriers)}</td>
+                      {!paneOpen && <td style={{ ...TD, color: b.template_name ? '#1C1917' : 'var(--text-tertiary)' }}>{b.template_name ?? '—'}</td>}
+                      <td style={TD}>{fmtDate(b.created_at)}</td>
+                      <td style={TD}><span style={{ padding: '3px 9px', borderRadius: 'var(--r-full)', fontSize: 11.5, fontWeight: 600, background: '#F0FDF4', color: '#15803D', border: '1px solid rgba(34,197,94,0.2)' }}>Sent</span></td>
+                      <td style={{ ...TD, textAlign: 'right', color: 'var(--text-tertiary)', opacity: 0.5 }}>›</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-        )
-      })}
-    </div>
+        </div>
+
+        {selected && isWide && (
+          <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
+            <BroadcastPane broadcast={selected} carriers={carriers} docked onClose={() => setSelected(null)} />
+          </div>
+        )}
+      </div>
+
+      {selected && !isWide && (
+        <BroadcastPane broadcast={selected} carriers={carriers} onClose={() => setSelected(null)} />
+      )}
+    </>
   )
 }
 
@@ -766,7 +830,7 @@ export default function BroadcastPage() {
           { label: 'Active Carriers',  value: carriers.length,   sub: 'Registered carriers', icon: ICONS.truck,    iconBg: 'rgba(14,165,233,0.10)',        iconFg: '#0EA5E9'            },
         ].map((s, i) => (
           <div key={s.label}
-            style={{ flex: 1, minWidth: 0, padding: '22px 26px', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
+            style={{ flex: 1, minWidth: 0, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
             onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
             onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
           >
@@ -776,7 +840,7 @@ export default function BroadcastPage() {
               </div>
               <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.label}</p>
             </div>
-            <p style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{s.value}</p>
+            <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={s.value} /></p>
             <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.sub}</p>
           </div>
         ))}

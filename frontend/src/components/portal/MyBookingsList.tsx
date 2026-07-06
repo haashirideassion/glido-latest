@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { motion } from 'motion/react'
 import { Link } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { Icon, ICONS } from '@/lib/Icon'
@@ -168,6 +169,12 @@ export function MyBookingsList({ bookings, query, onCancelled }: Props) {
   const [cancelTarget,    setCancelTarget]    = useState<Booking | null>(null)
   const [cancellingId,    setCancellingId]    = useState<string | null>(null)
   const [detailBooking,   setDetailBooking]   = useState<Booking | null>(null)
+  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1000 : true))
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 1000)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const confirmCancel = async () => {
     if (!cancelTarget) return
@@ -205,19 +212,22 @@ export function MyBookingsList({ bookings, query, onCancelled }: Props) {
 
   return (
     <>
-<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
         {bookings.map(b => {
           const statusStyle = STATUS_STYLE[b.status] ?? STATUS_STYLE.scheduled
           const isPickup  = b.serviceType === 'pickup'
           const isDropoff = b.serviceType === 'dropoff'
           const isFCL     = b.loadType === 'fcl'
           const isLCL     = b.loadType === 'lcl'
+          const isSel     = detailBooking?.id === b.id
           return (
             <div
               key={b.id}
-              style={{ display: 'block', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-md)', padding: '18px 20px', transition: 'border-color 0.15s ease,box-shadow 0.15s ease,transform 0.15s cubic-bezier(0.16,1,0.3,1)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 4px 16px rgba(0,0,0,0.06)', cursor: 'default' }}
-              onMouseOver={e => { e.currentTarget.style.borderColor = 'rgba(var(--brand-rgb),0.30)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(var(--brand-rgb),0.08),0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
-              onMouseOut={e  => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.07)'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04),0 4px 16px rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'translateY(0)' }}
+              onClick={() => setDetailBooking(b)}
+              style={{ display: 'block', background: isSel ? 'rgba(var(--brand-rgb),0.04)' : '#FFFFFF', border: `1px solid ${isSel ? 'rgba(var(--brand-rgb),0.45)' : 'rgba(0,0,0,0.07)'}`, borderRadius: 'var(--r-md)', padding: '14px 16px', transition: 'border-color 0.15s ease,box-shadow 0.15s ease,transform 0.15s cubic-bezier(0.16,1,0.3,1)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 4px 16px rgba(0,0,0,0.06)', cursor: 'pointer' }}
+              onMouseOver={e => { if (isSel) return; e.currentTarget.style.borderColor = 'rgba(var(--brand-rgb),0.30)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(var(--brand-rgb),0.08),0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+              onMouseOut={e  => { if (isSel) return; e.currentTarget.style.borderColor = 'rgba(0,0,0,0.07)'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04),0 4px 16px rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'translateY(0)' }}
             >
               {/* Top row */}
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
@@ -266,22 +276,18 @@ export function MyBookingsList({ bookings, query, onCancelled }: Props) {
                 </div>
               )}
 
-              {/* Action row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-                <button
-                  type="button"
-                  onClick={() => setDetailBooking(b)}
-                  style={{ flex: 1, padding: '8px 12px', borderRadius: 'var(--r-sm)', border: '1.5px solid rgba(0,0,0,0.08)', background: '#fff', fontSize: 14, fontWeight: 600, color: '#1C1917', cursor: 'pointer', fontFamily: 'inherit' }}
-                  onMouseOver={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.18)'; e.currentTarget.style.background = '#FAFAFA' }}
-                  onMouseOut={e  => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)'; e.currentTarget.style.background = '#fff' }}
-                >
-                  View Details
-                </button>
-              </div>
             </div>
           )
         })}
       </div>
+
+      {/* Docked detail pane (wide screens) */}
+      {detailBooking && isWide && (
+        <div style={{ width: 420, flexShrink: 0, position: 'sticky', top: 24, alignSelf: 'flex-start', height: 'calc(100vh - 48px)' }}>
+          <BookingDetailPanel booking={detailBooking} docked onClose={() => setDetailBooking(null)} onCancelRequest={b => { setDetailBooking(null); setCancelTarget(b) }} />
+        </div>
+      )}
+      </div>{/* end split row */}
 
       {/* Cancel confirmation modal */}
       {cancelTarget && (
@@ -309,8 +315,8 @@ export function MyBookingsList({ bookings, query, onCancelled }: Props) {
         </div>
       )}
 
-      {/* Detail slide-over */}
-      {detailBooking && (
+      {/* Detail slide-over — narrow screens */}
+      {detailBooking && !isWide && (
         <BookingDetailPanel booking={detailBooking} onClose={() => setDetailBooking(null)} onCancelRequest={b => { setDetailBooking(null); setCancelTarget(b) }} />
       )}
     </>
@@ -318,22 +324,34 @@ export function MyBookingsList({ bookings, query, onCancelled }: Props) {
 }
 
 // ── Detail slide-over panel ───────────────────────────────────────────────────
-function BookingDetailPanel({ booking: b, onClose, onCancelRequest }: { booking: Booking; onClose: () => void; onCancelRequest?: (b: Booking) => void }) {
+function BookingDetailPanel({ booking: b, onClose, onCancelRequest, docked }: { booking: Booking; onClose: () => void; onCancelRequest?: (b: Booking) => void; docked?: boolean }) {
   const isPickup  = b.serviceType === 'pickup'
   const isDropoff = b.serviceType === 'dropoff'
   const isFCL     = b.loadType === 'fcl'
   const isLCL     = b.loadType === 'lcl'
   const statusStyle = STATUS_STYLE[b.status] ?? STATUS_STYLE.scheduled
 
+  const panelStyle: React.CSSProperties = docked
+    ? { position: 'relative', height: '100%', width: '100%', background: '#fff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 9011, width: 'min(460px, 100vw)', background: '#fff', boxShadow: '-8px 0 40px rgba(0,0,0,0.14)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }
+
   return (
     <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{ position: 'fixed', inset: 0, zIndex: 9010, background: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(2px)' }}
-      />
+      {/* Backdrop — overlay mode only */}
+      {!docked && (
+        <motion.div
+          onClick={onClose}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }}
+          style={{ position: 'fixed', inset: 0, zIndex: 9010, background: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(2px)' }}
+        />
+      )}
       {/* Panel */}
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 9011, width: '100%', maxWidth: 460, background: '#fff', boxShadow: '-8px 0 40px rgba(0,0,0,0.14)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+      <motion.div
+        style={panelStyle}
+        initial={docked ? { opacity: 0, x: 16 } : { x: '100%' }}
+        animate={docked ? { opacity: 1, x: 0 } : { x: 0 }}
+        transition={docked ? { duration: 0.24, ease: [0.16, 1, 0.3, 1] } : { type: 'spring', stiffness: 400, damping: 40 }}
+      >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid rgba(0,0,0,0.07)', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
           <div>
@@ -356,7 +374,7 @@ function BookingDetailPanel({ booking: b, onClose, onCancelRequest }: { booking:
         </div>
 
         {/* Body */}
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20, flex: 1 }}>
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20, flex: 1, overflowY: 'auto', minHeight: 0 }}>
 
           {/* Contact & Driver */}
           <Section title="Contact & Driver">
@@ -413,7 +431,7 @@ function BookingDetailPanel({ booking: b, onClose, onCancelRequest }: { booking:
             <Icon name={ICONS.download} size={15} /> Export PDF
           </button>
         </div>
-      </div>
+      </motion.div>
     </>
   )
 }

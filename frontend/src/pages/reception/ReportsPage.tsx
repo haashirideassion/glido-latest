@@ -124,11 +124,11 @@ export default function ReportsPage() {
           { label: 'Scheduled', value: bookings.filter(b => b.status === 'scheduled').length, color: 'var(--text-secondary)' },
         ].map((s, i) => (
           <div key={s.label}
-            style={{ flex: 1, minWidth: 0, padding: '22px 26px', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
+            style={{ flex: 1, minWidth: 0, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
             onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
             onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
           >
-            <p style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', color: s.color, lineHeight: 1, margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{s.value}</p>
+            <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', color: s.color, lineHeight: 1, margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{s.value}</p>
             <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-tertiary)', margin: 0 }}>{s.label}</p>
           </div>
         ))}

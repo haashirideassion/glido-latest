@@ -7,6 +7,9 @@ import { toast } from '@/lib/toast'
 import { todaySydney, TZ } from '@/lib/time'
 import type { Booking } from '@/data/types'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
+import { BookingSlideOver } from '@/components/reception/BookingSlideOver'
+import { AnimatedNumber, motion } from '@/lib/motion'
+import { EmptyState } from '@/components/reception/EmptyState'
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 const daysAgo = (n: number) =>
@@ -166,7 +169,7 @@ function KpiSkeleton() {
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
       {KPI_TILES.map((t, i) => (
-        <div key={t.key} style={{ flex: 1, minWidth: 0, padding: '22px 26px', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)' }}>
+        <div key={t.key} style={{ flex: 1, minWidth: 0, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
             <div style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', background: '#F3F3F2', flexShrink: 0, animation: 'pulse 1.5s ease-in-out infinite' }} />
             <div style={{ width: 100, height: 14, borderRadius: 'var(--r-xs)', background: '#F3F3F2', animation: 'pulse 1.5s ease-in-out infinite' }} />
@@ -186,22 +189,22 @@ function BookingKpiTiles({ bookings, prevBookings, hasPrev }: {
   const curr = calcKpi(bookings)
 
   return (
-    <div style={{ display: 'flex', alignItems: 'stretch', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflowX: 'auto', overflowY: 'hidden', marginBottom: 'var(--card-gap)', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
       {KPI_TILES.map((t, i) => {
         return (
           <div key={t.key}
-            style={{ flex: 1, minWidth: 0, padding: '22px 26px', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
+            style={{ flex: 1, minWidth: 150, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
             onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
             onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', background: t.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${t.iconFg}22` }}>
-                <Icon name={t.icon} size={17} style={{ color: t.iconFg }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 'var(--r-md)', background: t.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${t.iconFg}22` }}>
+                <Icon name={t.icon} size={16} style={{ color: t.iconFg }} />
               </div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</p>
             </div>
-            <p style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{curr[t.key as KpiKey]}</p>
-            <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.sub}</p>
+            <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 3px', fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={curr[t.key as KpiKey]} /></p>
+            <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.sub}</p>
           </div>
         )
       })}
@@ -324,6 +327,21 @@ export default function BookingsPage() {
   const [page, setPage] = useState(1)
   const navigate = useNavigate()
 
+  // ── Split view (Apple-Mail style) ──
+  const [selected, setSelected] = useState<Booking | null>(null)
+  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true))
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // Reflect an in-pane update back into the list without a full reload
+  const onBookingUpdated = useCallback((updated: Booking) => {
+    setBookings(prev => prev.map(x => (x.id === updated.id ? updated : x)))
+    setSelected(sel => (sel && sel.id === updated.id ? updated : sel))
+  }, [])
+
 
   const confirmCancel = async () => {
     if (!cancelTarget) return
@@ -402,7 +420,7 @@ export default function BookingsPage() {
   useEffect(() => { load() }, [load, location.key])
   useEffect(() => { setPage(1) }, [statusFilter, serviceFilter, search, dateFrom, dateTo])
   useEffect(() => {
-    const id = setInterval(load, 30000)
+    const id = setInterval(load, 15000)
     return () => clearInterval(id)
   }, [load])
 
@@ -422,14 +440,47 @@ export default function BookingsPage() {
   const totalPages = Math.max(1, Math.ceil(displayRows.length / PAGE_SIZE))
   const pagedRows  = displayRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  const exportCsv = () => {
+  const exportCsv = (rowsIn: Booking[] = filtered) => {
     const header = ['Reference', 'Date', 'Time', 'Driver', 'Service', 'HBL', 'ICS', 'Status']
-    const rows = filtered.map(b => [b.referenceNumber, b.slotDate, b.slotStartTime, b.driverName, `${b.serviceType} ${b.loadType}`, b.houseBillNumber ?? '', b.icsStatus ?? '', b.status].map(v => `"${String(v).replace(/"/g, '""')}"`))
+    const rows = rowsIn.map(b => [b.referenceNumber, b.slotDate, b.slotStartTime, b.driverName, `${b.serviceType} ${b.loadType}`, b.houseBillNumber ?? '', b.icsStatus ?? '', b.status].map(v => `"${String(v).replace(/"/g, '""')}"`))
     const csv = [header, ...rows].map(r => r.join(',')).join('\n')
     const a = document.createElement('a')
     a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
     a.download = 'glido-bookings.csv'
     a.click()
+  }
+
+  // ── Bulk selection ──────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const toggleSelect = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  const clearSelection = () => setSelectedIds(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+
+  const bulkCheckIn = async () => {
+    const targets = bookings.filter(b => selectedIds.has(b.id) && b.status === 'scheduled')
+    if (targets.length === 0) { toast('No scheduled bookings in the selection', 'info'); return }
+    setBulkBusy(true)
+    try {
+      await Promise.all(targets.map(b => checkInBooking(b.id)))
+      toast(`${targets.length} booking${targets.length !== 1 ? 's' : ''} marked pre-processed`, 'success')
+      clearSelection()
+      load()
+    } catch {
+      toast('Some bookings could not be updated', 'error')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
+
+  const bulkExport = () => {
+    exportCsv(bookings.filter(b => selectedIds.has(b.id)))
   }
 
   const applyPreset = (p: Preset) => {
@@ -484,7 +535,7 @@ export default function BookingsPage() {
         </div>
         <div style={{ flex: 1 }} />
         {perms.can_export_csv && (
-          <button onClick={exportCsv}
+          <button onClick={() => exportCsv()}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 40, padding: '0 16px', fontSize: 15, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', transition: 'background 0.12s', flexShrink: 0, fontFamily: 'inherit' }}
             onMouseOver={e => { e.currentTarget.style.background = '#F7F6F5' }}
             onMouseOut={e  => { e.currentTarget.style.background = '#fff' }}
@@ -529,8 +580,35 @@ export default function BookingsPage() {
         )}
       </div>
 
-      {/* Bookings card grid */}
-      <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
+      {/* ── Bulk action bar — appears once rows are selected ── */}
+      {selectedIds.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 16px', background: 'rgba(var(--brand-rgb),0.06)', border: '1px solid rgba(var(--brand-rgb),0.22)', borderRadius: 'var(--r-md)' }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--brand-color)' }}>
+            {selectedIds.size} selected
+          </span>
+          <div style={{ flex: 1 }} />
+          {perms.can_mark_complete && (
+            <button onClick={bulkCheckIn} disabled={bulkBusy}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: '#fff', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: bulkBusy ? 'wait' : 'pointer', opacity: bulkBusy ? 0.6 : 1, fontFamily: 'inherit' }}>
+              <Icon name={ICONS.check} size={14} /> {bulkBusy ? 'Working…' : 'Mark pre-processed'}
+            </button>
+          )}
+          {perms.can_export_csv && (
+            <button onClick={bulkExport}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
+              <Icon name={ICONS.download} size={14} /> Export selected
+            </button>
+          )}
+          <button onClick={clearSelection}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: 'var(--text-tertiary)', background: 'none', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* Split view: list (left) + docked detail pane (right) */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      <div style={{ flex: 1, minWidth: 0, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid rgba(0,0,0,0.06)', background: 'rgba(0,0,0,0.01)', flexWrap: 'wrap', gap: 8 }}>
           <span style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>
             {loading ? 'Loading…' : `${displayRows.length} booking${displayRows.length !== 1 ? 's' : ''}${filtered.length !== displayRows.length ? ` (${filtered.length} slots)` : ''}`}
@@ -551,167 +629,167 @@ export default function BookingsPage() {
         {loading ? (
           <CardSkeleton />
         ) : filtered.length === 0 ? (
-          <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-              <Icon name={ICONS.bookings} size={36} style={{ opacity: 0.25 }} />
-            </div>
-            <p style={{ fontSize: 15 }}>
-              {(() => {
-                const hasOtherFilters = !!(statusFilter || serviceFilter || search)
-                if (hasOtherFilters) return 'No bookings match your filters.'
-                if (preset === 'today') return 'No bookings for today yet.'
-                if (preset === '7d')    return 'No bookings in the last 7 days.'
-                if (preset === '30d')   return 'No bookings in the last 30 days.'
-                return 'No bookings in the selected range.'
-              })()}
-            </p>
-          </div>
+          <EmptyState
+            variant={(statusFilter || serviceFilter || search) ? 'search' : 'box'}
+            title={(() => {
+              const hasOtherFilters = !!(statusFilter || serviceFilter || search)
+              if (hasOtherFilters) return 'No bookings match your filters'
+              if (preset === 'today') return 'No bookings for today yet'
+              if (preset === '7d')    return 'No bookings in the last 7 days'
+              if (preset === '30d')   return 'No bookings in the last 30 days'
+              return 'No bookings in the selected range'
+            })()}
+            subtitle={(statusFilter || serviceFilter || search) ? 'Try adjusting your search or filters.' : 'New bookings will appear here as they come in.'}
+          />
         ) : (
           <div>
-            {/* Booking cards */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 10px' }}>
-              {pagedRows.map((b, idx) => {
+            {/* Dense table — compacts to key columns when the detail pane is open */}
+            {(() => {
+            const paneOpen = !!selected && isWide
+            const TH: React.CSSProperties = { textAlign: 'left', padding: '8px 14px', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#FAFAF9', position: 'sticky', top: 0, zIndex: 1 }
+            const TD: React.CSSProperties = { padding: '9px 14px', fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.05)' }
+            return (
+            <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...TH, width: 4, padding: 0 }} />
+                  <th style={{ ...TH, width: 32 }}>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all visible bookings"
+                      checked={pagedRows.length > 0 && pagedRows.every(b => selectedIds.has(b.id))}
+                      onChange={() => {
+                        const allSelected = pagedRows.every(b => selectedIds.has(b.id))
+                        setSelectedIds(prev => {
+                          const next = new Set(prev)
+                          for (const b of pagedRows) { if (allSelected) next.delete(b.id); else next.add(b.id) }
+                          return next
+                        })
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </th>
+                  <th style={TH}>Reference</th>
+                  <th style={TH}>Driver</th>
+                  <th style={TH}>Slot</th>
+                  {!paneOpen && <th style={TH}>Service</th>}
+                  {!paneOpen && <th style={TH}>HBL / Container</th>}
+                  <th style={TH}>Status</th>
+                  <th style={{ ...TH, textAlign: 'right' }} />
+                </tr>
+              </thead>
+              <tbody>
+              {pagedRows.map((b) => {
                 const ics    = b.icsStatus ?? ''
                 const cfg    = STATUS_CONFIG[b.status] ?? STATUS_CONFIG.scheduled
                 const isHeld = ics === 'held'
                 const isBusy = !!actionLoading[b.id]
                 const hbl    = b.houseBillNumber ?? b.containerNumber ?? null
-                const source = b.bookingSource === 'self_booking' ? 'Self Booking' : b.bookingSource === 'guest' ? 'Guest User' : b.bookingSource === 'reception_booking' ? 'Reception' : null
+                const isSel  = selected?.id === b.id
 
                 return (
-                  <div
+                  <tr
                     key={b.id}
-                    onClick={() => navigate(`/reception/bookings/${b.id}`)}
-                    style={{
-                      display: 'flex', cursor: 'pointer',
-                      border: `1px solid ${isHeld ? 'rgba(239,68,68,0.25)' : 'rgba(0,0,0,0.08)'}`,
-                      borderRadius: 'var(--r-lg)',
-                      background: isHeld ? 'rgba(239,68,68,0.025)' : '#FFFFFF',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                      overflow: 'hidden',
-                      transition: 'box-shadow 0.15s, background 0.12s',
-                    }}
-                    onMouseOver={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'; e.currentTarget.style.background = isHeld ? 'rgba(239,68,68,0.05)' : '#FAFAF9' }}
-                    onMouseOut={e  => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.background = isHeld ? 'rgba(239,68,68,0.025)' : '#FFFFFF' }}
+                    onClick={() => setSelected(b)}
+                    style={{ cursor: 'pointer', background: isSel ? 'rgba(var(--brand-rgb),0.06)' : isHeld ? 'rgba(239,68,68,0.03)' : 'transparent', transition: 'background 0.12s' }}
+                    onMouseOver={e => { if (!isSel) e.currentTarget.style.background = '#FAFAF9' }}
+                    onMouseOut={e  => { if (!isSel) e.currentTarget.style.background = isHeld ? 'rgba(239,68,68,0.03)' : 'transparent' }}
                   >
-                    {/* ICS colour bar */}
-                    <div style={{ width: 5, flexShrink: 0, background: ICS_BAR_COLOR[ics] ?? ICS_BAR_COLOR.unavailable, borderRadius: '0' }} />
+                    {/* ICS colour bar + selection accent */}
+                    <td style={{ width: 4, padding: 0 }}>
+                      <div style={{ width: isSel ? 4 : 3, height: 34, background: isSel ? 'var(--brand-color)' : (ICS_BAR_COLOR[ics] ?? ICS_BAR_COLOR.unavailable), borderRadius: '0 3px 3px 0' }} />
+                    </td>
 
-                    {/* Card body */}
-                    <div style={{ flex: 1, minWidth: 0, padding: '14px 20px' }}>
+                    {/* Bulk-select checkbox */}
+                    <td style={{ width: 32, padding: '9px 14px' }} onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select booking ${b.referenceNumber}`}
+                        checked={selectedIds.has(b.id)}
+                        onChange={() => toggleSelect(b.id)}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </td>
 
-                      {/* ── Top row ── */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
-                        {/* Reference */}
-                        <span
-                          style={{ fontFamily: 'ui-monospace,monospace', fontSize: 15, fontWeight: 700, color: '#1C1917', display: 'inline-flex', alignItems: 'center', gap: 5, transition: 'color 0.15s', flexShrink: 0 }}
-                          onMouseOver={e => { e.stopPropagation(); e.currentTarget.style.color = 'var(--brand-color)' }}
-                          onMouseOut={e  => { e.currentTarget.style.color = '#1C1917' }}
-                          title="Click to copy"
-                          onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(b.referenceNumber).then(() => toast('Reference copied', 'info')).catch(() => {}) }}
+                    {/* Reference (copyable) */}
+                    <td style={TD}>
+                      <button
+                        type="button"
+                        style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, color: '#1C1917', display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                        title="Click to copy"
+                        aria-label={`Copy reference ${b.referenceNumber}`}
+                        onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(b.referenceNumber).then(() => toast('Reference copied', 'info')).catch(() => {}) }}
+                      >
+                        {b.referenceNumber}
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, flexShrink: 0 }}>
+                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                      </button>
+                    </td>
+
+                    {/* Driver (+ rego) */}
+                    <td style={TD}>
+                      <span style={{ fontWeight: 600, color: '#1C1917' }}>{b.driverName}</span>
+                      {b.vehicleRegistration && <span style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>{b.vehicleRegistration}</span>}
+                    </td>
+
+                    {/* Slot */}
+                    <td style={TD}>
+                      <span style={{ color: '#1C1917', fontWeight: 500 }}>{b.slotStartTime ?? '—'}</span>
+                      <span style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>{fmtShortDate(b.slotDate)}</span>
+                    </td>
+
+                    {/* Service · Load (hidden when pane open) */}
+                    {!paneOpen && (
+                      <td style={TD}>{b.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off'} · {(b.loadType ?? '').toUpperCase()}</td>
+                    )}
+
+                    {/* HBL / Container (hidden when pane open) */}
+                    {!paneOpen && (
+                      <td style={{ ...TD, fontFamily: hbl ? 'ui-monospace,monospace' : undefined, color: hbl ? '#1C1917' : 'var(--text-tertiary)' }}>{hbl ?? '—'}</td>
+                    )}
+
+                    {/* Status */}
+                    <td style={TD}>
+                      <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, borderRadius: 'var(--r-full)', padding: '3px 9px 3px 7px', fontSize: 11.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={cfg.icon} /></svg>
+                        {cfg.label}
+                      </span>
+                    </td>
+
+                    {/* Quick primary action */}
+                    <td style={{ ...TD, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                      {b.status === 'scheduled' && perms.can_mark_complete ? (
+                        <motion.button
+                          onClick={e => handleCheckIn(b, e)}
+                          disabled={isBusy}
+                          whileTap={isBusy ? undefined : { scale: 0.94 }}
+                          style={{ height: 30, padding: '0 12px', fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: isBusy ? 0.6 : 1 }}
                         >
-                          {b.referenceNumber}
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4, flexShrink: 0 }}>
-                            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                          </svg>
-                        </span>
-                        {source && <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>— Created by {source}</span>}
-
-                        <div style={{ flex: 1 }} />
-
-                        {/* Service · Load */}
-                        <span style={{ fontSize: 14, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>
-                          {b.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off'} — {(b.loadType ?? '').toUpperCase()}
-                        </span>
-
-                        {/* Slot time */}
-                        <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          Slot : {b.slotStartTime ?? '—'}
-                        </span>
-                        <span style={{ fontSize: 13, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                          {fmtShortDate(b.slotDate)}
-                        </span>
-
-                        {/* Status badge */}
-                        <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, borderRadius: 'var(--r-xl)', padding: '4px 10px 4px 7px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={cfg.icon} /></svg>
-                          {cfg.label}
-                        </span>
-                      </div>
-
-                      {/* ── Bottom row ── */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-                        {/* Driver */}
-                        <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          Driver: <strong style={{ color: '#1C1917' }}>{b.driverName}</strong>
-                        </span>
-
-                        {/* Rego + company */}
-                        {(b.vehicleRegistration || b.companyName) && (
-                          <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                            Rego: <strong style={{ color: '#1C1917' }}>{b.vehicleRegistration ?? '—'}</strong>
-                            {b.companyName && <span style={{ color: 'var(--text-tertiary)', marginLeft: 6 }}>{b.companyName}</span>}
-                          </span>
-                        )}
-
-                        {/* Container */}
-                        {b.containerNumber && (
-                          <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                            Container number: <strong style={{ color: '#1C1917', fontFamily: 'ui-monospace,monospace' }}>{b.containerNumber}</strong>
-                          </span>
-                        )}
-
-                        {/* HBL */}
-                        {hbl && (
-                          <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                            House bill number: <strong style={{ color: '#1C1917', fontFamily: 'ui-monospace,monospace' }}>{hbl}</strong>
-                          </span>
-                        )}
-
-                        <div style={{ flex: 1 }} />
-
-                        {/* Action buttons */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                          {/* PDF / view */}
-                          <button
-                            onClick={e => { e.stopPropagation(); navigate(`/reception/bookings/${b.id}`) }}
-                            style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626' }}
-                            title="View booking"
-                          >
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
-                            </svg>
-                          </button>
-
-                          {/* Check In — only for scheduled */}
-                          {b.status === 'scheduled' && perms.can_mark_complete && (
-                            <button
-                              onClick={e => handleCheckIn(b, e)}
-                              disabled={isBusy}
-                              style={{ height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: isBusy ? 0.6 : 1 }}
-                            >
-                              {actionLoading[b.id] === 'checkin' ? 'Updating…' : 'Mark as Checked In'}
-                            </button>
-                          )}
-
-                          {/* Complete — for scheduled or checked_in */}
-                          {(b.status === 'scheduled' || b.status === 'checked_in') && perms.can_mark_complete && (
-                            <button
-                              onClick={e => handleComplete(b, e)}
-                              disabled={isBusy}
-                              style={{ height: 34, padding: '0 14px', fontSize: 13, fontWeight: 700, color: '#fff', background: isBusy ? '#6B7280' : '#1C1917', border: 'none', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                            >
-                              {actionLoading[b.id] === 'complete' ? 'Updating…' : 'Mark as Complete'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                    </div>
-                  </div>
+                          {actionLoading[b.id] === 'checkin' ? 'Updating…' : 'Check In'}
+                        </motion.button>
+                      ) : b.status === 'checked_in' && perms.can_mark_complete ? (
+                        <motion.button
+                          onClick={e => handleComplete(b, e)}
+                          disabled={isBusy}
+                          whileTap={isBusy ? undefined : { scale: 0.94 }}
+                          style={{ height: 30, padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#fff', background: isBusy ? '#6B7280' : '#1C1917', border: 'none', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                        >
+                          {actionLoading[b.id] === 'complete' ? 'Updating…' : 'Complete'}
+                        </motion.button>
+                      ) : (
+                        <span style={{ color: 'var(--text-tertiary)', opacity: 0.5 }}>›</span>
+                      )}
+                    </td>
+                  </tr>
                 )
               })}
+              </tbody>
+            </table>
             </div>
+            )
+            })()}
 
             {totalPages > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
@@ -750,7 +828,20 @@ export default function BookingsPage() {
           </div>
         )}
       </div>
+
+      {/* Docked detail pane — Apple-Mail split view (wide screens) */}
+      {selected && isWide && (
+        <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
+          <BookingSlideOver docked booking={selected} onClose={() => setSelected(null)} onUpdated={onBookingUpdated} />
+        </div>
+      )}
+      </div>{/* end split row */}
     </div>
+
+    {/* Detail overlay — narrow screens */}
+    {selected && !isWide && (
+      <BookingSlideOver booking={selected} onClose={() => setSelected(null)} onUpdated={onBookingUpdated} />
+    )}
 
     {/* Cancel confirmation modal */}
     {cancelTarget && (

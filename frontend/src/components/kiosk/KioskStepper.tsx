@@ -1,9 +1,17 @@
+import { useState } from 'react'
 import { useKiosk } from '@/contexts/KioskContext'
 import { Icon, ICONS } from '@/lib/Icon'
+import { motion, useReducedMotion } from 'motion/react'
+import { GlidoLogo } from '@/lib/GlidoLogo'
+import { useTenantInfo } from '@/lib/useTenantInfo'
 import type { KioskScreen } from '@/contexts/KioskContext'
 
 const BOOKING_SCREENS: KioskScreen[] = ['lookup', 'scan', 'confirm', 'consent', 'idscan', 'slot-picker']
 const WALKIN_SCREENS:  KioskScreen[] = ['purpose', 'walkin']
+
+// Ordinal position within each flow — drives the top progress bar fill %
+const BOOKING_PROGRESS: Partial<Record<KioskScreen, number>> = { lookup: 0, scan: 0, 'slot-picker': 0, confirm: 1, consent: 2, idscan: 2 }
+const WALKIN_PROGRESS:  Partial<Record<KioskScreen, number>> = { purpose: 0, walkin: 1 }
 
 const BASE = 'width:56px;height:56px;border-radius:9999px;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.25s ease;background:#fff;'
 const c = (active: boolean, done: boolean) => BASE + (active || done ? 'border:2.5px solid var(--brand-color);color:var(--brand-color);' : 'border:2.5px solid #C2C2C2;color:#C2C2C2;')
@@ -40,11 +48,19 @@ function GridSvg({ side }: { side: 'left' | 'right' }) {
 }
 
 function Step({ icon, label, active, done }: { icon: string; label: string; active: boolean; done: boolean }) {
+  const reduce = useReducedMotion()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-      <div style={{ ...Object.fromEntries(c(active, done).split(';').filter(Boolean).map(s => { const [k, ...v] = s.split(':'); return [k.trim().replace(/-([a-z])/g, (_: string, x: string) => x.toUpperCase()), v.join(':').trim()] })) } as any}>
+      <motion.div
+        animate={reduce ? undefined : { scale: active ? 1.1 : 1 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+        style={{
+          ...Object.fromEntries(c(active, done).split(';').filter(Boolean).map(s => { const [k, ...v] = s.split(':'); return [k.trim().replace(/-([a-z])/g, (_: string, x: string) => x.toUpperCase()), v.join(':').trim()] })),
+          boxShadow: active ? '0 0 0 6px rgba(var(--brand-rgb),0.14), 0 4px 14px rgba(var(--brand-rgb),0.30)' : 'none',
+        } as any}
+      >
         <Icon name={icon} size={24} />
-      </div>
+      </motion.div>
       <span style={lb(active, done)}>{label}</span>
     </div>
   )
@@ -52,20 +68,41 @@ function Step({ icon, label, active, done }: { icon: string; label: string; acti
 
 export function KioskStepper() {
   const { state, goTo } = useKiosk()
+  const tenant = useTenantInfo()
+  const [logoErr, setLogoErr] = useState(false)
   const s = state.currentScreen
   const isBooking = BOOKING_SCREENS.includes(s)
   const isWalkIn  = WALKIN_SCREENS.includes(s)
+
+  // Welcome has no steps/progress — just the logo, sitting above the scene with its own margins
+  if (s === 'welcome') {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 24px 16px', flexShrink: 0 }}>
+        {tenant?.logoUrl && !logoErr
+          ? <img src={tenant.logoUrl} alt="" onError={() => setLogoErr(true)} style={{ maxHeight: 22, objectFit: 'contain', display: 'block' }} />
+          : <GlidoLogo height={22} />
+        }
+      </div>
+    )
+  }
+
   if (!isBooking && !isWalkIn) return null
 
 
   const back = () => {
     if (isBooking) {
-      const map: Partial<Record<typeof s, typeof s>> = { lookup: 'welcome', scan: 'lookup', 'slot-picker': 'lookup', confirm: 'lookup', consent: 'confirm', idscan: 'consent' }
+      const map: Partial<Record<KioskScreen, KioskScreen>> = { lookup: 'welcome', scan: 'lookup', 'slot-picker': 'lookup', confirm: 'lookup', consent: 'confirm', idscan: 'consent' }
       goTo(map[s] ?? 'welcome')
     } else {
       goTo(s === 'purpose' ? 'welcome' : 'purpose')
     }
   }
+
+  // Overall progress (0–1) across the active flow, drives the top progress bar
+  const progressMap = isBooking ? BOOKING_PROGRESS : WALKIN_PROGRESS
+  const progressMax  = isBooking ? 2 : 1
+  const progressStep = progressMap[s] ?? 0
+  const progress = progressStep / progressMax
 
   return (
     <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(120deg, rgba(var(--brand-rgb),0.06) 0%, rgba(var(--brand-rgb),0.02) 35%, rgba(255,255,255,0) 70%), #fff', padding: '32px 60px 28px', borderBottom: '1px solid rgba(0,0,0,0.055)', boxShadow: '0 4px 16px rgba(0,0,0,0.04),0 1px 4px rgba(0,0,0,0.03)', flexShrink: 0 }}>
@@ -89,6 +126,23 @@ export function KioskStepper() {
           </svg>
           Back
         </button>
+      </div>
+
+      {/* Logo — top centre */}
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+        <GlidoLogo height={26} />
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 420, margin: '0 auto 24px' }}>
+        <div style={{ height: 6, borderRadius: 999, background: 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+          <motion.div
+            initial={false}
+            animate={{ width: `${Math.max(8, progress * 100)}%` }}
+            transition={{ type: 'spring', stiffness: 200, damping: 30 }}
+            style={{ height: '100%', borderRadius: 999, background: 'linear-gradient(90deg, var(--brand-color), color-mix(in srgb, var(--brand-color) 70%, #fff))', boxShadow: '0 0 10px rgba(var(--brand-rgb),0.45)' }}
+          />
+        </div>
       </div>
 
       {/* Title */}

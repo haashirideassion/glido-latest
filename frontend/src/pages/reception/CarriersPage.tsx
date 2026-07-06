@@ -5,6 +5,8 @@ import { toast } from '@/lib/toast'
 import { CustomSelect } from '@/components/ui/CustomSelect'
 import { getCarriers, createCarrier, updateCarrier, deleteCarrier, type Carrier, type CarrierInput } from '@/lib/db/carriers'
 import { getBookings } from '@/lib/db/bookings'
+import { AnimatedNumber, motion } from '@/lib/motion'
+import { EmptyState } from '@/components/reception/EmptyState'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const CARD: React.CSSProperties = {
@@ -417,6 +419,81 @@ function StatChip({ icon, label }: { icon: string; label: string }) {
   )
 }
 
+// ─── Carrier detail pane (split view) ─────────────────────────────────────────
+function CarrierPane({ carrier, liveBookings, liveLastVisit, docked, onClose, onEdit, onDelete }: {
+  carrier: Carrier; liveBookings?: number; liveLastVisit?: string | null; docked?: boolean
+  onClose: () => void; onEdit: () => void; onDelete: () => void
+}) {
+  const isActive = carrier.status === 'active'
+  const PANEL: React.CSSProperties = { background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-sm)', padding: '12px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }
+  const SL: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }
+  const rows = [
+    { label: 'Contact', value: carrier.contact_name,  icon: ICONS.user },
+    { label: 'Email',   value: carrier.contact_email,  icon: ICONS.email },
+    { label: 'Phone',   value: carrier.contact_phone,  icon: ICONS.phone },
+    { label: 'Address', value: carrier.address,        icon: 'solar:map-point-bold-duotone' },
+    { label: 'ABN',     value: carrier.abn,            icon: ICONS.document },
+  ].filter(r => r.value)
+  const panelStyle: React.CSSProperties = docked
+    ? { position: 'relative', height: '100%', width: '100%', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(460px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }
+  return (
+    <>
+      {!docked && <motion.div onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(28,25,23,0.35)', backdropFilter: 'blur(4px)' }} />}
+      <motion.div
+        style={panelStyle}
+        initial={docked ? { opacity: 0, x: 16 } : { x: '100%' }}
+        animate={docked ? { opacity: 1, x: 0 } : { x: 0 }}
+        transition={docked ? { duration: 0.24, ease: [0.16, 1, 0.3, 1] } : { type: 'spring', stiffness: 400, damping: 40 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 12px 18px', borderBottom: '1px solid rgba(0,0,0,0.07)', gap: 12, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: isActive ? 'rgba(var(--brand-rgb),0.10)' : 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <iconify-icon icon="solar:buildings-bold-duotone" width={20} style={{ color: isActive ? 'var(--brand-color)' : '#9CA3AF' }} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{carrier.name}</h3>
+              <span style={{ fontSize: 12, fontWeight: 600, color: isActive ? '#16A34A' : '#6B7280' }}>{isActive ? 'Active' : 'Inactive'}</span>
+            </div>
+          </div>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 'var(--r-full)', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name={ICONS.close} size={16} />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 16, background: '#F5F4F3', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={PANEL}><p style={SL}>Bookings</p><p style={{ fontSize: 22, fontWeight: 800, color: '#1C1917', margin: 0, lineHeight: 1 }}>{liveBookings ?? carrier.total_bookings}</p></div>
+            <div style={PANEL}><p style={SL}>Last Visit</p><p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', margin: 0 }}>{liveLastVisit ?? carrier.last_visit ?? '—'}</p></div>
+          </div>
+          {rows.length > 0 && (
+            <section>
+              <p style={SL}>Details</p>
+              <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {rows.map(r => (
+                  <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0 }}><iconify-icon icon={r.icon} width={14} style={{ color: 'var(--text-secondary)' }} />{r.label}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1917', textAlign: 'right', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {carrier.rating != null && (
+            <section><p style={SL}>Rating</p><div style={PANEL}><StarRating value={carrier.rating} /></div></section>
+          )}
+          {carrier.notes && (
+            <section><p style={SL}>Notes</p><div style={{ ...PANEL, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{carrier.notes}</div></section>
+          )}
+        </div>
+        <div style={{ flexShrink: 0, padding: '14px 16px', display: 'flex', gap: 8, borderTop: '1px solid rgba(0,0,0,0.07)', background: '#FFFFFF' }}>
+          <button onClick={onEdit} style={{ flex: 1, padding: '10px', borderRadius: 'var(--r-full)', border: '1.5px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name={ICONS.edit} size={15} /> Edit</button>
+          <button onClick={onDelete} style={{ flex: 1, padding: '10px', borderRadius: 'var(--r-full)', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.08)', color: '#DC2626', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name={ICONS.trash} size={15} /> Delete</button>
+        </div>
+      </motion.div>
+    </>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function CarriersPage() {
   usePageTitle('Glido | Carriers')
@@ -429,6 +506,14 @@ export default function CarriersPage() {
   const [deleteTarget, setDeleteTarget] = useState<Carrier | null>(null)
   // Live booking stats keyed by carrier name (lowercase for matching)
   const [bookingStats, setBookingStats] = useState<Map<string, { count: number; lastVisit: string | null }>>(new Map())
+  // Split view
+  const [selected, setSelected] = useState<Carrier | null>(null)
+  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true))
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const load = async (q?: string, s?: string) => {
     setLoading(true)
@@ -476,11 +561,13 @@ export default function CarriersPage() {
       const idx = prev.findIndex(c => c.id === saved.id)
       return idx >= 0 ? prev.map(c => c.id === saved.id ? saved : c) : [saved, ...prev]
     })
+    setSelected(sel => (sel && sel.id === saved.id ? saved : sel))
     setModal(null)
   }
 
   const handleDeleted = (id: string) => {
     setCarriers(prev => prev.filter(c => c.id !== id))
+    setSelected(sel => (sel && sel.id === id ? null : sel))
     setDeleteTarget(null)
   }
 
@@ -510,7 +597,7 @@ export default function CarriersPage() {
           { label: 'Total Bookings',  value: totalBookings,  sub: 'Across all carriers',   icon: ICONS.bookings,  iconBg: 'rgba(37,99,235,0.10)',  iconFg: '#2563EB'  },
           { label: 'New This Month',  value: thisMonth,      sub: 'New registrations',     icon: ICONS.calendar,  iconBg: 'rgba(251,191,36,0.10)', iconFg: '#FBBF24'  },
         ].map(stat => (
-          <div key={stat.label} style={{ ...CARD, padding: '22px 26px', transition: 'background 0.18s ease' }}
+          <div key={stat.label} style={{ ...CARD, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', transition: 'background 0.18s ease' }}
             onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
             onMouseOut={e  => (e.currentTarget.style.background = '#FFFFFF')}
           >
@@ -520,7 +607,7 @@ export default function CarriersPage() {
               </div>
               <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0 }}>{stat.label}</p>
             </div>
-            <p style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{stat.value}</p>
+            <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={stat.value} /></p>
             <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0 }}>{stat.sub}</p>
           </div>
         ))}
@@ -578,38 +665,88 @@ export default function CarriersPage() {
           ))}
         </div>
       ) : carriers.length === 0 ? (
-        <div style={{ ...CARD, textAlign: 'center', padding: '60px 32px' }}>
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-            <iconify-icon icon="solar:buildings-bold-duotone" width={48} style={{ color: 'rgba(0,0,0,0.12)' }} />
-          </div>
-          <p style={{ fontSize: 17, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
-            {search ? 'No carriers match your search' : 'No carriers yet'}
-          </p>
-          <p style={{ fontSize: 14, color: 'var(--text-tertiary)', marginBottom: 24 }}>
-            {search ? 'Try a different name or ABN' : 'Add your first internal carrier to get started.'}
-          </p>
-          {!search && (
-            <button onClick={() => setModal('add')} style={{ padding: '10px 24px', borderRadius: 'var(--r-md)', border: 'none', background: 'var(--brand-color)', color: 'var(--brand-text)', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Add Carrier
-            </button>
-          )}
+        <div style={{ ...CARD, padding: 0 }}>
+          <EmptyState
+            variant={search ? 'search' : 'box'}
+            title={search ? 'No carriers match your search' : 'No carriers yet'}
+            subtitle={search ? 'Try a different name or ABN.' : 'Add your first internal carrier to get started.'}
+            action={!search && (
+              <button onClick={() => setModal('add')} style={{ padding: '10px 24px', borderRadius: 'var(--r-md)', border: 'none', background: 'var(--brand-color)', color: 'var(--brand-text)', fontSize: 15, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Add Carrier
+              </button>
+            )}
+          />
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {carriers.map(c => {
-            const ls = liveStats(c.name)
-            return (
-              <CarrierCard
-                key={c.id}
-                carrier={c}
-                liveBookings={ls?.count}
-                liveLastVisit={ls?.lastVisit}
-                onEdit={() => setModal(c)}
-                onDelete={() => setDeleteTarget(c)}
-              />
-            )
-          })}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          {/* List */}
+          <div style={{ flex: 1, minWidth: 0, ...CARD, padding: 0, overflow: 'hidden' }}>
+            {(() => {
+              const paneOpen = !!selected && isWide
+              const TH: React.CSSProperties = { textAlign: 'left', padding: '8px 14px', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#FAFAF9', position: 'sticky', top: 0, zIndex: 1 }
+              const TD: React.CSSProperties = { padding: '10px 14px', fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.05)' }
+              return (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={TH}>Carrier</th>
+                        {!paneOpen && <th style={TH}>ABN</th>}
+                        <th style={TH}>Bookings</th>
+                        {!paneOpen && <th style={TH}>Last Visit</th>}
+                        <th style={TH}>Rating</th>
+                        <th style={{ ...TH, textAlign: 'right' }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {carriers.map(c => {
+                        const ls = liveStats(c.name)
+                        const isSel = selected?.id === c.id
+                        const active = c.status === 'active'
+                        return (
+                          <tr key={c.id} onClick={() => setSelected(c)}
+                            style={{ cursor: 'pointer', background: isSel ? 'rgba(var(--brand-rgb),0.06)' : 'transparent', transition: 'background 0.12s' }}
+                            onMouseOver={e => { if (!isSel) e.currentTarget.style.background = '#FAFAF9' }}
+                            onMouseOut={e  => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+                          >
+                            <td style={TD}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ width: 30, height: 30, borderRadius: 'var(--r-md)', background: active ? 'rgba(var(--brand-rgb),0.10)' : 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <iconify-icon icon="solar:buildings-bold-duotone" width={17} style={{ color: active ? 'var(--brand-color)' : '#9CA3AF' }} />
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 14, fontWeight: 600, color: '#1C1917' }}>{c.name}</div>
+                                  <div style={{ fontSize: 12, color: active ? '#16A34A' : '#9CA3AF', fontWeight: 500 }}>{active ? 'Active' : 'Inactive'}</div>
+                                </div>
+                              </div>
+                            </td>
+                            {!paneOpen && <td style={{ ...TD, color: c.abn ? '#1C1917' : 'var(--text-tertiary)' }}>{c.abn ?? '—'}</td>}
+                            <td style={{ ...TD, color: '#1C1917', fontWeight: 600 }}>{ls?.count ?? c.total_bookings}</td>
+                            {!paneOpen && <td style={TD}>{ls?.lastVisit ?? c.last_visit ?? '—'}</td>}
+                            <td style={TD}>{c.rating != null ? <StarRating value={c.rating} /> : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}</td>
+                            <td style={{ ...TD, textAlign: 'right', color: 'var(--text-tertiary)', opacity: 0.5 }}>›</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Docked detail pane */}
+          {selected && isWide && (
+            <div style={{ width: 460, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
+              <CarrierPane carrier={selected} liveBookings={liveStats(selected.name)?.count} liveLastVisit={liveStats(selected.name)?.lastVisit} docked onClose={() => setSelected(null)} onEdit={() => setModal(selected)} onDelete={() => setDeleteTarget(selected)} />
+            </div>
+          )}
         </div>
+      )}
+
+      {/* Detail overlay — narrow screens */}
+      {selected && !isWide && (
+        <CarrierPane carrier={selected} liveBookings={liveStats(selected.name)?.count} liveLastVisit={liveStats(selected.name)?.lastVisit} onClose={() => setSelected(null)} onEdit={() => setModal(selected)} onDelete={() => setDeleteTarget(selected)} />
       )}
 
       {/* ── Modals ── */}

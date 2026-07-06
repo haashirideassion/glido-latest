@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Icon, ICONS } from '@/lib/Icon'
+import { AnimatedNumber } from '@/lib/motion'
+import { EmptyState } from '@/components/reception/EmptyState'
 import { fmtTime } from '@/lib/time'
 import type { DashboardStats, Booking } from '@/data/types'
 
@@ -34,26 +36,26 @@ function StatSegment({ tile, value, loading, isFirst }: { tile: typeof TILES[num
   return (
     <div
       style={{
-        flex: 1, minWidth: 0, padding: '22px 26px', position: 'relative',
+        flex: 1, minWidth: 150, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', position: 'relative',
         borderLeft: isFirst ? 'none' : '1px solid rgba(0,0,0,0.07)',
         transition: 'background 0.18s ease',
       }}
       onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
       onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <div style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', background: tile.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${tile.iconFg}22` }}>
-          <Icon name={tile.icon} size={17} style={{ color: tile.iconFg }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+        <div style={{ width: 30, height: 30, borderRadius: 'var(--r-md)', background: tile.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${tile.iconFg}22` }}>
+          <Icon name={tile.icon} size={16} style={{ color: tile.iconFg }} />
         </div>
-        <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tile.label}</p>
+        <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tile.label}</p>
       </div>
 
       {loading ? (
-        <div style={{ width: 56, height: 40, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.07)', animation: 'dash-pulse 1.5s ease-in-out infinite' }} />
+        <div style={{ width: 48, height: 'var(--kpi-value)', borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.07)', animation: 'dash-pulse 1.5s ease-in-out infinite' }} />
       ) : (
-        <p style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: tile.valueFg, margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{value}</p>
+        <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: tile.valueFg, margin: '0 0 3px', fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={value} /></p>
       )}
-      <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tile.sub}</p>
+      <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tile.sub}</p>
     </div>
   )
 }
@@ -65,7 +67,7 @@ export function KpiTiles({ stats, loading }: Props) {
       <div style={{
         display: 'flex', alignItems: 'stretch',
         background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)',
-        borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 16,
+        borderRadius: 'var(--r-lg)', overflowX: 'auto', overflowY: 'hidden', marginBottom: 'var(--card-gap)',
         boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)',
       }}>
         {TILES.map((t, i) => (
@@ -82,13 +84,13 @@ export function KpiTiles({ stats, loading }: Props) {
   )
 }
 
-export function RecentVisitors({ stats, loading }: Props) {
+export function RecentVisitors({ stats, loading, onSelect, selectedId }: Props & { onSelect?: (b: Booking) => void; selectedId?: string }) {
   const navigate = useNavigate()
   const recent = [...(stats.recentVisitors ?? [])].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5)
 
   return (
-    <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', padding: 28, boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+    <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', padding: 'var(--card-pad)', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)', marginBottom: 'var(--card-gap)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div>
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', margin: 0, letterSpacing: '-0.01em' }}>Recent Visitors</h3>
             <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: '2px 0 0' }}>{recent.length} record{recent.length !== 1 ? 's' : ''}</p>
@@ -111,12 +113,7 @@ export function RecentVisitors({ stats, loading }: Props) {
             ))}
           </div>
         ) : recent.length === 0 ? (
-          <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>
-            <div style={{ opacity: 0.3, marginBottom: 12, display: 'flex', justifyContent: 'center' }}>
-              <Icon name={ICONS.calendar} size={28} />
-            </div>
-            Day has just begun. No visitor activity yet today.
-          </div>
+          <EmptyState compact variant="inbox" title="No visitor activity yet" subtitle="As the day begins, check-ins will show up here." />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {recent.map(b => {
@@ -127,10 +124,10 @@ export function RecentVisitors({ stats, loading }: Props) {
               return (
                 <div
                   key={b.id}
-                  onClick={() => navigate(`/reception/bookings/${b.id}`)}
-                  style={{ display: 'flex', cursor: 'pointer', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', background: '#FFFFFF', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, background 0.12s' }}
-                  onMouseOver={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'; e.currentTarget.style.background = '#FAFAF9' }}
-                  onMouseOut={e  => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.background = '#FFFFFF' }}
+                  onClick={() => (onSelect ? onSelect(b) : navigate(`/reception/bookings/${b.id}`))}
+                  style={{ display: 'flex', cursor: 'pointer', border: `1px solid ${selectedId === b.id ? 'rgba(var(--brand-rgb),0.35)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 'var(--r-lg)', background: selectedId === b.id ? 'rgba(var(--brand-rgb),0.05)' : '#FFFFFF', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, background 0.12s, border-color 0.12s' }}
+                  onMouseOver={e => { if (selectedId !== b.id) { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'; e.currentTarget.style.background = '#FAFAF9' } }}
+                  onMouseOut={e  => { if (selectedId !== b.id) { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.background = '#FFFFFF' } }}
                 >
                   {/* ICS colour bar */}
                   <div style={{ width: 5, flexShrink: 0, background: icsBar }} />

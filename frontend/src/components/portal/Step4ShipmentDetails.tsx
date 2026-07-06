@@ -170,9 +170,17 @@ const PERIOD_ICONS: Record<string, string> = {
 export function Step4ShipmentDetails() {
   const { state, dispatch } = useWizard()
 
-  // Tab state for multi-slot — start on first slot without a selection
-  const firstIncomplete4 = state.slotConfigs.findIndex(c => !c.selectedSlotId)
-  const [activeSlot, setActiveSlot] = useState(firstIncomplete4 === -1 ? 0 : firstIncomplete4)
+  // Tab state for multi-slot — lifted into WizardState so the 3D scene can focus on the slot being edited
+  const activeSlot = state.step4ActiveSlot ?? 0
+  const setActiveSlot = (i: number) => dispatch({ type: 'SET', field: 'step4ActiveSlot', value: i })
+
+  // Start on the first slot without a selection (only on first visit)
+  useEffect(() => {
+    if (state.step4ActiveSlot === 0) {
+      const firstIncomplete4 = state.slotConfigs.findIndex(c => !c.selectedSlotId)
+      if (firstIncomplete4 > 0) setActiveSlot(firstIncomplete4)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Tenant config — loaded once on mount
   const [tenant,        setTenant]        = useState<TenantRow | null>(null)
@@ -448,6 +456,32 @@ export function Step4ShipmentDetails() {
         })}
       </div>
 
+      {/* Copy from the previous slot — quick fill for repetitive multi-slot bookings */}
+      {!applyAll && activeSlot > 0 && state.slotConfigs[activeSlot - 1]?.selectedSlotId && (
+        <button
+          type="button"
+          onClick={() => {
+            const prev = state.slotConfigs[activeSlot - 1]
+            dispatchSlotDetail(activeCfg4.index, 'selectedDate',      prev.selectedDate)
+            dispatchSlotDetail(activeCfg4.index, 'selectedSlotId',    prev.selectedSlotId)
+            dispatchSlotDetail(activeCfg4.index, 'selectedSlotLabel', prev.selectedSlotLabel)
+            dispatch({ type: 'SELECT_SLOT', slotId: prev.selectedSlotId as string, label: prev.selectedSlotLabel })
+          }}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600,
+            color: 'var(--brand-color)', background: 'rgba(var(--brand-rgb),0.06)',
+            border: '1px solid rgba(var(--brand-rgb),0.18)', borderRadius: 999, padding: '6px 14px',
+            marginBottom: 16, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M3 10.5V3.5C3 2.9 3.4 2.5 4 2.5H10.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Copy from Slot {activeSlot} · {state.slotConfigs[activeSlot - 1].selectedSlotLabel}
+        </button>
+      )}
+
       {/* Active slot picker */}
       <style>{`@keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`}</style>
       {activeCfg4 && (
@@ -588,6 +622,7 @@ function DateStrip({ dates, selectedDate, wh, cutoff, isTodayPastCutoff, onSelec
         const shortDay       = d.dayFull.slice(0, 3).toUpperCase()
         return (
           <button key={d.iso} type="button"
+            className={`wiz-tile${sel ? ' selected' : ''}`}
             onClick={() => {
               if (cutoffDisabled) toast(`Same-day booking unavailable after ${cutoff}`, 'info')
               else if (closedDay) toast(`${d.dayFull} is not a working day — no slots available.`, 'info')
@@ -595,12 +630,10 @@ function DateStrip({ dates, selectedDate, wh, cutoff, isTodayPastCutoff, onSelec
             }}
             style={{
               position: 'relative', flex: '0 0 64px', width: 64,
-              padding: '10px 0', borderRadius: 'var(--r-lg)', textAlign: 'center',
-              transition: 'all 0.15s ease', cursor: disabled ? 'not-allowed' : 'pointer',
+              padding: '10px 0', textAlign: 'center',
+              cursor: disabled ? 'not-allowed' : 'pointer',
               opacity: disabled ? 0.38 : 1,
-              border: sel ? '2px solid var(--brand-color)' : '1.5px solid rgba(0,0,0,0.08)',
-              background: sel ? 'rgba(var(--brand-rgb),0.04)' : '#fff',
-              boxShadow: 'none', boxSizing: 'border-box',
+              boxSizing: 'border-box',
             }}
           >
             <p style={{ fontSize: 11, fontWeight: 700, color: sel ? 'var(--brand-color)' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
@@ -691,15 +724,16 @@ function SlotGrid({ slots, selectedId, onSelect }: {
             key={slot.id}
             type="button"
             disabled={full}
+            className={`wiz-tile${selected ? ' selected' : ''}`}
             onClick={() => !full && onSelect(slot)}
             style={{
               width: '100%', position: 'relative', display: 'flex', flexDirection: 'column',
-              padding: '14px 18px', borderRadius: 'var(--r-lg)', textAlign: 'left',
-              transition: 'all 0.15s ease', boxSizing: 'border-box', fontFamily: 'inherit',
-              border: selected ? '2px solid var(--brand-color)' : '1.5px solid rgba(0,0,0,0.08)',
-              background: full ? '#FAFAFA' : selected ? 'rgba(var(--brand-rgb),0.03)' : '#fff',
+              padding: '14px 18px', textAlign: 'left',
+              boxSizing: 'border-box', fontFamily: 'inherit',
+              background: full ? '#FAFAFA' : undefined,
               cursor: full ? 'not-allowed' : 'pointer',
               opacity: full ? 0.5 : 1,
+              boxShadow: full ? 'none' : undefined,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>

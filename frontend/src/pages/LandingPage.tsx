@@ -1,8 +1,63 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Link } from 'react-router-dom'
 import { Icon, ICONS } from '@/lib/Icon'
 import { useTenantInfo } from '@/lib/useTenantInfo'
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
+import heroDroneImg from '@/assets/hero-drone.jpg'
+import ctaBgImg from '@/assets/cta-bg.jpg'
+
+const EASE = [0.16, 1, 0.3, 1] as const
+const RISE = { hidden: { opacity: 0, y: 24 }, show: { opacity: 1, y: 0 } }
+const WORD_RISE = { hidden: { opacity: 0, y: 22, rotateX: -50, filter: 'blur(5px)' }, show: { opacity: 1, y: 0, rotateX: 0, filter: 'blur(0px)' } }
+
+/** Fades + rises into view once, the first time it's scrolled into the viewport. */
+function Reveal({ children, delay = 0, x = 0, style, className }: { children: React.ReactNode; delay?: number; x?: number; style?: React.CSSProperties; className?: string }) {
+  const reduce = useReducedMotion()
+  return (
+    <motion.div
+      className={className}
+      style={style}
+      initial={reduce ? undefined : { opacity: 0, y: 22, x }}
+      whileInView={reduce ? undefined : { opacity: 1, y: 0, x: 0 }}
+      viewport={{ once: true, margin: '-80px' }}
+      transition={{ duration: 0.6, delay: delay / 1000, ease: EASE }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+/** Parent for a grid of children that should fade in with a staggered cascade. */
+function StaggerGroup({ children, style, className, staggerMs = 80 }: { children: React.ReactNode; style?: React.CSSProperties; className?: string; staggerMs?: number }) {
+  const reduce = useReducedMotion()
+  return (
+    <motion.div
+      className={className}
+      style={style}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, margin: '-80px' }}
+      variants={reduce ? undefined : { hidden: {}, show: { transition: { staggerChildren: staggerMs / 1000 } } }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+function StaggerItem({ children, style, ...rest }: { children: React.ReactNode; style?: React.CSSProperties; [key: string]: any }) {
+  const reduce = useReducedMotion()
+  return (
+    <motion.div
+      style={style}
+      variants={reduce ? undefined : { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0 } }}
+      transition={{ duration: 0.5, ease: EASE }}
+      {...rest}
+    >
+      {children}
+    </motion.div>
+  )
+}
 
 const WARP_BEAMS = [
   { l: '6%',  dur: '3.1s', del: '0.0s', c: 'rgba(var(--brand-rgb),0.45)', h: '120px' },
@@ -21,18 +76,43 @@ const HOW_STEPS = [
   { num: '04', icon: ICONS.qrCode,   title: 'Scan & enter',  desc: 'Scan your QR at the kiosk. No counter. No wait.' },
 ]
 
-const KPI_TILES = [
-  { label: 'Scheduled', val: '24', c: '#1C1917' },
-  { label: 'On Site',   val: '7',  c: '#22C55E' },
-  { label: 'Completed', val: '11', c: '#78716C' },
-  { label: 'ICS Held',  val: '2',  c: '#EF4444' },
+const KPI_META = [
+  { label: 'Scheduled', c: '#1C1917' },
+  { label: 'On Site',   c: '#22C55E' },
+  { label: 'Completed', c: '#78716C' },
+  { label: 'ICS Held',  c: '#EF4444' },
 ]
 
-const DASHBOARD_ROWS = [
-  { name: 'A. Rahman',   ref: 'MSCU·184', time: '08:30', status: 'On Site',   sc: 'rgba(34,197,94,0.10)',  tc: '#16A34A' },
-  { name: 'T. Nguyen',   ref: 'COSU·456', time: '09:00', status: 'Confirmed', sc: 'rgba(251,191,36,0.10)', tc: '#B45309' },
-  { name: 'J. Smith',    ref: 'OOLU·789', time: '09:30', status: 'Confirmed', sc: 'rgba(251,191,36,0.10)', tc: '#B45309' },
-  { name: 'M. Al-Farsi', ref: 'MSCU·321', time: '10:00', status: 'ICS Hold',  sc: 'rgba(239,68,68,0.10)',  tc: '#DC2626' },
+// A tiny "live" script the dashboard preview plays on loop — real state transitions
+// (a walk-in arriving, a hold clearing) rather than a static screenshot of the UI.
+const DASHBOARD_FRAMES = [
+  {
+    kpi: [24, 7, 11, 2],
+    rows: [
+      { key: 'rahman',  name: 'A. Rahman',   ref: 'MSCU·184', time: '08:30', status: 'On Site',   sc: 'rgba(34,197,94,0.10)',  tc: '#16A34A' },
+      { key: 'nguyen',  name: 'T. Nguyen',   ref: 'COSU·456', time: '09:00', status: 'Confirmed', sc: 'rgba(251,191,36,0.10)', tc: '#B45309' },
+      { key: 'smith',   name: 'J. Smith',    ref: 'OOLU·789', time: '09:30', status: 'Confirmed', sc: 'rgba(251,191,36,0.10)', tc: '#B45309' },
+      { key: 'alfarsi', name: 'M. Al-Farsi', ref: 'MSCU·321', time: '10:00', status: 'ICS Hold',  sc: 'rgba(239,68,68,0.10)',  tc: '#DC2626' },
+    ],
+  },
+  {
+    kpi: [23, 9, 12, 2],
+    rows: [
+      { key: 'chen',    name: 'R. Chen',     ref: 'TCLU·902', time: '09:12', status: 'Walk-in',   sc: 'rgba(56,189,248,0.12)', tc: '#0369A1' },
+      { key: 'rahman',  name: 'A. Rahman',   ref: 'MSCU·184', time: '08:30', status: 'Completed', sc: 'rgba(120,113,108,0.10)', tc: '#78716C' },
+      { key: 'nguyen',  name: 'T. Nguyen',   ref: 'COSU·456', time: '09:00', status: 'On Site',   sc: 'rgba(34,197,94,0.10)',  tc: '#16A34A' },
+      { key: 'smith',   name: 'J. Smith',    ref: 'OOLU·789', time: '09:30', status: 'Confirmed', sc: 'rgba(251,191,36,0.10)', tc: '#B45309' },
+    ],
+  },
+  {
+    kpi: [22, 8, 13, 1],
+    rows: [
+      { key: 'chen',    name: 'R. Chen',     ref: 'TCLU·902', time: '09:12', status: 'On Site',  sc: 'rgba(34,197,94,0.10)', tc: '#16A34A' },
+      { key: 'nguyen',  name: 'T. Nguyen',   ref: 'COSU·456', time: '09:00', status: 'On Site',  sc: 'rgba(34,197,94,0.10)', tc: '#16A34A' },
+      { key: 'smith',   name: 'J. Smith',    ref: 'OOLU·789', time: '09:30', status: 'On Site',  sc: 'rgba(34,197,94,0.10)', tc: '#16A34A' },
+      { key: 'alfarsi', name: 'M. Al-Farsi', ref: 'MSCU·321', time: '10:00', status: 'Cleared',  sc: 'rgba(34,197,94,0.10)', tc: '#16A34A' },
+    ],
+  },
 ]
 
 const OPS_FEATURES = [
@@ -66,19 +146,140 @@ const ICS_ROWS = [
 ]
 
 const BENTO_2 = [
-  { icon: ICONS.clock,  title: '10-min slot holds',  desc: 'Your preferred time is reserved while you complete the booking — zero double-bookings.' },
-  { icon: ICONS.qrCode, title: 'QR check-in kiosk',  desc: 'Scan at arrival. Skip the counter queue entirely. Works on any smartphone.' },
+  { icon: ICONS.clock,  title: '10-min slot holds',  desc: 'Your preferred time is reserved while you complete the booking — zero double-bookings.', hue: '99,102,241' },
+  { icon: ICONS.qrCode, title: 'QR check-in kiosk',  desc: 'Scan at arrival. Skip the counter queue entirely. Works on any smartphone.', hue: '34,197,94' },
 ]
 
 const BENTO_3 = [
-  { icon: ICONS.warning, title: 'CHEP pallet alerts',  desc: 'Pallet exchange flagged before you leave for the depot.' },
-  { icon: ICONS.users,   title: 'Agent bookings',      desc: 'Freight forwarders book for drivers — no extra account.' },
-  { icon: ICONS.reports, title: 'Live reception view', desc: 'Staff see bookings, walk-ins, and holds in one screen.' },
+  { icon: ICONS.warning, title: 'CHEP pallet alerts',  desc: 'Pallet exchange flagged before you leave for the depot.', hue: '251,146,60' },
+  { icon: ICONS.users,   title: 'Agent bookings',      desc: 'Freight forwarders book for drivers — no extra account.', hue: '236,72,153' },
+  { icon: ICONS.reports, title: 'Live reception view', desc: 'Staff see bookings, walk-ins, and holds in one screen.', hue: '56,189,248' },
 ]
+
+/** A dashboard mockup that actually plays out — walk-ins arrive, holds clear, counters tick — instead of a frozen screenshot. */
+function ReceptionDashboardMockup() {
+  const reduce = useReducedMotion()
+  const [frame, setFrame] = useState(0)
+  const [hoverKey, setHoverKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (reduce) return
+    const id = setInterval(() => setFrame(f => (f + 1) % DASHBOARD_FRAMES.length), 3600)
+    return () => clearInterval(id)
+  }, [reduce])
+
+  const data = DASHBOARD_FRAMES[frame]
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {/* Ambient brand glow behind the card */}
+      <div style={{ position: 'absolute', inset: '-8%', background: 'radial-gradient(ellipse 60% 60% at 50% 40%, rgba(var(--brand-rgb),0.16), transparent 70%)', filter: 'blur(20px)', pointerEvents: 'none', zIndex: 0 }} />
+      <motion.div
+        initial={{ y: 0 }}
+        animate={{ y: [0, -8, 0] }}
+        transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+        whileHover={{ scale: 1.015, transition: { duration: 0.3 } }}
+        style={{ position: 'relative', zIndex: 1, borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: '0 4px 16px rgba(0,0,0,0.08),0 24px 64px rgba(0,0,0,0.14),0 0 0 1px rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.08)' }}
+      >
+        <div style={{ background: '#FFFFFF', borderBottom: '1px solid rgba(0,0,0,0.07)', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <div style={{ display: 'flex', gap: 5 }}>
+              {[0.08, 0.06, 0.04].map((o, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: 'var(--r-full)', background: `rgba(0,0,0,${o})` }} />)}
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-tertiary)', marginLeft: 4 }}>Reception · Dashboard</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <motion.span
+              key={frame}
+              initial={{ scale: 1.8, opacity: 0.4 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.4 }}
+              style={{ width: 5, height: 5, borderRadius: 'var(--r-full)', background: '#22C55E', display: 'inline-block' }}
+            />
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 500 }}>Live</span>
+          </div>
+        </div>
+
+        <div style={{ background: '#F7F6F5', padding: 10, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
+          {KPI_META.map((k, i) => (
+            <div key={k.label} style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-sm)', padding: '10px 12px', overflow: 'hidden' }}>
+              <div style={{ position: 'relative', height: 22, marginBottom: 2 }}>
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.p
+                    key={data.kpi[i]}
+                    initial={reduce ? undefined : { y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={reduce ? undefined : { y: -10, opacity: 0 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+                    style={{ position: 'absolute', inset: 0, fontSize: 22, fontWeight: 800, color: k.c, letterSpacing: '-0.04em', lineHeight: '22px' }}
+                  >
+                    {data.kpi[i]}
+                  </motion.p>
+                </AnimatePresence>
+              </div>
+              <p style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 500 }}>{k.label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: '#FFFFFF' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 80px 28px', padding: '8px 14px', borderBottom: '1px solid rgba(0,0,0,0.06)', background: '#F7F6F5' }}>
+            {['Visitor', 'Slot', 'Status', ''].map(h => (
+              <span key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>{h}</span>
+            ))}
+          </div>
+          <div style={{ position: 'relative' }}>
+          <AnimatePresence mode="popLayout" initial={false}>
+            {data.rows.map((row) => (
+              <motion.div
+                key={row.key}
+                layout
+                initial={reduce ? undefined : { opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto', backgroundColor: hoverKey === row.key ? 'rgba(var(--brand-rgb),0.045)' : row.status === 'ICS Hold' ? 'rgba(239,68,68,0.025)' : 'rgba(255,255,255,0)' }}
+                exit={reduce ? undefined : { opacity: 0, height: 0 }}
+                transition={{ layout: { duration: 0.45, ease: EASE }, backgroundColor: { duration: 0.2 } }}
+                onMouseEnter={() => setHoverKey(row.key)}
+                onMouseLeave={() => setHoverKey(null)}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 72px 80px 28px', padding: '9px 14px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer' }}
+              >
+                <div>
+                  <p style={{ fontSize: 14, fontWeight: 500, color: '#1C1917' }}>{row.name}</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'ui-monospace,monospace' }}>{row.ref}</p>
+                </div>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)', alignSelf: 'center', fontVariantNumeric: 'tabular-nums' }}>{row.time}</span>
+                <div style={{ alignSelf: 'center', position: 'relative', overflow: 'hidden' }}>
+                  <AnimatePresence mode="popLayout" initial={false}>
+                    <motion.span
+                      key={row.status}
+                      initial={reduce ? undefined : { opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={reduce ? undefined : { opacity: 0, y: -6 }}
+                      transition={{ duration: 0.25 }}
+                      style={{ display: 'inline-block', fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 'var(--r-full)', background: row.sc, color: row.tc }}
+                    >
+                      {row.status}
+                    </motion.span>
+                  </AnimatePresence>
+                </div>
+                <div style={{ alignSelf: 'center', display: 'flex', justifyContent: 'flex-end' }}>
+                  <motion.div animate={{ x: hoverKey === row.key ? 2 : 0, opacity: hoverKey === row.key ? 0.7 : 0.25 }} transition={{ duration: 0.15 }}>
+                    <Icon name={ICONS.arrowRight} size={11} style={{ color: 'inherit' }} />
+                  </motion.div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
 
 export default function LandingPage() {
   usePageTitle('Glido | Home')
   const tenant = useTenantInfo()
+  const reduce = useReducedMotion()
   const heroSectionRef = useRef<HTMLElement>(null)
   const heroCardRef    = useRef<HTMLDivElement>(null)
   const heroBgRef      = useRef<HTMLDivElement>(null)
@@ -104,7 +305,7 @@ export default function LandingPage() {
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 
     const tick = () => {
-      const e = inside ? 0.07 : 0.05
+      const e = inside ? 0.16 : 0.09
       cCardRx = lerp(cCardRx, tCardRx, e); cCardRy = lerp(cCardRy, tCardRy, e)
       cBgX = lerp(cBgX, tBgX, e); cBgY = lerp(cBgY, tBgY, e)
       cCtX = lerp(cCtX, tCtX, e); cCtY = lerp(cCtY, tCtY, e)
@@ -127,11 +328,11 @@ export default function LandingPage() {
       const r = section.getBoundingClientRect()
       const mx = (ev.clientX - r.left) / r.width
       const my = (ev.clientY - r.top)  / r.height
-      tCardRx = (my - 0.5) * -10; tCardRy = (mx - 0.5) * 16
-      tBgX = (mx - 0.5) * -28;   tBgY    = (my - 0.5) * -20
-      tCtX = (mx - 0.5) * 10;    tCtY    = (my - 0.5) * 7
+      tCardRx = (my - 0.5) * -2; tCardRy = (mx - 0.5) * 3   // whisper-subtle tilt so buttons stay put
+      tBgX = (mx - 0.5) * -30;   tBgY    = (my - 0.5) * -22  // parallax lives in the background image
+      tCtX = 0;                  tCtY    = 0   // keep the buttons stationary → reliable clicks
       tSpecX = 20 + mx * 30;     tSpecY  = 10 + my * 25
-      tScale = 1.012
+      tScale = 1.004
     }
     const onLeave = () => {
       inside = false
@@ -177,6 +378,13 @@ export default function LandingPage() {
         }
         .warp-beam { position:absolute; top:0; width:2px; border-radius:9999px; pointer-events:none; animation:warp-beam-fly linear infinite; }
         @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes hero-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .hero-shimmer-text {
+          background-image: linear-gradient(100deg, var(--brand-color) 42%, color-mix(in srgb, var(--brand-color) 45%, #fff) 50%, var(--brand-color) 58%);
+          background-size: 240% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+          animation: hero-shimmer 4.5s ease-in-out infinite;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.55), 0 2px 16px rgba(0,0,0,0.4);
+        }
         .btn-primary { display:inline-flex; align-items:center; gap:8px; padding:12px 24px; font-size:14px; font-weight:600; color:var(--brand-text); background:var(--brand-color); border-radius:9999px; text-decoration:none; box-shadow:0 2px 8px rgba(var(--brand-rgb),0.35); transition:all 0.18s ease; }
         .btn-primary:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(var(--brand-rgb),0.42); }
         .btn-primary:active { transform:translateY(0) scale(0.97); }
@@ -210,78 +418,105 @@ export default function LandingPage() {
         >
           <div
             ref={heroBgRef}
-            style={{ position: 'absolute', inset: '-8%', background: 'linear-gradient(135deg, #0f1720 0%, #1a2535 40%, #0d1f2d 100%)', willChange: 'transform' }}
+            style={{ position: 'absolute', inset: '-8%', backgroundImage: `url(${heroDroneImg})`, backgroundSize: 'cover', backgroundPosition: 'center', willChange: 'transform' }}
           />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(105deg,rgba(8,10,14,0.88) 0%,rgba(8,10,14,0.75) 45%,rgba(8,10,14,0.45) 70%,rgba(8,10,14,0.25) 100%)', zIndex: 1 }} />
           <div ref={heroSpecRef} style={{ position: 'absolute', inset: 0, zIndex: 2, pointerEvents: 'none', borderRadius: 'var(--r-xl)', transition: 'background 0.1s ease' }} />
 
-          <div
+          <motion.div
             ref={heroContentRef}
-            style={{ position: 'relative', zIndex: 3, padding: '64px 72px', maxWidth: 640, willChange: 'transform' }}
+            initial="hidden" animate="show"
+            variants={{ hidden: {}, show: { transition: { staggerChildren: 0.09, delayChildren: 0.12 } } }}
+            style={{ position: 'relative', zIndex: 3, padding: '64px 72px', maxWidth: 660, willChange: 'transform' }}
             className="hero-content"
           >
-            <h1 style={{ fontSize: 'clamp(2rem,3.8vw,3.6rem)', fontWeight: 800, letterSpacing: '-0.05em', lineHeight: 1.0, color: '#fff', marginBottom: 14 }}>
-              Book your CFS slot.<br />
-              <span style={{ color: 'var(--brand-color)' }}>Skip the queue.</span>
-            </h1>
-            <p style={{ fontSize: 15, color: 'rgba(255,255,255)', lineHeight: 1.78, marginBottom: 36, maxWidth: 420 }}>
+            {/* eyebrow badge */}
+            <motion.div variants={RISE} transition={{ duration: 0.6, ease: EASE }}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', marginBottom: 22, borderRadius: 999, background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.22)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.25)' }}>
+              <motion.span
+                animate={reduce ? undefined : { scale: [1, 1.35, 1], opacity: [1, 0.55, 1] }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                style={{ width: 7, height: 7, borderRadius: 999, background: '#4ADE80', boxShadow: '0 0 8px #4ADE80', display: 'inline-block' }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.92)', letterSpacing: '0.01em' }}>Sydney CFS · accepting bookings</span>
+            </motion.div>
+            <motion.h1
+              variants={{ hidden: {}, show: { transition: { staggerChildren: 0.055, delayChildren: 0.05 } } }}
+              style={{ fontSize: 'clamp(2.2rem,4.2vw,4rem)', fontWeight: 800, letterSpacing: '-0.05em', lineHeight: 1.0, color: '#fff', marginBottom: 16, textShadow: '0 2px 30px rgba(0,0,0,0.45), 0 1px 3px rgba(0,0,0,0.4)', perspective: 400 }}>
+              <span style={{ display: 'block' }}>
+                {['Book', 'your', 'CFS', 'slot.'].map((w, i) => (
+                  <motion.span key={i} variants={WORD_RISE} transition={{ duration: 0.5, ease: EASE }}
+                    style={{ display: 'inline-block', marginRight: '0.28em' }}>{w}</motion.span>
+                ))}
+              </span>
+              <span style={{ display: 'block' }}>
+                {['Skip', 'the', 'queue.'].map((w, i) => (
+                  <motion.span key={i} variants={WORD_RISE} transition={{ duration: 0.5, ease: EASE }}
+                    className="hero-shimmer-text"
+                    style={{ display: 'inline-block', marginRight: '0.28em' }}>{w}</motion.span>
+                ))}
+              </span>
+            </motion.h1>
+            <motion.p variants={RISE} transition={{ duration: 0.65, ease: EASE }}
+              style={{ fontSize: 16, color: 'rgba(255,255,255,0.92)', lineHeight: 1.75, marginBottom: 34, maxWidth: 440, textShadow: '0 1px 12px rgba(0,0,0,0.5)' }}>
               Instant booking for drivers, forwarders, and depot teams. Scan your QR at the kiosk, straight to the bay.
-            </p>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <Link to="/book" className="btn-primary" style={{ padding: '13px 28px', fontSize: 15 }}>
-                <Icon name={ICONS.calendar} size={15} />
-                Book a Visit
-                <Icon name={ICONS.arrowRight} size={14} />
-              </Link>
-              <Link to="/bookings" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '13px 24px', fontSize: 15, fontWeight: 600, color: '#1C1917', background: 'rgba(255,255,255,0.90)', border: '1.5px solid rgba(255,255,255,0.30)', borderRadius: 'var(--r-full)', textDecoration: 'none', transition: 'all 0.15s ease' }}
-                onMouseOver={e => { e.currentTarget.style.background = '#fff'; e.currentTarget.style.borderColor = '#fff' }}
-                onMouseOut={e  => { e.currentTarget.style.background = 'rgba(255,255,255,0.90)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.30)' }}
-              >
-                <Icon name={ICONS.search} size={15} />
-                Look Up Booking
-              </Link>
-            </div>
-          </div>
+            </motion.p>
+            <motion.div variants={RISE} transition={{ duration: 0.65, ease: EASE }} style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <motion.div whileHover={{ y: -2, scale: 1.015 }} whileTap={{ scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 22 }}>
+                <Link to="/book" className="btn-primary" style={{ padding: '15px 30px', fontSize: 15.5, boxShadow: '0 2px 4px rgba(0,0,0,0.15), 0 10px 28px rgba(var(--brand-rgb),0.5), inset 0 1.5px 0 rgba(255,255,255,0.4), inset 0 -2px 4px rgba(0,0,0,0.14)' }}>
+                  <Icon name={ICONS.calendar} size={16} />
+                  Book a Visit
+                  <Icon name={ICONS.arrowRight} size={14} />
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ y: -2, scale: 1.015 }} whileTap={{ scale: 0.97 }} transition={{ type: 'spring', stiffness: 400, damping: 22 }}>
+                <Link to="/bookings" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '15px 26px', fontSize: 15.5, fontWeight: 600, color: '#1C1917', background: 'linear-gradient(160deg, #FFFFFF 0%, #EDECEA 100%)', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 'var(--r-full)', textDecoration: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.12), 0 8px 22px rgba(0,0,0,0.22), inset 0 1.5px 0 rgba(255,255,255,0.9)' }}>
+                  <Icon name={ICONS.search} size={15} />
+                  Look Up Booking
+                </Link>
+              </motion.div>
+            </motion.div>
+          </motion.div>
         </div>
       </section>
 
       {/* §3 How it works */}
       <section id="how-it-works" className="section-dots" style={{ padding: '96px 24px', backgroundColor: '#FFFFFF' }}>
         <div className="max-w-5xl mx-auto">
-          <div className="reveal" style={{ marginBottom: 56 }}>
+          <Reveal style={{ marginBottom: 56 }}>
             <p style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--brand-color)', marginBottom: 10 }}>How it works</p>
             <h2 style={{ fontSize: 'clamp(1.8rem,3.2vw,2.5rem)', fontWeight: 800, color: '#1C1917', letterSpacing: '-0.04em', lineHeight: 1.1, marginBottom: 12, maxWidth: 500 }}>
               From browser to bay door in four steps
             </h2>
             <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.75, maxWidth: 400 }}>No spreadsheets. No radio calls. The whole process is online.</p>
-          </div>
+          </Reveal>
 
-          <div className="steps-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 2, background: 'rgba(0,0,0,0.06)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
-            {HOW_STEPS.map((step, i) => (
-              <div key={step.num} className="reveal" data-reveal-delay={String(i * 80)}
-                style={{ background: '#FFFFFF', padding: '32px 26px', transition: 'background 0.15s ease' }}
-                onMouseOver={e => (e.currentTarget.style.background = 'rgba(var(--brand-rgb),0.04)')}
-                onMouseOut={e  => (e.currentTarget.style.background = '#FFFFFF')}
+          <StaggerGroup className="steps-grid" staggerMs={90} style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 2, background: 'rgba(0,0,0,0.06)', borderRadius: 'var(--r-xl)', overflow: 'hidden' }}>
+            {HOW_STEPS.map(step => (
+              <StaggerItem key={step.num}
+                style={{ background: '#FFFFFF', padding: '32px 26px', transition: 'background 0.15s ease', position: 'relative', overflow: 'hidden' }}
+                whileHover={{ background: 'rgba(var(--brand-rgb),0.04)', y: -2 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                <span style={{ position: 'absolute', top: -14, right: -6, fontSize: 88, fontWeight: 800, color: 'rgba(0,0,0,0.035)', letterSpacing: '-0.05em', lineHeight: 1, pointerEvents: 'none', userSelect: 'none' }}>{step.num}</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, position: 'relative' }}>
                   <span style={{ fontSize: 14, fontWeight: 800, color: '#1C1917', letterSpacing: '0.04em' }}>{step.num}</span>
                   <div style={{ width: 40, height: 40, borderRadius: 'var(--r-sm)', background: 'rgba(var(--brand-rgb),0.08)', border: '1px solid rgba(var(--brand-rgb),0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Icon name={step.icon} size={18} style={{ color: 'var(--brand-color)' }} />
                   </div>
                 </div>
-                <p style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', marginBottom: 7, letterSpacing: '-0.02em' }}>{step.title}</p>
-                <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.65 }}>{step.desc}</p>
-              </div>
+                <p style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', marginBottom: 7, letterSpacing: '-0.02em', position: 'relative' }}>{step.title}</p>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.65, position: 'relative' }}>{step.desc}</p>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerGroup>
         </div>
       </section>
 
       {/* §4 Platform preview */}
       <section style={{ padding: '96px 24px', background: '#F7F6F5', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
         <div className="max-w-5xl mx-auto">
-          <div className="preview-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.7fr', gap: 56, alignItems: 'center' }}>
-            <div className="reveal-left">
+          <div className="preview-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1.85fr', gap: 56, alignItems: 'center' }}>
+            <Reveal x={-24}>
               <p style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--brand-color)', marginBottom: 10 }}>Operations centre</p>
               <h2 style={{ fontSize: 'clamp(1.6rem,2.8vw,2.2rem)', fontWeight: 800, color: '#1C1917', letterSpacing: '-0.04em', lineHeight: 1.1, marginBottom: 14 }}>
                 Everything reception needs in one view
@@ -308,53 +543,12 @@ export default function LandingPage() {
               >
                 View Reception Dashboard <Icon name={ICONS.arrowRight} size={13} />
               </Link>
-            </div>
+            </Reveal>
 
-            {/* Dashboard mockup */}
-            <div className="reveal-right" style={{ borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06),0 16px 48px rgba(0,0,0,0.10)', border: '1px solid rgba(0,0,0,0.08)' }}>
-              <div style={{ background: '#FFFFFF', borderBottom: '1px solid rgba(0,0,0,0.07)', padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <div style={{ display: 'flex', gap: 5 }}>
-                    {[0.08, 0.06, 0.04].map((o, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: 'var(--r-full)', background: `rgba(0,0,0,${o})` }} />)}
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-tertiary)', marginLeft: 4 }}>Reception · Dashboard</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: 'var(--r-full)', background: '#22C55E', animation: 'pulse-dot 2s ease-in-out infinite', display: 'inline-block' }} />
-                  <span style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 500 }}>Live</span>
-                </div>
-              </div>
-              <div style={{ background: '#F7F6F5', padding: 10, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
-                {KPI_TILES.map(k => (
-                  <div key={k.label} style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-sm)', padding: '10px 12px' }}>
-                    <p style={{ fontSize: 22, fontWeight: 800, color: k.c, letterSpacing: '-0.04em', lineHeight: 1, marginBottom: 2 }}>{k.val}</p>
-                    <p style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 500 }}>{k.label}</p>
-                  </div>
-                ))}
-              </div>
-              <div style={{ background: '#FFFFFF' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 72px 80px 28px', padding: '8px 14px', borderBottom: '1px solid rgba(0,0,0,0.06)', background: '#F7F6F5' }}>
-                  {['Visitor', 'Slot', 'Status', ''].map(h => (
-                    <span key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.07em', textTransform: 'uppercase' }}>{h}</span>
-                  ))}
-                </div>
-                {DASHBOARD_ROWS.map((row, ri) => (
-                  <div key={ri} style={{ display: 'grid', gridTemplateColumns: '1fr 72px 80px 28px', padding: '9px 14px', borderBottom: '1px solid rgba(0,0,0,0.05)', background: ri === 3 ? 'rgba(239,68,68,0.025)' : undefined }}>
-                    <div>
-                      <p style={{ fontSize: 14, fontWeight: 500, color: '#1C1917' }}>{row.name}</p>
-                      <p style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'ui-monospace,monospace' }}>{row.ref}</p>
-                    </div>
-                    <span style={{ fontSize: 13, color: 'var(--text-secondary)', alignSelf: 'center', fontVariantNumeric: 'tabular-nums' }}>{row.time}</span>
-                    <div style={{ alignSelf: 'center' }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 'var(--r-full)', background: row.sc, color: row.tc }}>{row.status}</span>
-                    </div>
-                    <div style={{ alignSelf: 'center', display: 'flex', justifyContent: 'flex-end' }}>
-                      <Icon name={ICONS.arrowRight} size={11} style={{ color: 'rgba(0,0,0,0.25)' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Dashboard mockup — plays a small live script (walk-ins, holds clearing) on loop */}
+            <Reveal x={24} delay={100}>
+              <ReceptionDashboardMockup />
+            </Reveal>
           </div>
         </div>
       </section>
@@ -362,7 +556,7 @@ export default function LandingPage() {
       {/* §5 Personas */}
       <section className="section-dots" style={{ padding: '96px 24px', backgroundColor: '#FFFFFF', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
         <div className="max-w-5xl mx-auto">
-          <div className="reveal" style={{ textAlign: 'center', marginBottom: 56 }}>
+          <Reveal style={{ textAlign: 'center', marginBottom: 56 }}>
             <p style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--brand-color)', marginBottom: 10 }}>Who uses Glido</p>
             <h2 style={{ fontSize: 'clamp(1.8rem,3.2vw,2.5rem)', fontWeight: 800, color: '#1C1917', letterSpacing: '-0.04em', lineHeight: 1.1, marginBottom: 12 }}>
               Built for everyone in the chain
@@ -370,49 +564,49 @@ export default function LandingPage() {
             <p style={{ fontSize: 15, color: 'var(--text-secondary)', maxWidth: 380, margin: '0 auto', lineHeight: 1.75 }}>
               From the freight forwarder booking a slot to the driver scanning in — everyone benefits.
             </p>
-          </div>
+          </Reveal>
 
-          <div className="persona-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 20 }} data-stagger data-stagger-ms="90">
+          <StaggerGroup className="persona-grid" staggerMs={90} style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 20 }}>
             {PERSONAS.map(p => (
-              <div key={p.title} className="tilt-card" style={{ background: p.bg, borderRadius: 'var(--r-xl)', padding: '34px 30px', position: 'relative', overflow: 'hidden' }}>
-                <div style={{ width: 44, height: 44, borderRadius: 'var(--r-md)', background: 'rgba(255,255,255,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 22 }}>
-                  <Icon name={p.icon} size={22} style={{ color: '#fff' }} />
-                </div>
-                <p style={{ fontSize: 18, fontWeight: 700, color: '#fff', letterSpacing: '-0.03em', marginBottom: 10 }}>{p.title}</p>
-                <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.7, marginBottom: 22 }}>{p.desc}</p>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 9 }}>
-                  {p.bullets.map((b, bi) => (
-                    <li key={b} style={{ display: 'flex', alignItems: 'center', gap: 11, fontSize: 14, color: 'rgba(255,255,255,0.70)' }}>
-                      <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 'var(--r-sm)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.35)', fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace,monospace' }}>
-                        {String(bi + 1).padStart(2, '0')}
-                      </span>
+              <StaggerItem key={p.title}
+                whileHover={{ y: -6, scale: 1.015 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+                style={{ background: p.bg, borderRadius: 'var(--r-xl)', padding: '34px 30px', position: 'relative', overflow: 'hidden', cursor: 'default' }}
+              >
+                <Icon name={p.icon} size={104} style={{ position: 'absolute', top: -18, right: -18, color: 'rgba(255,255,255,0.06)' }} />
+                <Icon name={p.icon} size={26} style={{ color: 'rgba(255,255,255,0.85)', marginBottom: 22, display: 'block', position: 'relative' }} />
+                <p style={{ fontSize: 18, fontWeight: 700, color: '#fff', letterSpacing: '-0.03em', marginBottom: 10, position: 'relative' }}>{p.title}</p>
+                <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.7, marginBottom: 22, position: 'relative' }}>{p.desc}</p>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
+                  {p.bullets.map(b => (
+                    <li key={b} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: 'rgba(255,255,255,0.70)' }}>
+                      <Icon name={ICONS.check} size={13} style={{ flexShrink: 0, color: 'rgba(255,255,255,0.45)' }} />
                       {b}
                     </li>
                   ))}
                 </ul>
-              </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerGroup>
         </div>
       </section>
 
       {/* §6 Bento features */}
       <section style={{ padding: '96px 24px', background: '#F7F6F5', borderTop: '1px solid rgba(0,0,0,0.06)' }}>
         <div className="max-w-5xl mx-auto">
-          <div className="reveal" style={{ textAlign: 'center', marginBottom: 56 }}>
+          <Reveal style={{ textAlign: 'center', marginBottom: 56 }}>
             <p style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--brand-color)', marginBottom: 10 }}>Built for the floor</p>
             <h2 style={{ fontSize: 'clamp(1.8rem,3.2vw,2.5rem)', fontWeight: 800, color: '#1C1917', letterSpacing: '-0.04em', lineHeight: 1.1, marginBottom: 12 }}>
               Purpose-built for Container Freight Stations
             </h2>
             <p style={{ fontSize: 15, color: 'var(--text-secondary)', maxWidth: 380, margin: '0 auto', lineHeight: 1.75 }}>Every feature solves a real operational headache.</p>
-          </div>
+          </Reveal>
 
           {/* ICS bento hero */}
-          <div className="reveal bento-hero" style={{ background: '#FFFFFF', border: '1px solid rgba(var(--brand-rgb),0.20)', borderRadius: 'var(--r-xl)', padding: '40px 44px', marginBottom: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04),0 8px 32px rgba(0,0,0,0.06),0 0 0 1px rgba(var(--brand-rgb),0.06)' }}>
+          <Reveal className="bento-hero" style={{ background: '#FFFFFF', border: '1px solid rgba(var(--brand-rgb),0.20)', borderRadius: 'var(--r-xl)', padding: '40px 44px', marginBottom: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, alignItems: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.04),0 8px 32px rgba(0,0,0,0.06),0 0 0 1px rgba(var(--brand-rgb),0.06)' }}>
             <div>
-              <div style={{ width: 50, height: 50, borderRadius: 'var(--r-md)', background: 'rgba(var(--brand-rgb),0.08)', border: '1px solid rgba(var(--brand-rgb),0.20)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 22 }}>
-                <Icon name={ICONS.shield} size={24} style={{ color: 'var(--brand-color)' }} />
-              </div>
+              <div style={{ width: 28, height: 3, borderRadius: 999, background: 'var(--brand-color)', marginBottom: 18 }} />
+              <Icon name={ICONS.shield} size={22} style={{ color: 'var(--brand-color)', marginBottom: 14, display: 'block' }} />
               <p style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.025em', marginBottom: 10, lineHeight: 1.25 }}>Automatic ICS clearance check</p>
               <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.75, maxWidth: 320 }}>
                 Customs status is fetched the moment you enter your shipment number — holds flagged before they reach the gate.
@@ -426,78 +620,79 @@ export default function LandingPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </Reveal>
 
           {/* 2-col bento */}
-          <div className="bento-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }} data-stagger data-stagger-ms="80">
+          <StaggerGroup className="bento-row" staggerMs={80} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
             {BENTO_2.map(feat => (
-              <div key={feat.title}
-                style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', padding: 30, transition: 'border-color 0.15s ease,box-shadow 0.15s ease,transform 0.2s cubic-bezier(0.16,1,0.3,1)' }}
-                onMouseOver={e => { e.currentTarget.style.borderColor = 'rgba(var(--brand-rgb),0.25)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.07)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-                onMouseOut={e  => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = '' }}
+              <StaggerItem key={feat.title}
+                whileHover={{ y: -3, boxShadow: `0 4px 20px rgba(${feat.hue},0.12)`, borderColor: `rgba(${feat.hue},0.30)` }}
+                style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', padding: 30 }}
               >
-                <div style={{ width: 42, height: 42, borderRadius: 'var(--r-sm)', background: 'rgba(var(--brand-rgb),0.08)', border: '1px solid rgba(var(--brand-rgb),0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
-                  <Icon name={feat.icon} size={19} style={{ color: 'var(--brand-color)' }} />
-                </div>
+                <div style={{ width: 24, height: 3, borderRadius: 999, background: `rgb(${feat.hue})`, marginBottom: 16 }} />
+                <Icon name={feat.icon} size={20} style={{ color: `rgb(${feat.hue})`, marginBottom: 14, display: 'block' }} />
                 <p style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.02em', marginBottom: 7 }}>{feat.title}</p>
                 <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.65 }}>{feat.desc}</p>
-              </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerGroup>
 
           {/* 3-col bento */}
-          <div className="bento-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }} data-stagger data-stagger-ms="70">
+          <StaggerGroup className="bento-row" staggerMs={70} style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
             {BENTO_3.map(feat => (
-              <div key={feat.title}
-                style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', padding: 28, transition: 'border-color 0.15s ease,box-shadow 0.15s ease,transform 0.2s cubic-bezier(0.16,1,0.3,1)' }}
-                onMouseOver={e => { e.currentTarget.style.borderColor = 'rgba(var(--brand-rgb),0.25)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.07)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-                onMouseOut={e  => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.08)'; e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = '' }}
+              <StaggerItem key={feat.title}
+                whileHover={{ y: -3, boxShadow: `0 4px 20px rgba(${feat.hue},0.12)`, borderColor: `rgba(${feat.hue},0.30)` }}
+                style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', padding: 28 }}
               >
-                <div style={{ width: 40, height: 40, borderRadius: 'var(--r-sm)', background: 'rgba(var(--brand-rgb),0.08)', border: '1px solid rgba(var(--brand-rgb),0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-                  <Icon name={feat.icon} size={18} style={{ color: 'var(--brand-color)' }} />
-                </div>
+                <div style={{ width: 24, height: 3, borderRadius: 999, background: `rgb(${feat.hue})`, marginBottom: 14 }} />
+                <Icon name={feat.icon} size={19} style={{ color: `rgb(${feat.hue})`, marginBottom: 12, display: 'block' }} />
                 <p style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.02em', marginBottom: 6 }}>{feat.title}</p>
                 <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.65 }}>{feat.desc}</p>
-              </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerGroup>
         </div>
       </section>
 
       {/* §8 CTA */}
-      <section style={{ padding: '100px 24px', background: 'linear-gradient(180deg, color-mix(in srgb, var(--brand-color) 4%, #ffffff) 0%, color-mix(in srgb, var(--brand-color) 7%, #ffffff) 100%)', borderTop: '1px solid rgba(var(--brand-rgb),0.12)', position: 'relative', overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(rgba(var(--brand-rgb),0.07) 1px,transparent 1px)', backgroundSize: '28px 28px', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 600, height: 300, background: 'radial-gradient(ellipse,rgba(var(--brand-rgb),0.08) 0%,transparent 68%)', pointerEvents: 'none' }} />
+      <section style={{ padding: '120px 24px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${ctaBgImg})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(10,14,20,0.55) 0%, rgba(10,14,20,0.72) 55%, rgba(10,14,20,0.88) 100%)' }} />
 
         <div className="max-w-2xl mx-auto" style={{ textAlign: 'center', position: 'relative', zIndex: 1 }}>
-          <div className="reveal" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 14px', borderRadius: 'var(--r-full)', background: 'rgba(34,197,94,0.09)', border: '1px solid rgba(34,197,94,0.22)', marginBottom: 28 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 'var(--r-full)', background: '#22C55E', animation: 'pulse-dot 2s ease-in-out infinite', display: 'inline-block' }} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#16A34A' }}>Accepting bookings now</span>
-          </div>
+          <Reveal style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 14px', borderRadius: 'var(--r-full)', background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.32)', marginBottom: 28 }}>
+            <span style={{ width: 6, height: 6, borderRadius: 'var(--r-full)', background: '#4ADE80', animation: 'pulse-dot 2s ease-in-out infinite', display: 'inline-block' }} />
+            <span style={{ fontSize: 13, fontWeight: 600, color: '#4ADE80' }}>Accepting bookings now</span>
+          </Reveal>
 
-          <h2 className="reveal" data-reveal-delay="80" style={{ fontSize: 'clamp(2.2rem,4.8vw,3.5rem)', fontWeight: 800, color: '#1C1917', letterSpacing: '-0.045em', lineHeight: 1.05, marginBottom: 16 }}>
-            Ready to skip<br />the queue?
-          </h2>
+          <Reveal delay={80}>
+            <h2 style={{ fontSize: 'clamp(2.2rem,4.8vw,3.5rem)', fontWeight: 800, color: '#fff', letterSpacing: '-0.045em', lineHeight: 1.05, marginBottom: 16 }}>
+              Ready to skip<br />the queue?
+            </h2>
+          </Reveal>
 
-          <p className="reveal" data-reveal-delay="130" style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.8, marginBottom: 36, maxWidth: 360, marginLeft: 'auto', marginRight: 'auto' }}>
+          <Reveal delay={130} style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', lineHeight: 1.8, marginBottom: 36, maxWidth: 360, marginLeft: 'auto', marginRight: 'auto' }}>
             Your first booking takes under 3 minutes. No account, no calls, no paper.
-          </p>
+          </Reveal>
 
-          <div className="reveal" data-reveal-delay="180" style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Reveal delay={180} style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <Link to="/book" className="btn-primary" style={{ padding: '14px 32px', fontSize: 15, color: 'var(--brand-text)' }}>
               <Icon name={ICONS.calendar} size={15} style={{ color: 'var(--brand-text)' }} />
               Book a Visit
               <Icon name={ICONS.arrowRight} size={14} style={{ color: 'var(--brand-text)' }} />
             </Link>
-            <Link to="/bookings" className="btn-ghost" style={{ padding: '14px 26px', fontSize: 15 }}>
+            <Link to="/bookings" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 26px', fontSize: 15, fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 'var(--r-full)', textDecoration: 'none', transition: 'all 0.18s ease' }}
+              onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
+              onMouseOut={e  => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)' }}
+            >
               <Icon name={ICONS.search} size={15} />
               Look Up Booking
             </Link>
-          </div>
+          </Reveal>
 
-          <p className="reveal" data-reveal-delay="230" style={{ fontSize: 14, color: 'var(--text-tertiary)', marginTop: 28 }}>
+          <Reveal delay={230} style={{ fontSize: 14, color: 'rgba(255,255,255,0.55)', marginTop: 28 }}>
             {tenant?.name || 'Sydney Container Freight Station'} · ABN 12 345 678 901
-          </p>
+          </Reveal>
         </div>
       </section>
     </>

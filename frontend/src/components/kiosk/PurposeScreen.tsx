@@ -18,8 +18,7 @@ const OPTIONS = [
 ]
 
 export function PurposeScreen() {
-  const { state, dispatch, goTo } = useKiosk()
-  if (state.currentScreen !== 'purpose') return null
+  const { dispatch, goTo } = useKiosk()
 
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px' }}>

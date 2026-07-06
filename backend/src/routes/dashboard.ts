@@ -5,17 +5,24 @@ import { requireAuth } from '../middleware/auth'
 const router = Router()
 router.use(requireAuth)
 
-// GET /api/v2/dashboard
-router.get('/', async (_req: Request, res: Response) => {
+// GET /api/v2/dashboard?date=YYYY-MM-DD — date should be the caller's local "today"
+// (e.g. Australia/Sydney), not the DB server's CURRENT_DATE, which may be a different
+// calendar day in UTC and silently returned all-zero stats for most of the Sydney day.
+router.get('/', async (req: Request, res: Response) => {
   try {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.date)) ? String(req.query.date) : null
+    const dateClause = date ? `slot_date = $1` : `slot_date = CURRENT_DATE`
+    const params = date ? [date] : []
     const { rows: bookings } = await pool.query(
       `SELECT status, ics_status FROM bookings
-       WHERE slot_date = CURRENT_DATE AND status != 'cancelled'`
+       WHERE ${dateClause} AND status != 'cancelled'`,
+      params,
     )
     const { rows: recent } = await pool.query(
       `SELECT * FROM bookings
-       WHERE slot_date = CURRENT_DATE AND status != 'cancelled'
-       ORDER BY created_at DESC LIMIT 5`
+       WHERE ${dateClause} AND status != 'cancelled'
+       ORDER BY created_at DESC LIMIT 5`,
+      params,
     )
     return res.json({
       success: true,

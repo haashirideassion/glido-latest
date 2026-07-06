@@ -3,7 +3,6 @@ import { Icon, ICONS } from '@/lib/Icon'
 
 export function ArrivedScreen() {
   const { state } = useKiosk()
-  if (state.currentScreen !== 'arrived') return null
 
   const isWalkIn = !state.lookupResult
   const countdown = state.arrivedCountdown

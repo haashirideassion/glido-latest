@@ -5,8 +5,12 @@ import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
 import { fmtTime } from '@/lib/time'
 import { getActiveWalkIns } from '@/lib/db/walk-ins'
-import { getBookings } from '@/lib/db/bookings'
+import { getBookings, getBookingById } from '@/lib/db/bookings'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
+import { BookingSlideOver } from '@/components/reception/BookingSlideOver'
+import { AnimatedNumber, motion } from '@/lib/motion'
+import { EmptyState } from '@/components/reception/EmptyState'
+import type { Booking } from '@/data/types'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { todaySydney, TZ } from '@/lib/time'
@@ -87,6 +91,33 @@ export default function WalkInsPage() {
   const navigate = useNavigate()
   const [visitors, setVisitors] = useState<VisitorEntry[]>([])
   const [loading,  setLoading]  = useState(true)
+
+  // ── Split view ──
+  const [selected, setSelected] = useState<VisitorEntry | null>(null)
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [bookingLoading, setBookingLoading] = useState(false)
+  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true))
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  // Fetch the full booking record when a booking-type row is selected
+  useEffect(() => {
+    let cancelled = false
+    if (selected?.type === 'booking') {
+      setBookingLoading(true)
+      setSelectedBooking(null)
+      getBookingById(selected.id)
+        .then(b => { if (!cancelled) setSelectedBooking(b ?? null) })
+        .catch(() => { if (!cancelled) setSelectedBooking(null) })
+        .finally(() => { if (!cancelled) setBookingLoading(false) })
+    } else {
+      setSelectedBooking(null)
+    }
+    return () => { cancelled = true }
+  }, [selected])
+  const openEntry = (v: VisitorEntry) => { if (isWide) setSelected(v); else navigate(`/reception/visitors/${v.id}`) }
 
   // ── Filter state ─────────────────────────────────────────────────────────────
   const [preset,      setPreset]      = useState<Preset>('today')
@@ -208,23 +239,23 @@ export default function WalkInsPage() {
       <style>{`@keyframes vp-pulse{0%,100%{opacity:1}50%{opacity:0.45}}`}</style>
 
       {/* KPI tiles */}
-      <div style={{ display: 'flex', alignItems: 'stretch', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 'var(--card-gap)', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
         {KPI_DEF.map((t, i) => (
           <div key={t.key}
-            style={{ flex: 1, minWidth: 0, padding: '22px 26px', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
+            style={{ flex: 1, minWidth: 0, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
             onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
             onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-              <div style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', background: t.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${t.iconFg}22` }}>
-                <Icon name={t.icon} size={17} style={{ color: t.iconFg }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 'var(--r-md)', background: t.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${t.iconFg}22` }}>
+                <Icon name={t.icon} size={16} style={{ color: t.iconFg }} />
               </div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</p>
             </div>
             {loading
-              ? <div style={{ width: 56, height: 40, borderRadius: 'var(--r-sm)', background: '#F3F3F2', animation: 'vp-pulse 1.5s ease-in-out infinite' }} />
-              : <p style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{t.val}</p>}
-            <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.sub}</p>
+              ? <div style={{ width: 48, height: 'var(--kpi-value)', borderRadius: 'var(--r-sm)', background: '#F3F3F2', animation: 'vp-pulse 1.5s ease-in-out infinite' }} />
+              : <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 3px', fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={t.val} /></p>}
+            <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.sub}</p>
           </div>
         ))}
       </div>
@@ -291,8 +322,9 @@ export default function WalkInsPage() {
         )}
       </div>
 
-      {/* Cards container */}
-      <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
+      {/* Split view: list (left) + docked detail pane (right) */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      <div style={{ flex: 1, minWidth: 0, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid rgba(0,0,0,0.06)', background: 'rgba(0,0,0,0.01)' }}>
           <span style={{ fontSize: 15, fontWeight: 600, color: '#374151' }}>
@@ -311,145 +343,210 @@ export default function WalkInsPage() {
         {loading ? (
           <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>Loading…</div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>
-            {(() => {
-              if (!!(typeFilter || search)) return 'No visitors match your filters.'
-              if (preset === 'today') return 'No visitors for today yet.'
-              if (preset === '7d')    return 'No visitors in the last 7 days.'
-              if (preset === '30d')   return 'No visitors in the last 30 days.'
-              return 'No visitors in the selected range.'
+          <EmptyState
+            variant={(typeFilter || search) ? 'search' : 'inbox'}
+            title={(() => {
+              if (!!(typeFilter || search)) return 'No visitors match your filters'
+              if (preset === 'today') return 'No visitors for today yet'
+              if (preset === '7d')    return 'No visitors in the last 7 days'
+              if (preset === '30d')   return 'No visitors in the last 30 days'
+              return 'No visitors in the selected range'
             })()}
-          </div>
+            subtitle={(typeFilter || search) ? 'Try adjusting your search or filters.' : 'Check-ins and walk-ins will show up here.'}
+          />
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 10px' }}>
+          (() => {
+          const paneOpen = !!selected && isWide
+          const TH: React.CSSProperties = { textAlign: 'left', padding: '8px 14px', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#FAFAF9', position: 'sticky', top: 0, zIndex: 1 }
+          const TD: React.CSSProperties = { padding: '9px 14px', fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.05)' }
+          return (
+          <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...TH, width: 4, padding: 0 }} />
+                <th style={TH}>Visitor / Ref</th>
+                <th style={TH}>Type</th>
+                <th style={TH}>Purpose</th>
+                <th style={TH}>Arrived</th>
+                {!paneOpen && <th style={TH}>Contact</th>}
+                {!paneOpen && <th style={TH}>ID</th>}
+                <th style={{ ...TH, textAlign: 'right' }} />
+              </tr>
+            </thead>
+            <tbody>
             {filtered.map(v => {
-              const ics     = v.icsStatus ?? ''
+              const ics      = v.icsStatus ?? ''
               const isWalkin = v.type === 'walkin'
-
               return (
-                <div
+                <tr
                   key={`${v.type}-${v.id}`}
-                  onClick={() => navigate(`/reception/visitors/${v.id}`)}
-                  style={{ display: 'flex', cursor: 'pointer', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', background: '#FFFFFF', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', transition: 'box-shadow 0.15s, background 0.12s' }}
-                  onMouseOver={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)'; e.currentTarget.style.background = '#FAFAF9' }}
-                  onMouseOut={e  => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; e.currentTarget.style.background = '#FFFFFF' }}
+                  onClick={() => openEntry(v)}
+                  style={{ cursor: 'pointer', background: (selected && selected.id === v.id && selected.type === v.type) ? 'rgba(var(--brand-rgb),0.06)' : 'transparent', transition: 'background 0.12s' }}
+                  onMouseOver={e => { if (!(selected && selected.id === v.id && selected.type === v.type)) e.currentTarget.style.background = '#FAFAF9' }}
+                  onMouseOut={e  => { if (!(selected && selected.id === v.id && selected.type === v.type)) e.currentTarget.style.background = 'transparent' }}
                 >
                   {/* ICS colour bar */}
-                  <div style={{ width: 5, flexShrink: 0, background: ICS_BAR_COLOR[ics] ?? ICS_BAR_COLOR.unavailable }} />
+                  <td style={{ width: 4, padding: 0 }}>
+                    <div style={{ width: 3, height: 34, background: ICS_BAR_COLOR[ics] ?? ICS_BAR_COLOR.unavailable, borderRadius: '0 3px 3px 0' }} />
+                  </td>
 
-                  {/* Card body */}
-                  <div style={{ flex: 1, minWidth: 0, padding: '14px 20px' }}>
-
-                    {/* ── Top row ── */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
-
-                      {/* Reference (booking) or name (walk-in) */}
-                      {v.type === 'booking' && v.bookingRef ? (
-                        <span
-                          style={{ fontFamily: 'ui-monospace,monospace', fontSize: 15, fontWeight: 700, color: '#1C1917', display: 'inline-flex', alignItems: 'center', gap: 5, flexShrink: 0, transition: 'color 0.15s' }}
-                          onMouseOver={e => { e.stopPropagation(); e.currentTarget.style.color = 'var(--brand-color)' }}
-                          onMouseOut={e  => { e.currentTarget.style.color = '#1C1917' }}
-                          title="Click to copy"
-                          onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(v.bookingRef ?? '') }}
-                        >
-                          {v.bookingRef}
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
-                            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                          </svg>
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', flexShrink: 0 }}>
-                          {v.name}
-                        </span>
-                      )}
-
-                      {/* Single type badge */}
-                      {isWalkin ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--r-full)', background: 'rgba(109,40,217,0.08)', color: '#6D28D9', border: '1px solid rgba(109,40,217,0.18)', whiteSpace: 'nowrap' }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/></svg>
-                          Walk-in
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--r-full)', background: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>
-                          Booking
-                        </span>
-                      )}
-
-                      <div style={{ flex: 1 }} />
-
-                      {/* Purpose */}
-                      <span style={{ fontSize: 14, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>{v.purpose}</span>
-
-                      {/* Arrived time */}
-                      <span style={{ fontSize: 13, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
-                        Arrived: {v.arrivedAt ? fmtTime(v.arrivedAt) : '—'}
+                  {/* Visitor name / booking ref */}
+                  <td style={TD}>
+                    {v.type === 'booking' && v.bookingRef ? (
+                      <span
+                        style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, color: '#1C1917', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                        title="Click to copy"
+                        onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(v.bookingRef ?? '') }}
+                      >
+                        {v.bookingRef}
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35 }}>
+                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        <span style={{ fontFamily: 'inherit', fontWeight: 500, color: 'var(--text-tertiary)', marginLeft: 4 }}>{v.name}</span>
                       </span>
+                    ) : (
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1917' }}>{v.name}</span>
+                    )}
+                  </td>
 
-                      {/* Licence badge */}
-                      {v.licenceCaptured ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, color: '#16A34A', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 'var(--r-full)', padding: '3px 9px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                          <Icon name={ICONS.check} size={11} /> ID Captured
-                        </span>
-                      ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 500, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-full)', padding: '3px 9px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                          No ID
-                        </span>
-                      )}
-                    </div>
+                  {/* Type badge */}
+                  <td style={TD}>
+                    {isWalkin ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, padding: '3px 8px', borderRadius: 'var(--r-full)', background: 'rgba(109,40,217,0.08)', color: '#6D28D9', border: '1px solid rgba(109,40,217,0.18)', whiteSpace: 'nowrap' }}>Walk-in</span>
+                    ) : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, padding: '3px 8px', borderRadius: 'var(--r-full)', background: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0', whiteSpace: 'nowrap' }}>Booking</span>
+                    )}
+                  </td>
 
-                    {/* ── Bottom row ── */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', paddingTop: 10, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
-                      {/* Name */}
-                      <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                        {isWalkin ? 'Visitor' : 'Driver'}: <strong style={{ color: '#1C1917' }}>{v.name}</strong>
+                  {/* Purpose */}
+                  <td style={TD}>
+                    <span style={{ color: '#1C1917', fontWeight: 500 }}>{v.purpose}</span>
+                    {v.serviceType && v.loadType && <span style={{ color: 'var(--text-tertiary)', marginLeft: 6 }}>· {v.loadType.toUpperCase()}</span>}
+                    {v.personBeingVisited && <span style={{ color: 'var(--text-tertiary)', marginLeft: 6 }}>→ {v.personBeingVisited}</span>}
+                  </td>
+
+                  {/* Arrived */}
+                  <td style={TD}>{v.arrivedAt ? fmtTime(v.arrivedAt) : '—'}</td>
+
+                  {/* Contact */}
+                  {!paneOpen && <td style={{ ...TD, color: v.phone ? '#1C1917' : 'var(--text-tertiary)' }}>{v.phone ?? '—'}</td>}
+
+                  {/* ID captured */}
+                  {!paneOpen && (
+                  <td style={TD}>
+                    {v.licenceCaptured ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, color: '#16A34A', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 'var(--r-full)', padding: '3px 8px', whiteSpace: 'nowrap' }}>
+                        <Icon name={ICONS.check} size={10} /> Captured
                       </span>
+                    ) : (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: 500, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-full)', padding: '3px 8px', whiteSpace: 'nowrap' }}>No ID</span>
+                    )}
+                  </td>
+                  )}
 
-                      {/* Phone */}
-                      {v.phone && (
-                        <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          Phone: <strong style={{ color: '#1C1917' }}>{v.phone}</strong>
-                        </span>
-                      )}
-
-                      {/* Person being visited */}
-                      {v.personBeingVisited && (
-                        <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          Visiting: <strong style={{ color: '#1C1917' }}>{v.personBeingVisited}</strong>
-                        </span>
-                      )}
-
-                      {/* Service type for bookings */}
-                      {v.serviceType && (
-                        <span style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-                          {v.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off'}{v.loadType ? ` — ${v.loadType.toUpperCase()}` : ''}
-                        </span>
-                      )}
-
-                      <div style={{ flex: 1 }} />
-
-                      {/* View button */}
-                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                        <button
-                          onClick={e => { e.stopPropagation(); navigate(`/reception/visitors/${v.id}`) }}
-                          style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', border: '1px solid rgba(0,0,0,0.12)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6B7280' }}
-                          title="View details"
-                        >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
+                  {/* Chevron */}
+                  <td style={{ ...TD, textAlign: 'right', color: 'var(--text-tertiary)', opacity: 0.5 }}>›</td>
+                </tr>
               )
             })}
+            </tbody>
+          </table>
           </div>
+          )
+          })()
         )}
       </div>
+
+      {/* Docked detail pane — split view (wide screens) */}
+      {selected && isWide && (
+        <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
+          {selected.type === 'booking' ? (
+            (bookingLoading || !selectedBooking)
+              ? <PaneShell onClose={() => setSelected(null)}><div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 14 }}>Loading booking…</div></PaneShell>
+              : <BookingSlideOver docked booking={selectedBooking} onClose={() => setSelected(null)} onUpdated={() => load()} />
+          ) : (
+            <WalkInPane entry={selected} onClose={() => setSelected(null)} onOpenFull={() => navigate(`/reception/visitors/${selected.id}`)} />
+          )}
+        </div>
+      )}
+      </div>{/* end split row */}
     </div>
     </>
+  )
+}
+
+/* ── Lightweight docked pane shell (matches BookingSlideOver docked look) ── */
+function PaneShell({ title, badge, onClose, children }: { title?: React.ReactNode; badge?: React.ReactNode; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
+      style={{ position: 'relative', height: '100%', width: '100%', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 10px 20px', borderBottom: '1px solid rgba(0,0,0,0.07)', flexShrink: 0, gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>{title}{badge}</div>
+        <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 'var(--r-full)', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+          onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.10)')}
+          onMouseOut={e  => (e.currentTarget.style.background = 'rgba(0,0,0,0.05)')}
+        >
+          <Icon name={ICONS.close} size={16} />
+        </button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', background: '#F5F4F3' }}>{children}</div>
+    </motion.div>
+  )
+}
+
+/* ── Walk-in detail pane (booking rows use BookingSlideOver instead) ── */
+function WalkInPane({ entry, onClose, onOpenFull }: { entry: VisitorEntry; onClose: () => void; onOpenFull: () => void }) {
+  const SL: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }
+  const PANEL: React.CSSProperties = { background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-sm)', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }
+  const RL: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-secondary)' }
+  const RV: React.CSSProperties = { fontSize: 14, fontWeight: 600, color: '#1C1917' }
+  const rows: { label: string; value: string; icon?: string }[] = [
+    { label: 'Visitor',  value: entry.name,                 icon: ICONS.user },
+    { label: 'Phone',    value: entry.phone || '—',         icon: ICONS.phone },
+    { label: 'Purpose',  value: entry.purpose },
+    { label: 'Arrived',  value: entry.arrivedAt ? fmtTime(entry.arrivedAt) : '—', icon: ICONS.clock },
+  ]
+  if (entry.personBeingVisited) rows.push({ label: 'Visiting', value: entry.personBeingVisited, icon: ICONS.users })
+  return (
+    <PaneShell
+      onClose={onClose}
+      title={<span style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', whiteSpace: 'nowrap' }}>{entry.name}</span>}
+      badge={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--r-full)', background: 'rgba(109,40,217,0.08)', color: '#6D28D9', border: '1px solid rgba(109,40,217,0.18)', whiteSpace: 'nowrap' }}>Walk-in</span>}
+    >
+      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <section>
+          <p style={SL}>Visitor Details</p>
+          <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {rows.map(r => (
+              <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={RL}>{r.icon && <Icon name={r.icon} size={13} style={{ color: 'var(--text-secondary)' }} />}{r.label}</span>
+                <span style={RV}>{r.value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section>
+          <p style={SL}>Identification</p>
+          <div style={{ ...PANEL, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={RL}>ID Document</span>
+            {entry.licenceCaptured ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 13, fontWeight: 600, color: '#16A34A', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 'var(--r-full)', padding: '3px 10px' }}>
+                <Icon name={ICONS.check} size={11} /> Captured
+              </span>
+            ) : (
+              <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 500, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-full)', padding: '3px 10px' }}>Not captured</span>
+            )}
+          </div>
+        </section>
+      </div>
+      <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(0,0,0,0.07)', background: '#FFFFFF' }}>
+        <button onClick={onOpenFull}
+          style={{ width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 16px', fontSize: 15, fontWeight: 600, borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit', background: '#fff', color: '#374151', border: '1.5px solid #e5e7eb' }}>
+          Open full record <Icon name={ICONS.arrowRight} size={15} />
+        </button>
+      </div>
+    </PaneShell>
   )
 }

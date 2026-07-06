@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Icon, ICONS } from '@/lib/Icon'
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
 import { KioskProvider, useKiosk } from '@/contexts/KioskContext'
+import type { KioskScreen } from '@/contexts/KioskContext'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import KioskLayout from '@/layouts/KioskLayout'
 import { KioskStepper } from '@/components/kiosk/KioskStepper'
+import { KioskScene3D } from '@/components/kiosk/KioskScene3D'
 import { WelcomeScreen } from '@/components/kiosk/WelcomeScreen'
 import { LookupScreen } from '@/components/kiosk/LookupScreen'
 import { ScanScreen } from '@/components/kiosk/ScanScreen'
@@ -18,6 +21,7 @@ import { SlotPickerScreen } from '@/components/kiosk/SlotPickerScreen'
 import { GlidoLogo } from '@/lib/GlidoLogo'
 import { fetcher, postFetcher } from '@/lib/fetcher'
 import { setToken as setAuthToken } from '@/lib/api-client'
+import { I18nProvider } from '@/lib/i18n'
 
 // ─── Device token auth ────────────────────────────────────────────────────────
 const DEVICE_TOKEN_KEY = 'kiosk_device_token'
@@ -192,9 +196,8 @@ function CheckingScreen() {
 
 // ─── Existing kiosk screens (unchanged) ───────────────────────────────────────
 function ScreensaverScreen() {
-  const { state, wakeFromScreensaver } = useKiosk()
+  const { wakeFromScreensaver } = useKiosk()
   const tenant = useTenantInfo()
-  if (state.currentScreen !== 'screensaver') return null
   return (
     <div
       onClick={wakeFromScreensaver}
@@ -212,22 +215,133 @@ function ScreensaverScreen() {
   )
 }
 
+// Ordinal position of each screen — used only to pick a slide direction
+// (forward vs. back) for the 3D parallax transition between steps.
+const SCREEN_ORDER: Record<KioskScreen, number> = {
+  welcome: 0,
+  lookup: 1, scan: 1, 'slot-picker': 1, confirm: 2, consent: 3, idscan: 4, arrived: 5,
+  purpose: 1, walkin: 2,
+  screensaver: -1,
+}
+
+const parallaxVariants = {
+  enter: (dir: number) => ({ opacity: 0, x: dir >= 0 ? 48 : -48, rotateY: dir >= 0 ? 10 : -10, scale: 0.95 }),
+  center: { opacity: 1, x: 0, rotateY: 0, scale: 1 },
+  exit: (dir: number) => ({ opacity: 0, x: dir >= 0 ? -48 : 48, rotateY: dir >= 0 ? -10 : 10, scale: 0.97 }),
+}
+const fadeVariants = { enter: { opacity: 0 }, center: { opacity: 1 }, exit: { opacity: 0 } }
+
+// Only the active screen is ever mounted — each screen component no longer
+// self-guards against state.currentScreen (see KioskContext consumers), so
+// AnimatePresence can play a real exit animation on the outgoing screen
+// instead of it instantly blanking out when the shared state moves on.
+const SCREEN_ELEMENTS: Record<KioskScreen, React.ReactNode> = {
+  welcome:      <WelcomeScreen />,
+  lookup:       <LookupScreen />,
+  scan:         <ScanScreen />,
+  purpose:      <PurposeScreen />,
+  consent:      <ConsentScreen />,
+  idscan:       <IDScanScreen />,
+  confirm:      <ConfirmScreen />,
+  arrived:      <ArrivedScreen />,
+  walkin:       <WalkInScreen />,
+  'slot-picker': <SlotPickerScreen />,
+  screensaver:  <ScreensaverScreen />,
+}
+
+// ─── Offline / poor-signal banner ─────────────────────────────────────────────
+// Gate kiosks sit exactly where connectivity is worst — surface it instead of a silent hang.
+function useOnlineStatus() {
+  const [online, setOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine))
+  useEffect(() => {
+    const on  = () => setOnline(true)
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+  return online
+}
+
+function OfflineBanner() {
+  const online = useOnlineStatus()
+  const [checking, setChecking] = useState(false)
+  return (
+    <AnimatePresence>
+      {!online && (
+        <motion.div
+          initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -60, opacity: 0 }}
+          transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+          style={{
+            position: 'absolute', top: 0, left: 0, right: 0, zIndex: 50,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+            padding: '10px 20px', background: '#DC2626', color: '#fff',
+            fontSize: 14, fontWeight: 600, boxShadow: '0 2px 12px rgba(0,0,0,0.25)',
+          }}
+        >
+          <Icon name={ICONS.warning} size={16} />
+          No internet connection — check-in will resume once the network is back.
+          <button
+            type="button"
+            onClick={() => { setChecking(true); setTimeout(() => setChecking(false), 900) }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 8, padding: '4px 12px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.12)', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            {checking ? 'Checking…' : 'Retry'}
+          </button>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 function KioskContent() {
+  const { state } = useKiosk()
+  const reduce = useReducedMotion()
+  const prevOrderRef = useRef(SCREEN_ORDER[state.currentScreen])
+  const dirRef = useRef(1)
+
+  const currentOrder = SCREEN_ORDER[state.currentScreen]
+  if (currentOrder !== prevOrderRef.current) {
+    dirRef.current = currentOrder >= prevOrderRef.current ? 1 : -1
+    prevOrderRef.current = currentOrder
+  }
+
+  const showScene = state.currentScreen !== 'screensaver'
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <OfflineBanner />
       <KioskStepper />
-      <div style={{ flex: 1, position: 'relative', overflowY: 'auto', overflowX: 'hidden', minHeight: 0 }}>
-        <WelcomeScreen />
-        <LookupScreen />
-        <ScanScreen />
-        <PurposeScreen />
-        <ConsentScreen />
-        <IDScanScreen />
-        <ConfirmScreen />
-        <ArrivedScreen />
-        <WalkInScreen />
-        <SlotPickerScreen />
-        <ScreensaverScreen />
+      {showScene && (
+        <div style={{ position: 'relative', flexShrink: 0, height: 'clamp(190px, 30vh, 340px)', zIndex: 1 }}>
+          <KioskScene3D screen={state.currentScreen} service={state.lookupResult?.service ?? null} />
+        </div>
+      )}
+      <div style={{
+        flex: 1, position: 'relative', overflowY: 'auto', overflowX: 'hidden', minHeight: 0, perspective: 1400, zIndex: 2,
+        ...(showScene ? {
+          marginTop: -26,
+          borderRadius: '30px 30px 0 0',
+          background: 'rgba(255,255,255,0.74)',
+          backdropFilter: 'blur(20px) saturate(1.25)', WebkitBackdropFilter: 'blur(20px) saturate(1.25)',
+          boxShadow: '0 -2px 24px rgba(15,23,42,0.08), inset 0 1.5px 0 rgba(255,255,255,0.7)',
+          borderTop: '1px solid rgba(255,255,255,0.7)',
+        } : {}),
+      }}>
+        <AnimatePresence mode="wait" initial={false} custom={dirRef.current}>
+          <motion.div
+            key={state.currentScreen}
+            custom={dirRef.current}
+            variants={reduce ? fadeVariants : parallaxVariants}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            style={{ minHeight: '100%' }}
+          >
+            {SCREEN_ELEMENTS[state.currentScreen]}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   )
@@ -248,6 +362,11 @@ export default function KioskPage() {
     const b = parseInt(color.slice(5, 7), 16)
     document.documentElement.style.setProperty('--brand-color', color)
     document.documentElement.style.setProperty('--brand-rgb', `${r},${g},${b}`)
+    // Pick readable text colour for buttons/chips filled with the brand colour
+    const luminance = (0.2126 * (r / 255) ** 2.2 + 0.7152 * (g / 255) ** 2.2 + 0.0722 * (b / 255) ** 2.2)
+    const contrastWithBlack = (luminance + 0.05) / 0.05
+    const contrastWithWhite = 1.05 / (luminance + 0.05)
+    document.documentElement.style.setProperty('--brand-text', contrastWithBlack >= contrastWithWhite ? '#000000' : '#ffffff')
   }, [tenant?.primaryColor])
 
   useEffect(() => {
@@ -276,10 +395,12 @@ export default function KioskPage() {
   if (authStatus === 'setup')    return <DeviceSetupScreen onActivated={() => setAuthStatus('valid')} />
 
   return (
-    <KioskProvider>
-      <KioskLayout>
-        <KioskContent />
-      </KioskLayout>
-    </KioskProvider>
+    <I18nProvider>
+      <KioskProvider>
+        <KioskLayout>
+          <KioskContent />
+        </KioskLayout>
+      </KioskProvider>
+    </I18nProvider>
   )
 }

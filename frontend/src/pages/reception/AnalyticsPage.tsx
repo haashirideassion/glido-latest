@@ -1,9 +1,15 @@
 import { useState, useEffect, useMemo } from 'react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { getBookingsByDateRange } from '@/lib/db/bookings'
+import { getFunnelSummary, type FunnelStepCount } from '@/lib/db/wizard-funnel'
 import type { Booking } from '@/data/types'
 import { todaySydney, TZ } from '@/lib/time'
 import { Icon, ICONS } from '@/lib/Icon'
+
+const FUNNEL_STEP_LABELS: Record<number, string> = {
+  1: 'Slots', 2: 'Service Type', 3: 'Load Type', 4: 'Time Slot',
+  5: 'Details', 6: 'Document', 7: 'Payment',
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -210,8 +216,18 @@ export default function AnalyticsPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo,   setDateTo]   = useState('')
   const [customActive, setCustomActive] = useState(false)
+  const [funnel, setFunnel] = useState<FunnelStepCount[]>([])
+  const [funnelLoading, setFunnelLoading] = useState(true)
 
   const days = PERIODS.find(p => p.key === period)!.days
+
+  useEffect(() => {
+    setFunnelLoading(true)
+    getFunnelSummary(days)
+      .then(setFunnel)
+      .catch(() => setFunnel([]))
+      .finally(() => setFunnelLoading(false))
+  }, [days])
 
   const loadPeriod = (d: number) => {
     setLoading(true)
@@ -391,7 +407,7 @@ export default function AnalyticsPage() {
               const v = vals[i]
               return (
                 <div key={t.key}
-                  style={{ flex: 1, minWidth: 0, padding: '22px 26px', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
+                  style={{ flex: 1, minWidth: 0, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
                   onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
                   onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
                 >
@@ -401,7 +417,7 @@ export default function AnalyticsPage() {
                     </div>
                     <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</p>
                   </div>
-                  <p style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{v.value}</p>
+                  <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{v.value}</p>
                   {v.delta != null
                     ? <p style={{ fontSize: 14, fontWeight: 600, color: v.deltaUp ? '#16A34A' : '#DC2626', margin: 0 }}>{v.deltaUp ? '↑' : '↓'} {v.delta} vs prev period</p>
                     : <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.sub}</p>
@@ -477,6 +493,31 @@ export default function AnalyticsPage() {
             )
           }
         </div>
+      </div>
+
+      {/* Booking wizard funnel — where guests actually drop off */}
+      <div style={CARD}>
+        <p style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: '0 0 4px' }}>Booking Funnel</p>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 20px' }}>
+          Sessions that reached each wizard step — {periodLabel.toLowerCase()}
+        </p>
+        {funnelLoading ? (
+          <div style={{ height: 140, background: '#F8FAFC', borderRadius: 'var(--r-sm)', animation: 'pulse 1.5s ease-in-out infinite' }} />
+        ) : funnel.length === 0 ? (
+          <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0 }}>No wizard activity in this period yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {(() => {
+              const entrySessions = funnel.find(f => f.step === 1)?.sessions ?? Math.max(...funnel.map(f => f.sessions), 1)
+              return [1, 2, 3, 4, 5, 6, 7].map(step => {
+                const sessions = funnel.find(f => f.step === step)?.sessions ?? 0
+                return (
+                  <BarRow key={step} label={`${step}. ${FUNNEL_STEP_LABELS[step]}`} value={sessions} total={entrySessions} color="var(--brand-color)" />
+                )
+              })
+            })()}
+          </div>
+        )}
       </div>
 
     </div>

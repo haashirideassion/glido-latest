@@ -29,8 +29,6 @@ export function WalkInScreen() {
   const [phoneError, setPhoneError] = useState('')
   const [agreed, setAgreed] = useState(false)
 
-  if (state.currentScreen !== 'walkin') return null
-
   type WalkInField = 'walkInPurpose' | 'walkInName' | 'walkInPhone' | 'walkInVehicle' | 'walkInBLRef' | 'walkInPersonVisited' | 'walkInReason'
   const set = (field: WalkInField, value: string) =>
     dispatch({ type: 'SET_WALK_IN_FIELD', field: field as any, value })

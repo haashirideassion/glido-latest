@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useWizard } from '@/contexts/WizardContext'
 import fclImg     from '@/assets/fcl.png'
 import lclImg     from '@/assets/lcl.png'
@@ -27,9 +27,17 @@ export function Step3HoldConfirm() {
 
   const multi = state.slotCount > 1
 
-  // Start on the first slot that hasn't been filled yet
-  const firstIncomplete = state.slotConfigs.findIndex(c => !c.loadType)
-  const [activeSlot, setActiveSlot] = useState(firstIncomplete === -1 ? 0 : firstIncomplete)
+  // Tab state for multi-slot — lifted into WizardState so the 3D scene can focus on the slot being edited
+  const activeSlot = state.step3ActiveSlot ?? 0
+  const setActiveSlot = (i: number) => dispatch({ type: 'SET', field: 'step3ActiveSlot', value: i })
+
+  // Start on the first slot that hasn't been filled yet (only on first visit)
+  useEffect(() => {
+    if (state.step3ActiveSlot === 0) {
+      const firstIncomplete = state.slotConfigs.findIndex(c => !c.loadType)
+      if (firstIncomplete > 0) setActiveSlot(firstIncomplete)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setLoad = (slotIndex: number, v: 'fcl' | 'lcl') =>
     dispatch({ type: 'SET_SLOT_CONFIG', slotIndex, field: 'loadType', value: v })
@@ -115,6 +123,26 @@ export function Step3HoldConfirm() {
         </div>
       )}
 
+      {/* Copy from the previous slot — quick fill for repetitive multi-slot bookings */}
+      {multi && !applyAll && activeSlot > 0 && state.slotConfigs[activeSlot - 1]?.loadType && (
+        <button
+          type="button"
+          onClick={() => setLoad(activeCfg.index, state.slotConfigs[activeSlot - 1].loadType as 'fcl' | 'lcl')}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600,
+            color: 'var(--brand-color)', background: 'rgba(var(--brand-rgb),0.06)',
+            border: '1px solid rgba(var(--brand-rgb),0.18)', borderRadius: 999, padding: '6px 14px',
+            marginBottom: 16, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M3 10.5V3.5C3 2.9 3.4 2.5 4 2.5H10.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Copy from Slot {activeSlot}
+        </button>
+      )}
+
       {/* Cards — single slot view */}
       <style>{`@keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`}</style>
       <div key={activeSlot} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24, animation: 'slideInFromRight 0.22s ease forwards' }}>
@@ -186,13 +214,13 @@ function LoadCard({ selected, onClick, icon, label, sub, bullets }: {
     <button
       type="button"
       onClick={onClick}
+      className={`wiz-tile${selected ? ' selected' : ''}`}
       style={{
         position: 'relative',
         display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-        padding: '20px 18px 18px', borderRadius: 'var(--r-lg)',
-        border: selected ? '2px solid var(--brand-color, #FC6514)' : '1.5px solid rgba(0,0,0,0.08)',
-        background: selected ? 'rgba(var(--brand-rgb),0.04)' : '#fff',
-        cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s ease',
+        padding: '20px 18px 18px',
+        border: selected ? '2px solid var(--brand-color, #FC6514)' : undefined,
+        cursor: 'pointer', textAlign: 'left',
         width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none',
       }}
     >
@@ -200,7 +228,8 @@ function LoadCard({ selected, onClick, icon, label, sub, bullets }: {
         <div style={{
           position: 'absolute', top: 12, right: 12,
           width: 20, height: 20, borderRadius: 'var(--r-full)',
-          background: 'var(--brand-color, #FC6514)',
+          background: 'linear-gradient(160deg, color-mix(in srgb, var(--brand-color) 88%, #fff), var(--brand-color))',
+          boxShadow: '0 2px 5px rgba(var(--brand-rgb),0.4), inset 0 1px 0 rgba(255,255,255,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
@@ -212,8 +241,13 @@ function LoadCard({ selected, onClick, icon, label, sub, bullets }: {
         width: 112, height: 112, borderRadius: 'var(--r-xl)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         marginBottom: 14, flexShrink: 0,
-        background: selected ? 'rgba(var(--brand-rgb),0.8)' : '#F3F4F6',
+        background: selected
+          ? 'linear-gradient(160deg, color-mix(in srgb, var(--brand-color) 88%, #fff) 0%, var(--brand-color) 60%, color-mix(in srgb, var(--brand-color) 78%, #000) 100%)'
+          : 'linear-gradient(160deg, #F7F6F5 0%, #ECEBE9 100%)',
         color: selected ? '#fff' : '#6B7280', transition: 'all 0.15s ease',
+        boxShadow: selected
+          ? '0 2px 4px rgba(0,0,0,0.10), 0 6px 16px rgba(var(--brand-rgb),0.30), inset 0 1.5px 0 rgba(255,255,255,0.45), inset 0 -2px 4px rgba(0,0,0,0.12)'
+          : 'inset 0 1.5px 3px rgba(0,0,0,0.06), 0 1px 1px rgba(255,255,255,0.8)',
       }}>
         {icon}
       </div>

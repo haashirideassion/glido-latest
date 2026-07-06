@@ -1,48 +1,29 @@
 import { useState } from 'react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { motion, useReducedMotion } from 'motion/react'
 import { Icon, ICONS } from '@/lib/Icon'
+import { GlidoLogo } from '@/lib/GlidoLogo'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from '@/lib/toast'
+import loginBgImg from '@/assets/login-bg.webp'
 
 const FIELD: React.CSSProperties = {
-  width: '100%', padding: '11px 14px', fontSize: 15, color: '#1C1917',
-  background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)',
+  width: '100%', padding: '11px 14px', fontSize: 15, color: '#fff',
+  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 'var(--r-sm)',
   outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
 }
 const LABEL: React.CSSProperties = {
-  display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)',
+  display: 'block', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.45)',
   letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 8,
 }
 const focus = (e: React.FocusEvent<HTMLInputElement>) => {
-  e.target.style.borderColor = 'rgba(var(--brand-rgb),0.50)'
-  e.target.style.boxShadow   = '0 0 0 3px rgba(var(--brand-rgb),0.12)'
+  e.target.style.borderColor = 'rgba(var(--brand-rgb),0.55)'
+  e.target.style.boxShadow   = '0 0 0 3px rgba(var(--brand-rgb),0.18)'
 }
 const blur = (e: React.FocusEvent<HTMLInputElement>) => {
-  e.target.style.borderColor = 'rgba(0,0,0,0.10)'
+  e.target.style.borderColor = 'rgba(255,255,255,0.14)'
   e.target.style.boxShadow   = 'none'
-}
-
-function GridSvg({ side }: { side: 'left' | 'right' }) {
-  return (
-    <svg width="497" height="418" viewBox="0 0 497 418" fill="none" xmlns="http://www.w3.org/2000/svg"
-      style={{ position: 'absolute', [side]: 0, top: '50%', transform: 'translateY(-50%)' }}>
-      <g opacity="0.22">
-        <line x1="495.384" y1="0.5" x2="-157" y2="0.499964" stroke="black"/>
-        <line x1="495.384" y1="84.1426" x2="-157" y2="84.1425" stroke="black"/>
-        <line x1="29.8955" y1="2.18557e-08" x2="29.8955" y2="417" stroke="black"/>
-        <line x1="495.384" y1="167.785" x2="-157" y2="167.785" stroke="black"/>
-        <line x1="123.093" y1="2.18557e-08" x2="123.093" y2="417" stroke="black"/>
-        <line x1="495.384" y1="251.427" x2="-157" y2="251.427" stroke="black"/>
-        <line x1="216.291" y1="2.18557e-08" x2="216.291" y2="417" stroke="black"/>
-        <line x1="495.384" y1="333.858" x2="-157" y2="333.858" stroke="black"/>
-        <line x1="309.489" y1="2.18557e-08" x2="309.489" y2="417" stroke="black"/>
-        <line x1="495.384" y1="417.5" x2="-157" y2="417.5" stroke="black"/>
-        <line x1="402.686" y1="2.18557e-08" x2="402.686" y2="417" stroke="black"/>
-        <line x1="495.884" y1="2.18557e-08" x2="495.884" y2="417" stroke="black"/>
-      </g>
-    </svg>
-  )
 }
 
 export default function VisitorLoginPage() {
@@ -145,36 +126,54 @@ export default function VisitorLoginPage() {
   const PILL_BTN = (active: boolean): React.CSSProperties => ({
     flex: 1, padding: '9px 16px', fontSize: 15, fontWeight: 600, border: 'none',
     cursor: 'pointer', transition: 'all 0.18s ease', borderRadius: 'var(--r-full)',
-    background: active ? '#fff' : 'transparent',
-    color: active ? '#1C1917' : '#78716C',
-    boxShadow: active ? '0 1px 5px rgba(0,0,0,0.12)' : 'none',
+    background: active ? 'rgba(255,255,255,0.14)' : 'transparent',
+    color: active ? '#fff' : 'rgba(255,255,255,0.45)',
+    boxShadow: active ? '0 1px 5px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.12)' : 'none',
   })
 
+  const reduce = useReducedMotion()
+
   return (
-    <div style={{ minHeight: 'calc(100vh - 56px - 64px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', background: 'linear-gradient(120deg, rgba(var(--brand-rgb),0.06) 0%, rgba(var(--brand-rgb),0.02) 35%, rgba(255,255,255,0) 70%), #fff', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', position: 'relative', overflowY: 'auto', overflowX: 'hidden', background: '#0B0A0F' }}>
 
-      {/* Grid patterns */}
-      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 380, pointerEvents: 'none', zIndex: 0, WebkitMaskImage: 'linear-gradient(to right,rgba(0,0,0,0.30) 0%,rgba(0,0,0,0.10) 100%)', maskImage: 'linear-gradient(to right,rgba(0,0,0,0.30) 0%,rgba(0,0,0,0.10) 100%)' }}>
-        <GridSvg side="left" />
-      </div>
-      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 380, pointerEvents: 'none', zIndex: 0, WebkitMaskImage: 'linear-gradient(to left,rgba(0,0,0,0.30) 0%,rgba(0,0,0,0.10) 100%)', maskImage: 'linear-gradient(to left,rgba(0,0,0,0.30) 0%,rgba(0,0,0,0.10) 100%)' }}>
-        <GridSvg side="right" />
+      {/* ── Full-screen photo background ── */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${loginBgImg})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(8,10,14,0.75) 0%, rgba(8,10,14,0.55) 45%, rgba(8,10,14,0.80) 100%)' }} />
+        {/* Ambient brand glow, top-centre — anchors the logo */}
+        <div style={{ position: 'absolute', top: '-12%', left: '50%', transform: 'translateX(-50%)', width: '70%', height: '45%', background: 'radial-gradient(ellipse, rgba(var(--brand-rgb),0.22), transparent 70%)', filter: 'blur(50px)', pointerEvents: 'none' }} />
       </div>
 
-      <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 420 }}>
-        <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-xl)', padding: '28px 36px', boxShadow: '0 2px 8px rgba(0,0,0,0.04),0 16px 48px rgba(0,0,0,0.09)' }}>
+      {/* Floating brand mark, top-centre — flows above the card so a taller signup form pushes it up together, never overlaps */}
+      <motion.div
+        initial={reduce ? undefined : { opacity: 0, y: -16 }}
+        animate={reduce ? undefined : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        style={{ position: 'relative', zIndex: 1, marginBottom: 32, flexShrink: 0 }}
+      >
+        <GlidoLogo height={22} onDark />
+      </motion.div>
+
+      <motion.div
+        initial={reduce ? undefined : { opacity: 0, y: 24, scale: 0.98 }}
+        animate={reduce ? undefined : { opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+        style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: 420, flexShrink: 0 }}
+      >
+        <div style={{
+          background: 'rgba(255,255,255,0.06)', backdropFilter: 'blur(28px) saturate(160%)', WebkitBackdropFilter: 'blur(28px) saturate(160%)',
+          border: '1px solid rgba(255,255,255,0.12)', borderRadius: 'var(--r-xl)', padding: '28px 36px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.20), 0 24px 70px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.10)',
+        }}>
 
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ width: 52, height: 52, borderRadius: 'var(--r-md)', background: 'var(--brand-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px', boxShadow: '0 4px 14px rgba(var(--brand-rgb),0.38)' }}>
-              <Icon name={ICONS.users} size={24} style={{ color: 'var(--brand-text)' }} />
-            </div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.03em', marginBottom: 5 }}>Sign in to Glido</h1>
-            <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.6 }}>Book and manage your visits</p>
+            <h1 style={{ fontSize: 21, fontWeight: 700, color: '#fff', letterSpacing: '-0.03em', marginBottom: 5 }}>Sign in to Glido</h1>
+            <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>Book and manage your visits</p>
           </div>
 
           {/* Tab switcher */}
-          <div style={{ display: 'flex', gap: 3, background: '#ECEAE8', borderRadius: 'var(--r-full)', padding: 3, marginBottom: 20 }}>
+          <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 'var(--r-full)', padding: 3, marginBottom: 20 }}>
             <button type="button" onClick={() => setTab('signin')} style={PILL_BTN(tab === 'signin')}>Sign In</button>
             <button type="button" onClick={() => setTab('signup')} style={PILL_BTN(tab === 'signup')}>Create Account</button>
           </div>
@@ -198,7 +197,7 @@ export default function VisitorLoginPage() {
               <SubmitBtn loading={isSubmitting}>Sign In →</SubmitBtn>
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, flexWrap: 'wrap', gap: 8 }}>
-                <span style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Forgot your password?</span>
+                <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.40)' }}>Forgot your password?</span>
                 <button type="button" onClick={() => setTab('signup')} style={{ fontSize: 14, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                   Create an account instead
                 </button>
@@ -226,7 +225,7 @@ export default function VisitorLoginPage() {
               </div>
 
               <div>
-                <label style={LABEL}>Phone <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 10, color: 'var(--text-tertiary)' }}>(optional)</span></label>
+                <label style={LABEL}>Phone <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>(optional)</span></label>
                 <input type="tel" value={suPhone} onChange={e => setSuPhone(e.target.value)} placeholder="+61 4XX XXX XXX" style={FIELD} onFocus={focus} onBlur={blur} />
               </div>
 
@@ -252,7 +251,7 @@ export default function VisitorLoginPage() {
               </div>
 
               <div>
-                <label style={LABEL}>Company <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 10, color: 'var(--text-tertiary)' }}>(optional)</span></label>
+                <label style={LABEL}>Company <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>(optional)</span></label>
                 <input type="text" value={suCompany} onChange={e => setSuCompany(e.target.value)} placeholder="Transport Co., Freight Forwarders…" style={FIELD} onFocus={focus} onBlur={blur} />
               </div>
 
@@ -262,21 +261,21 @@ export default function VisitorLoginPage() {
 
           {/* Divider + Guest */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 24 }}>
-            <div style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.08)' }} />
-            <span style={{ fontSize: 14, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>or</span>
-            <div style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.08)' }} />
+            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.10)' }} />
+            <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.40)', whiteSpace: 'nowrap' }}>or</span>
+            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.10)' }} />
           </div>
-          <Link to={redirect} style={{ display: 'block', marginTop: 12, width: '100%', padding: 12, fontSize: 15, fontWeight: 600, color: 'var(--text-secondary)', background: '#fff', border: '1.5px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-md)', textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s ease,color 0.15s ease' }}
-            onMouseOver={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.28)'; e.currentTarget.style.color = '#1C1917' }}
-            onMouseOut={e  => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.12)'; e.currentTarget.style.color = '#78716C' }}
+          <Link to={redirect} style={{ display: 'block', marginTop: 12, width: '100%', padding: 12, fontSize: 15, fontWeight: 600, color: 'rgba(255,255,255,0.65)', background: 'rgba(255,255,255,0.05)', border: '1.5px solid rgba(255,255,255,0.14)', borderRadius: 'var(--r-md)', textAlign: 'center', textDecoration: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s ease,color 0.15s ease,background 0.15s ease' }}
+            onMouseOver={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.30)'; e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.09)' }}
+            onMouseOut={e  => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
           >Continue as Guest</Link>
 
-          <p style={{ textAlign: 'center', fontSize: 14, color: 'var(--text-tertiary)', marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+          <p style={{ textAlign: 'center', fontSize: 14, color: 'rgba(255,255,255,0.35)', marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             Reception staff?{' '}
-            <Link to="/login" style={{ color: 'var(--text-secondary)', textDecoration: 'underline', fontWeight: 500 }}>Sign in here</Link>
+            <Link to="/login" style={{ color: 'rgba(255,255,255,0.65)', textDecoration: 'underline', fontWeight: 500 }}>Sign in here</Link>
           </p>
         </div>
-      </div>
+      </motion.div>
     </div>
   )
 }

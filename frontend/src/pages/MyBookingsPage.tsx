@@ -109,7 +109,7 @@ export default function MyBookingsPage() {
   // ── Logged in or searching ──
   return (
     <div style={{ padding: '40px 24px 64px' }}>
-      <div style={{ maxWidth: 640, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1080, margin: '0 auto' }}>
 
         <div style={{ marginBottom: 28 }}>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.03em', marginBottom: 4 }}>My Bookings</h1>
