@@ -464,7 +464,7 @@ export default function WalkInsPage() {
           {selected.type === 'booking' ? (
             (bookingLoading || !selectedBooking)
               ? <PaneShell onClose={() => setSelected(null)}><div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 14 }}>Loading booking…</div></PaneShell>
-              : <BookingSlideOver docked booking={selectedBooking} onClose={() => setSelected(null)} onUpdated={() => load()} />
+              : <BookingSlideOver key={selectedBooking.id} docked booking={selectedBooking} perms={perms} onClose={() => setSelected(null)} onUpdated={() => load()} />
           ) : (
             <WalkInPane entry={selected} onClose={() => setSelected(null)} onOpenFull={() => navigate(`/reception/visitors/${selected.id}`)} />
           )}

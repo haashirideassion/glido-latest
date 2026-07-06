@@ -350,7 +350,7 @@ export default function BookingsPage() {
       await cancelBooking(cancelTarget.id)
       toast('Booking cancelled', 'success')
       setCancelTarget(null)
-      load()
+      load({ silent: true })
     } catch {
       toast('Failed to cancel. Please try again.', 'error')
     } finally {
@@ -364,7 +364,7 @@ export default function BookingsPage() {
     try {
       await checkInBooking(b.id)
       toast('Marked as pre-processed', 'success')
-      load()
+      load({ silent: true })
     } catch { toast('Failed to update status', 'error') }
     finally { setActionLoading(prev => { const n = { ...prev }; delete n[b.id]; return n }) }
   }
@@ -375,14 +375,14 @@ export default function BookingsPage() {
     try {
       await completeBooking(b.id)
       toast('Booking completed', 'success')
-      load()
+      load({ silent: true })
     } catch { toast('Failed to update status', 'error') }
     finally { setActionLoading(prev => { const n = { ...prev }; delete n[b.id]; return n }) }
   }
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setKpiLoading(true)
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false
+    if (!silent) { setLoading(true); setKpiLoading(true) }
     setLiveColor('#FBBF24')
     try {
       // ── Current period ──────────────────────────────────────────────────────
@@ -410,8 +410,7 @@ export default function BookingsPage() {
     } catch {
       setLiveColor('#EF4444')
     } finally {
-      setLoading(false)
-      setKpiLoading(false)
+      if (!silent) { setLoading(false); setKpiLoading(false) }
     }
   }, [dateFrom, dateTo])
 
@@ -419,8 +418,10 @@ export default function BookingsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [load, location.key])
   useEffect(() => { setPage(1) }, [statusFilter, serviceFilter, search, dateFrom, dateTo])
+  // Background refresh — silent so it doesn't flash the whole table/KPIs back to
+  // skeletons every 15s (staff perceived that as the page randomly "reloading")
   useEffect(() => {
-    const id = setInterval(load, 15000)
+    const id = setInterval(() => load({ silent: true }), 15000)
     return () => clearInterval(id)
   }, [load])
 
@@ -471,7 +472,7 @@ export default function BookingsPage() {
       await Promise.all(targets.map(b => checkInBooking(b.id)))
       toast(`${targets.length} booking${targets.length !== 1 ? 's' : ''} marked pre-processed`, 'success')
       clearSelection()
-      load()
+      load({ silent: true })
     } catch {
       toast('Some bookings could not be updated', 'error')
     } finally {
@@ -832,7 +833,7 @@ export default function BookingsPage() {
       {/* Docked detail pane — Apple-Mail split view (wide screens) */}
       {selected && isWide && (
         <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
-          <BookingSlideOver docked booking={selected} onClose={() => setSelected(null)} onUpdated={onBookingUpdated} />
+          <BookingSlideOver key={selected.id} docked booking={selected} perms={perms} onClose={() => setSelected(null)} onUpdated={onBookingUpdated} />
         </div>
       )}
       </div>{/* end split row */}
@@ -840,7 +841,7 @@ export default function BookingsPage() {
 
     {/* Detail overlay — narrow screens */}
     {selected && !isWide && (
-      <BookingSlideOver booking={selected} onClose={() => setSelected(null)} onUpdated={onBookingUpdated} />
+      <BookingSlideOver key={selected.id} booking={selected} perms={perms} onClose={() => setSelected(null)} onUpdated={onBookingUpdated} />
     )}
 
     {/* Cancel confirmation modal */}

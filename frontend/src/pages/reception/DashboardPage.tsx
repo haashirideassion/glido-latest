@@ -7,6 +7,7 @@ import { BookingSlideOver } from '@/components/reception/BookingSlideOver'
 import { getDashboardStats, getBookingsByDate } from '@/lib/db/bookings'
 import { getTenant } from '@/lib/db/tenants'
 import { toast } from '@/lib/toast'
+import { useStaffPermissions } from '@/lib/useStaffPermissions'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { todaySydney } from '@/lib/time'
 import type { DashboardStats, Booking } from '@/data/types'
@@ -22,6 +23,7 @@ const EMPTY_STATS: DashboardStats = {
 export default function DashboardPage() {
   usePageTitle('Glido | Dashboard')
   const today = todaySydney()
+  const perms = useStaffPermissions()
 
   const [stats,           setStats]           = useState<DashboardStats>(EMPTY_STATS)
   const [bookings,        setBookings]        = useState<Booking[]>([])
@@ -135,12 +137,12 @@ export default function DashboardPage() {
       {/* Docked detail pane — split view (wide screens) */}
       {selected && isWide && (
         <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
-          <BookingSlideOver docked booking={selected} onClose={() => setSelected(null)} onUpdated={() => refresh()} />
+          <BookingSlideOver key={selected.id} docked booking={selected} perms={perms} onClose={() => setSelected(null)} onUpdated={() => refresh()} />
         </div>
       )}
       {/* Detail overlay — narrow screens */}
       {selected && !isWide && (
-        <BookingSlideOver booking={selected} onClose={() => setSelected(null)} onUpdated={() => refresh()} />
+        <BookingSlideOver key={selected.id} booking={selected} perms={perms} onClose={() => setSelected(null)} onUpdated={() => refresh()} />
       )}
     </div>
   )

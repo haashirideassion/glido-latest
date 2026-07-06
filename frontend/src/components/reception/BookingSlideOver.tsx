@@ -8,7 +8,7 @@ import {
   rescheduleBooking, refreshIcsStatus,
 } from '@/lib/db/bookings'
 import type { Booking } from '@/data/types'
-import { useStaffPermissions } from '@/lib/useStaffPermissions'
+import type { StaffPermissions } from '@/lib/useStaffPermissions'
 
 const ICS_BADGE: Record<string, string> = {
   cleared:     'background:rgba(34,197,94,0.10);color:#16A34A;border:1px solid rgba(34,197,94,0.22);',
@@ -38,12 +38,14 @@ interface Props {
   onUpdated: (b: Booking) => void
   /** When true, render inline as a docked split-pane (no fixed positioning, no backdrop). */
   docked?: boolean
+  /** Hoisted from the parent page — this panel remounts (via `key`) on every row switch,
+   *  so calling useStaffPermissions() in here would re-fetch tenant permissions on every click. */
+  perms: StaffPermissions
 }
 
-export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked = false }: Props) {
+export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked = false, perms }: Props) {
   const [b, setB] = useState<Booking>(initial)
   const [loading, setLoading] = useState('')
-  const perms = useStaffPermissions()
 
   // Modal state
   const [confirmModal,    setConfirmModal]    = useState(false)
