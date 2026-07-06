@@ -137,6 +137,8 @@ export default function BookingDetailPage() {
   useEffect(() => {
     if (!id && !groupRef) return
     setLoading(true)
+    setBookingDocs([])
+    setCheckinRecord(null)
 
     const loadBooking = groupRef
       // Group route: load all slots by group_reference
@@ -176,7 +178,7 @@ export default function BookingDetailPage() {
     loadBooking
       .catch((err) => { console.error('[BookingDetailPage] load failed:', err); setB(null) })
       .finally(() => setLoading(false))
-  }, [id])
+  }, [id, groupRef])
 
   const act = async (label: string, fn: () => Promise<Booking | undefined>, msg: string, type: 'success' | 'info' | 'error' = 'success') => {
     setActing(label)
@@ -615,7 +617,7 @@ export default function BookingDetailPage() {
                                 <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>Documents</p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                   {slotDocs.map((doc: any) => {
-                                    const publicUrl = `/api/uploads/booking-documents/${doc.storage_path}`
+                                    const docKey = doc.storage_path
                                     return (
                                       <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: '#F7F6F5', borderRadius: 'var(--r-sm)', padding: '10px 14px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
