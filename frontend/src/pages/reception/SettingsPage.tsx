@@ -457,6 +457,7 @@ export default function SettingsPage() {
   const [generalLoading,  setGeneralLoading]  = useState(true)
   const [generalSaving,   setGeneralSaving]   = useState(false)
   const [logoUploading,   setLogoUploading]   = useState(false)
+  const [logoErr,         setLogoErr]         = useState(false)
 
   // Payment state
   const [eft,             setEft]             = useState({ bankName: '', accountName: '', bsb: '', accountNumber: '' })
@@ -621,6 +622,7 @@ export default function SettingsPage() {
       const logoUrl = json?.data?.url ?? json?.url
       if (!logoUrl) throw new Error('No URL returned')
       logoJustUploaded.current = true
+      setLogoErr(false)
       setGeneral(g => ({ ...g, logoUrl }))
       await updateTenant(DEFAULT_TENANT_ID, { logo_url: logoUrl })
       toast('Logo uploaded', 'success')
@@ -1343,7 +1345,7 @@ export default function SettingsPage() {
   }, [rrLoc.hash, rrLoc.key, tab]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: 84 }}>
 
       {/* ── Working Hours (General group, rendered after Business Profile) ── */}
       {tab === 'General' && (
@@ -1580,8 +1582,11 @@ export default function SettingsPage() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="Logo">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {general.logoUrl && (
-                          <img src={`${general.logoUrl}?t=${Date.now()}`} alt="Logo" style={{ height: 48, objectFit: 'contain', maxWidth: 160, borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.08)', background: '#f9fafb' }} />
+                        {general.logoUrl && !logoErr && (
+                          <img src={general.logoUrl} alt="Logo" onError={() => setLogoErr(true)} style={{ height: 48, objectFit: 'contain', maxWidth: 160, borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.08)', background: '#f9fafb' }} />
+                        )}
+                        {general.logoUrl && logoErr && (
+                          <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0 }}>Logo failed to load — try uploading again.</p>
                         )}
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 15, fontWeight: 600, color: '#374151', background: '#FFFFFF', border: '1px solid #E2E0DD', borderRadius: 'var(--r-full)', cursor: logoUploading ? 'not-allowed' : 'pointer', opacity: logoUploading ? 0.6 : 1, alignSelf: 'flex-start' }}>
                           {logoUploading ? 'Uploading…' : general.logoUrl ? 'Change Logo' : 'Upload Logo'}

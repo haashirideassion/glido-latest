@@ -128,13 +128,14 @@ export default function BookingWizard() {
         .wizard-stepper-btn:disabled { opacity: 0.35; cursor: not-allowed; }
         .btn-primary {
           display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px;
-          font-size: 13px; font-weight: 600; color: #000000;
-          background: var(--brand-color);
+          font-size: 13px; font-weight: 600; color: var(--brand-text, #000000);
+          background: linear-gradient(160deg, color-mix(in srgb, var(--brand-color) 90%, #fff) 0%, var(--brand-color) 60%, color-mix(in srgb, var(--brand-color) 82%, #000) 100%);
           border: none; border-radius: 9999px; cursor: pointer;
-          box-shadow: 0 2px 8px rgba(var(--brand-rgb),0.35); transition: all 0.18s ease;
-          font-family: inherit;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.08), 0 4px 12px rgba(var(--brand-rgb),0.35), inset 0 1.5px 0 rgba(255,255,255,0.45), inset 0 -2px 3px rgba(0,0,0,0.10);
+          transition: all 0.18s ease; font-family: inherit;
         }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(var(--brand-rgb),0.42); }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0,0,0,0.10), 0 8px 20px rgba(var(--brand-rgb),0.42), inset 0 1.5px 0 rgba(255,255,255,0.5), inset 0 -2px 3px rgba(0,0,0,0.10); }
+        .btn-primary:active { transform: translateY(0); }
         .btn-dark {
           display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px;
           font-size: 13px; font-weight: 600; color: #fff; background: #1C1917;
@@ -216,12 +217,26 @@ export default function BookingWizard() {
                   <div key={`conn-${n}`} className="wiz-conn" style={{ flex: 1, height: 2, marginTop: 27, minWidth: 8, borderRadius: 'var(--r-xs)', transition: 'background 0.3s ease', background: connBg }} />
                 )
 
+                const filled = done || active
                 els.push(
                   <div key={`step-${n}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                    <div className="wiz-step-circle" style={{ border: `2.5px solid ${done || active ? 'var(--brand-color)' : '#C2C2C2'}`, color: done || active ? 'var(--brand-color)' : '#C2C2C2', background: '#fff' }}>
-                      <Icon name={ctx.icon} size={24} />
+                    <div
+                      className="wiz-step-circle"
+                      style={filled ? {
+                        border: 'none', color: 'var(--brand-text)',
+                        background: 'linear-gradient(160deg, color-mix(in srgb, var(--brand-color) 88%, #fff) 0%, var(--brand-color) 55%, color-mix(in srgb, var(--brand-color) 80%, #000) 100%)',
+                        boxShadow: active
+                          ? '0 2px 3px rgba(0,0,0,0.10), 0 8px 18px rgba(var(--brand-rgb),0.38), inset 0 1.5px 0 rgba(255,255,255,0.55), inset 0 -2px 4px rgba(0,0,0,0.14), 0 0 0 6px rgba(var(--brand-rgb),0.14)'
+                          : '0 1px 2px rgba(0,0,0,0.08), 0 4px 10px rgba(var(--brand-rgb),0.22), inset 0 1.5px 0 rgba(255,255,255,0.5), inset 0 -2px 4px rgba(0,0,0,0.12)',
+                      } : {
+                        border: '1.5px solid rgba(0,0,0,0.08)', color: '#B0AEAC',
+                        background: 'linear-gradient(160deg, #FFFFFF 0%, #F3F2F1 100%)',
+                        boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.07), 0 1px 1px rgba(255,255,255,0.9)',
+                      }}
+                    >
+                      <Icon name={ctx.icon} size={22} />
                     </div>
-                    <span className="wiz-step-label" style={{ fontSize: 15, fontWeight: active ? 700 : 400, color: active || done ? '#101010' : '#605F5F', whiteSpace: 'nowrap', transition: 'all 0.25s ease' }}>
+                    <span className="wiz-step-label" style={{ fontSize: 14, fontWeight: active ? 700 : 400, color: active || done ? '#101010' : '#605F5F', whiteSpace: 'nowrap', transition: 'all 0.25s ease' }}>
                       {ctx.shortLabel}
                     </span>
                   </div>

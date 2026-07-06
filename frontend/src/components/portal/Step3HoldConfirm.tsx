@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { motion } from 'motion/react'
 import { useWizard } from '@/contexts/WizardContext'
 import fclImg     from '@/assets/fcl.png'
 import lclImg     from '@/assets/lcl.png'
@@ -91,33 +92,42 @@ export function Step3HoldConfirm() {
 
       {/* Tab bar — only when multi and not applyAll */}
       {multi && !applyAll && (
-        <div style={{ display: 'flex', borderBottom: '2px solid #F3F4F6', marginBottom: 24, gap: 0 }}>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
           {state.slotConfigs.map((cfg, i) => {
             const done = !!cfg.loadType
             const active = activeSlot === i
             return (
-              <button
+              <motion.button
                 key={i}
                 type="button"
                 onClick={() => setActiveSlot(i)}
+                whileTap={{ scale: 0.97 }}
                 style={{
-                  padding: '10px 24px', fontSize: 15,
+                  position: 'relative', padding: '9px 18px', fontSize: 15,
                   fontWeight: active ? 700 : 500,
                   color: active ? 'var(--brand-color, #FC6514)' : '#6B7280',
-                  background: 'none', border: 'none',
-                  borderBottom: active ? '2px solid var(--brand-color, #FC6514)' : '2px solid transparent',
-                  marginBottom: -2, cursor: 'pointer',
+                  background: 'transparent', border: 'none', borderRadius: 'var(--r-sm)',
+                  cursor: 'pointer', flexShrink: 0,
                   display: 'inline-flex', alignItems: 'center', gap: 8,
-                  transition: 'all 0.15s', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                  transition: 'color 0.2s', fontFamily: 'inherit', whiteSpace: 'nowrap',
                 }}
               >
-                {done && (
-                  <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
-                    <path d="M1 5L4.5 8.5L11 1" stroke="#16A34A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                {active && (
+                  <motion.span
+                    layoutId="slot3-tab-pill"
+                    transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                    style={{ position: 'absolute', inset: 0, borderRadius: 'var(--r-sm)', zIndex: 0, background: 'linear-gradient(160deg, #FFFFFF 0%, #FAFAF9 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.10), inset 0 1.5px 0 rgba(255,255,255,0.9)' }}
+                  />
                 )}
-                Slot {i + 1}
-              </button>
+                <span style={{ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {done && (
+                    <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                      <path d="M1 5L4.5 8.5L11 1" stroke="#16A34A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                  Slot {i + 1}
+                </span>
+              </motion.button>
             )
           })}
         </div>

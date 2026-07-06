@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
 import { useWizard } from '@/contexts/WizardContext'
 import datetimeImg from '@/assets/datetime.png'
 import { getTenant } from '@/lib/db/tenants'
@@ -285,10 +286,20 @@ export function Step4ShipmentDetails() {
         {!isLoading && slotGroups.length > 0 && (
           <>
             <PeriodTabs groups={slotGroups} active={activePeriod} onChange={setActivePeriod} />
-            {activeGroup
-              ? <SlotGrid slots={activeGroup.slots} selectedId={state.selectedSlotId} onSelect={selectSlot} />
-              : <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 15, padding: '24px 0' }}>No slots available for this period — try another.</p>
-            }
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activePeriod}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              >
+                {activeGroup
+                  ? <SlotGrid slots={activeGroup.slots} selectedId={state.selectedSlotId} onSelect={selectSlot} />
+                  : <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 15, padding: '24px 0' }}>No slots available for this period — try another.</p>
+                }
+              </motion.div>
+            </AnimatePresence>
           </>
         )}
       </div>
@@ -425,33 +436,42 @@ export function Step4ShipmentDetails() {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: 'flex', borderBottom: '2px solid #F3F4F6', marginBottom: 24, gap: 0 }}>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
         {state.slotConfigs.map((cfg, i) => {
           const done   = !!cfg.selectedSlotId
           const active = activeSlot === i
           return (
-            <button
+            <motion.button
               key={i}
               type="button"
               onClick={() => setActiveSlot(i)}
+              whileTap={{ scale: 0.97 }}
               style={{
-                padding: '10px 24px', fontSize: 15,
+                position: 'relative', padding: '9px 18px', fontSize: 15,
                 fontWeight: active ? 700 : 500,
                 color: active ? 'var(--brand-color, #FC6514)' : '#6B7280',
-                background: 'none', border: 'none',
-                borderBottom: active ? '2px solid var(--brand-color, #FC6514)' : '2px solid transparent',
-                marginBottom: -2, cursor: 'pointer',
+                background: 'transparent', border: 'none', borderRadius: 'var(--r-sm)',
+                cursor: 'pointer', flexShrink: 0,
                 display: 'inline-flex', alignItems: 'center', gap: 8,
-                transition: 'all 0.15s', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                transition: 'color 0.2s', fontFamily: 'inherit', whiteSpace: 'nowrap',
               }}
             >
-              {done && (
-                <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
-                  <path d="M1 5L4.5 8.5L11 1" stroke="#16A34A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+              {active && (
+                <motion.span
+                  layoutId="slot4-tab-pill"
+                  transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                  style={{ position: 'absolute', inset: 0, borderRadius: 'var(--r-sm)', zIndex: 0, background: 'linear-gradient(160deg, #FFFFFF 0%, #FAFAF9 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.10), inset 0 1.5px 0 rgba(255,255,255,0.9)' }}
+                />
               )}
-              Slot {i + 1}
-            </button>
+              <span style={{ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                {done && (
+                  <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                    <path d="M1 5L4.5 8.5L11 1" stroke="#16A34A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+                Slot {i + 1}
+              </span>
+            </motion.button>
           )
         })}
       </div>
@@ -591,10 +611,20 @@ function SlotPickerForSlot({ slotIndex, tenant, tenantLoading, dates, wh, cutoff
       {!loading && slotGroups.length > 0 && (
         <>
           <PeriodTabs groups={slotGroups} active={activePeriod} onChange={setActivePeriod} />
-          {activeGroup
-            ? <SlotGrid slots={activeGroup.slots} selectedId={cfg.selectedSlotId} onSelect={onSlotSelect} />
-            : <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 15, padding: '24px 0' }}>No slots available for this period — try another.</p>
-          }
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activePeriod}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {activeGroup
+                ? <SlotGrid slots={activeGroup.slots} selectedId={cfg.selectedSlotId} onSelect={onSlotSelect} />
+                : <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 15, padding: '24px 0' }}>No slots available for this period — try another.</p>
+              }
+            </motion.div>
+          </AnimatePresence>
         </>
       )}
     </div>
@@ -684,25 +714,36 @@ function PeriodTabs({ groups, active, onChange }: {
     )
   }
   return (
-    <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: '#F3F4F6', borderRadius: 'var(--r-md)', padding: 4 }}>
+    <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)' }}>
       {groups.map(({ key, period }) => {
         const sel = key === active
         return (
-          <button
+          <motion.button
             key={key}
             type="button"
             onClick={() => onChange(key)}
+            whileTap={{ scale: 0.97 }}
             style={{
-              flex: 1, padding: '8px 12px', borderRadius: 'var(--r-sm)', border: 'none', fontFamily: 'inherit',
+              position: 'relative', flex: 1, padding: '9px 12px', borderRadius: 'var(--r-sm)', border: 'none', fontFamily: 'inherit',
               fontSize: 15, fontWeight: sel ? 700 : 500, cursor: 'pointer',
-              background: sel ? '#fff' : 'transparent',
+              background: 'transparent',
               color: sel ? 'var(--brand-color)' : '#6B7280',
-              boxShadow: sel ? '0 1px 4px rgba(0,0,0,0.10)' : 'none',
-              transition: 'all 0.15s ease',
+              transition: 'color 0.2s ease',
             }}
           >
-            {period.label.replace(' Slots', '')}
-          </button>
+            {sel && (
+              <motion.span
+                layoutId="period-tab-pill"
+                transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                style={{
+                  position: 'absolute', inset: 0, borderRadius: 'var(--r-sm)', zIndex: 0,
+                  background: 'linear-gradient(160deg, #FFFFFF 0%, #FAFAF9 100%)',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.10), inset 0 1.5px 0 rgba(255,255,255,0.9)',
+                }}
+              />
+            )}
+            <span style={{ position: 'relative', zIndex: 1 }}>{period.label.replace(' Slots', '')}</span>
+          </motion.button>
         )
       })}
     </div>

@@ -26,7 +26,7 @@ const NAV = [
     { to: '/reception/settings#working-hours',    label: 'Working Hours',  icon: ICONS.clock },
     { to: '/reception/settings#slot-config',      label: 'Slot Config',    icon: ICONS.calendar },
     { to: '/reception/settings#pricing',          label: 'Pricing',        icon: ICONS.percent },
-    { to: '/reception/settings#payment',          label: 'Payment',        icon: ICONS.confirmed },
+    { to: '/reception/settings#payment',          label: 'Payment',        icon: ICONS.walletMoney },
     { to: '/reception/settings#doc-requirements', label: 'Documents',      icon: ICONS.document },
     { to: '/reception/settings#integrations',     label: 'Integrations',   icon: ICONS.transshipment },
     { to: '/reception/settings#user-management',  label: 'Team',           icon: ICONS.users },
@@ -66,6 +66,7 @@ export default function ReceptionLayout() {
   const [walkInCount, setWalkInCount] = useState(0)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
+  const [logoErr, setLogoErr] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifs, setNotifs] = useState<any[]>([])
   const [sidebarExtra, setSidebarExtra] = useState<React.ReactNode>(null)
@@ -204,7 +205,7 @@ export default function ReceptionLayout() {
         .sidebar-col:not(.is-open) .nav-item { overflow: visible; }
         .sidebar-col.is-open .nav-item { gap: 6px; border-radius: 14px; }
         .nav-item-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 19px; transition: background 0.18s ease, transform 0.24s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease; }
-        .nav-item:hover .nav-item-icon { transform: scale(1.09); }
+        .nav-item:hover .nav-item-icon { filter: brightness(1.08); }
         .nav-item:active .nav-item-icon { transform: scale(0.94); transition: transform 0.08s ease; }
         .nav-item-label { font-size: 13px; font-weight: 500; white-space: nowrap; color: #ffffff; padding-right: 10px; flex: 1; opacity: 0; max-width: 0; overflow: hidden; pointer-events: none; transition: color 0.15s ease, opacity 0.14s ease, max-width 0.28s cubic-bezier(0.16,1,0.3,1); }
         .sidebar-col.is-open .nav-item-label { opacity: 1; max-width: 160px; pointer-events: auto; transition: color 0.15s ease, opacity 0.2s ease 0.14s, max-width 0.28s cubic-bezier(0.16,1,0.3,1); }
@@ -482,9 +483,9 @@ export default function ReceptionLayout() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            {tenant?.logoUrl && !isMobile && (
+            {tenant?.logoUrl && !isMobile && !logoErr && (
               <>
-                <img src={tenant.logoUrl} alt="Company logo" style={{ height: 30, objectFit: 'contain', maxWidth: 100 }} />
+                <img src={tenant.logoUrl} alt="Company logo" onError={() => setLogoErr(true)} style={{ height: 30, objectFit: 'contain', maxWidth: 100 }} />
                 <span style={{ width: 1, height: 26, background: 'rgba(0,0,0,0.10)', flexShrink: 0 }} />
               </>
             )}
