@@ -489,7 +489,14 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
     st.camera.position.set(cur.camX + Math.cos(o.az) * hz, Math.sin(o.el) * R + 1, Math.sin(o.az) * hz)
     st.camera.lookAt(cur.camX, 1.1, 0)
     const oc = st.camera as THREE.OrthographicCamera
-    const tgtZoom = Math.max(9, 30 / (1 + extra / 32))
+    // The framing (truck/depot position along the curve) was composed for a wide, short
+    // desktop banner. On a narrower/taller canvas (mobile — full width but a squat
+    // 46vh-high scene band) that same zoom crops the sides first, pushing the lead
+    // truck out of frame. Zoom out further as the canvas aspect narrows so the whole
+    // convoy stays visible instead of just the empty stretch of road.
+    const aspect = st.size.width / Math.max(1, st.size.height)
+    const aspectFactor = clamp(aspect / 2.2, 0.55, 1)
+    const tgtZoom = Math.max(9, 30 / (1 + extra / 32)) * aspectFactor
     oc.zoom = damp(oc.zoom, tgtZoom, 7, dt)
     oc.updateProjectionMatrix()
   })
@@ -652,12 +659,15 @@ export function WizardScene3D(props: Props) {
           <Rig {...props} brand={brand} orbit={orbit} />
         </Canvas>
       </div>
-      {/* Interaction pad — orbit only when dragging the core scene area */}
+      {/* Interaction pad — orbit only when dragging the core scene area. Sits BELOW the
+          wizard's content layer (zIndex 2) so the form/step panel always wins pointer
+          hit-testing where it overlaps this band — otherwise this invisible drag strip
+          would capture clicks meant for inputs and show a grab cursor over the form. */}
       <div
         className="wiz-orbit-pad"
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
         onWheel={e => { const sc = document.querySelector('.wiz-scroll'); if (sc) sc.scrollTop += e.deltaY }}
-        style={{ position: 'absolute', top: 128, left: 0, right: 0, height: 'calc(44vh - 128px)', zIndex: 3, cursor: grabbing ? 'grabbing' : 'grab', touchAction: 'none' }}
+        style={{ position: 'absolute', top: 128, left: 0, right: 0, height: 'calc(44vh - 128px)', zIndex: 1, cursor: grabbing ? 'grabbing' : 'grab', touchAction: 'none' }}
       />
     </>
   )
