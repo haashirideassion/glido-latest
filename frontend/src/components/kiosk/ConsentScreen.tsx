@@ -2,8 +2,7 @@ import { useKiosk } from '@/contexts/KioskContext'
 import { Icon, ICONS } from '@/lib/Icon'
 
 export function ConsentScreen() {
-  const { state, acceptConsent, completeCheckIn } = useKiosk()
-  if (state.currentScreen !== 'consent') return null
+  const { acceptConsent, completeCheckIn } = useKiosk()
 
   return (
     <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 32px' }}>

@@ -27,7 +27,7 @@ function GridSvg({ side }: { side: 'left' | 'right' }) {
 const MODULES = [
   {
     label:       'Visitor Portal',
-    route:       '/book',
+    route:       '/bookings',
     description: 'Book appointments, check status and manage visits',
     icon:        ICONS.calendar,
     iconBg:      'rgba(var(--brand-rgb),0.09)',

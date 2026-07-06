@@ -12,7 +12,7 @@ export default function KioskLayout({ children }: { children: ReactNode }) {
           transition: all 0.15s ease; cursor: pointer;
         }
         .kiosk-btn-primary {
-          background: var(--brand-color, #FC6514); color:#000000;
+          background: var(--brand-color, #FC6514); color:var(--brand-text, #000000);
           border:1px solid rgba(0,0,0,0.18);
           box-shadow: inset 0 1px 0 rgba(255,255,255,0.22), 0 4px 14px rgba(var(--brand-rgb,252,101,20),0.35), 0 1px 3px rgba(0,0,0,0.18);
         }
@@ -39,7 +39,7 @@ export default function KioskLayout({ children }: { children: ReactNode }) {
         .pulse-slow { animation: pulse-slow 2.5s ease-in-out infinite; }
         .btn-primary {
           display:inline-flex; align-items:center; gap:8px; padding:13px 24px;
-          font-size:14px; font-weight:600; color:#000000;
+          font-size:14px; font-weight:600; color:var(--brand-text, #000000);
           background:var(--brand-color); border:none; border-radius:9999px;
           cursor:pointer; box-shadow:0 2px 8px rgba(var(--brand-rgb),0.35); font-family:inherit;
         }

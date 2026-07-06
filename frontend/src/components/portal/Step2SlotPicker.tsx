@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { motion } from 'motion/react'
 import { useWizard } from '@/contexts/WizardContext'
 import pickupImg  from '@/assets/pickup.png'
 import dropoffImg from '@/assets/dropoff.png'
@@ -12,9 +13,17 @@ export function Step2SlotPicker() {
 
   const multi = state.slotCount > 1
 
-  // Start on the first slot that hasn't been filled yet
-  const firstIncomplete = state.slotConfigs.findIndex(c => !c.serviceType)
-  const [activeSlot, setActiveSlot] = useState(firstIncomplete === -1 ? 0 : firstIncomplete)
+  // Tab state for multi-slot — lifted into WizardState so the 3D scene can focus on the slot being edited
+  const activeSlot = state.step2ActiveSlot ?? 0
+  const setActiveSlot = (i: number) => dispatch({ type: 'SET', field: 'step2ActiveSlot', value: i })
+
+  // Start on the first slot that hasn't been filled yet (only on first visit)
+  useEffect(() => {
+    if (state.step2ActiveSlot === 0) {
+      const firstIncomplete = state.slotConfigs.findIndex(c => !c.serviceType)
+      if (firstIncomplete > 0) setActiveSlot(firstIncomplete)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const setService = (slotIndex: number, v: ServiceType) => {
     dispatch({ type: 'SET_SLOT_CONFIG', slotIndex, field: 'serviceType', value: v })
@@ -69,36 +78,65 @@ export function Step2SlotPicker() {
 
       {/* Tab bar — only when multi and not applyAll */}
       {multi && !applyAll && (
-        <div style={{ display: 'flex', borderBottom: '2px solid #F3F4F6', marginBottom: 24, gap: 0 }}>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
           {state.slotConfigs.map((cfg, i) => {
             const done = !!cfg.serviceType
             const active = activeSlot === i
             return (
-              <button
+              <motion.button
                 key={i}
                 type="button"
                 onClick={() => setActiveSlot(i)}
+                whileTap={{ scale: 0.97 }}
                 style={{
-                  padding: '10px 24px', fontSize: 15,
+                  position: 'relative', padding: '9px 18px', fontSize: 15,
                   fontWeight: active ? 700 : 500,
                   color: active ? 'var(--brand-color, #FC6514)' : '#6B7280',
-                  background: 'none', border: 'none',
-                  borderBottom: active ? '2px solid var(--brand-color, #FC6514)' : '2px solid transparent',
-                  marginBottom: -2, cursor: 'pointer',
+                  background: 'transparent', border: 'none', borderRadius: 'var(--r-sm)',
+                  cursor: 'pointer', flexShrink: 0,
                   display: 'inline-flex', alignItems: 'center', gap: 8,
-                  transition: 'all 0.15s', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                  transition: 'color 0.2s', fontFamily: 'inherit', whiteSpace: 'nowrap',
                 }}
               >
-                {done && (
-                  <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
-                    <path d="M1 5L4.5 8.5L11 1" stroke="#16A34A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                {active && (
+                  <motion.span
+                    layoutId="slot2-tab-pill"
+                    transition={{ type: 'spring', stiffness: 500, damping: 34 }}
+                    style={{ position: 'absolute', inset: 0, borderRadius: 'var(--r-sm)', zIndex: 0, background: 'linear-gradient(160deg, #FFFFFF 0%, #FAFAF9 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.06), 0 4px 10px rgba(0,0,0,0.10), inset 0 1.5px 0 rgba(255,255,255,0.9)' }}
+                  />
                 )}
-                Slot {i + 1}
-              </button>
+                <span style={{ position: 'relative', zIndex: 1, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {done && (
+                    <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                      <path d="M1 5L4.5 8.5L11 1" stroke="#16A34A" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  )}
+                  Slot {i + 1}
+                </span>
+              </motion.button>
             )
           })}
         </div>
+      )}
+
+      {/* Copy from the previous slot — quick fill for repetitive multi-slot bookings */}
+      {multi && !applyAll && activeSlot > 0 && state.slotConfigs[activeSlot - 1]?.serviceType && (
+        <button
+          type="button"
+          onClick={() => setService(activeCfg.index, state.slotConfigs[activeSlot - 1].serviceType as ServiceType)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600,
+            color: 'var(--brand-color)', background: 'rgba(var(--brand-rgb),0.06)',
+            border: '1px solid rgba(var(--brand-rgb),0.18)', borderRadius: 999, padding: '6px 14px',
+            marginBottom: 16, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+            <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M3 10.5V3.5C3 2.9 3.4 2.5 4 2.5H10.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Copy from Slot {activeSlot}
+        </button>
       )}
 
       {/* Cards — single slot view when multi, or all-at-once when applyAll */}
@@ -131,13 +169,13 @@ function OptionCard({ selected, onClick, icon, title, desc }: {
     <button
       type="button"
       onClick={onClick}
+      className={`wiz-tile${selected ? ' selected' : ''}`}
       style={{
         position: 'relative',
         display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-        padding: '20px 18px 18px', borderRadius: 'var(--r-lg)',
-        border: selected ? '2px solid var(--brand-color, #FC6514)' : '1.5px solid rgba(0,0,0,0.08)',
-        background: selected ? 'rgba(var(--brand-rgb),0.04)' : '#fff',
-        cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s ease',
+        padding: '20px 18px 18px',
+        border: selected ? '2px solid var(--brand-color, #FC6514)' : undefined,
+        cursor: 'pointer', textAlign: 'left',
         width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none',
       }}
     >
@@ -145,7 +183,8 @@ function OptionCard({ selected, onClick, icon, title, desc }: {
         <div style={{
           position: 'absolute', top: 12, right: 12,
           width: 20, height: 20, borderRadius: 'var(--r-full)',
-          background: 'var(--brand-color, #FC6514)',
+          background: 'linear-gradient(160deg, color-mix(in srgb, var(--brand-color) 88%, #fff), var(--brand-color))',
+          boxShadow: '0 2px 5px rgba(var(--brand-rgb),0.4), inset 0 1px 0 rgba(255,255,255,0.5)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
@@ -157,8 +196,13 @@ function OptionCard({ selected, onClick, icon, title, desc }: {
         width: 112, height: 112, borderRadius: 'var(--r-xl)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         marginBottom: 14, flexShrink: 0,
-        background: selected ? 'rgba(var(--brand-rgb),0.8)' : '#F3F4F6',
+        background: selected
+          ? 'linear-gradient(160deg, color-mix(in srgb, var(--brand-color) 88%, #fff) 0%, var(--brand-color) 60%, color-mix(in srgb, var(--brand-color) 78%, #000) 100%)'
+          : 'linear-gradient(160deg, #F7F6F5 0%, #ECEBE9 100%)',
         color: selected ? '#fff' : '#6B7280', transition: 'all 0.15s ease',
+        boxShadow: selected
+          ? '0 2px 4px rgba(0,0,0,0.10), 0 6px 16px rgba(var(--brand-rgb),0.30), inset 0 1.5px 0 rgba(255,255,255,0.45), inset 0 -2px 4px rgba(0,0,0,0.12)'
+          : 'inset 0 1.5px 3px rgba(0,0,0,0.06), 0 1px 1px rgba(255,255,255,0.8)',
       }}>
         {icon}
       </div>

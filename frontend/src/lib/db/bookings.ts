@@ -110,7 +110,9 @@ export async function getBookingsByDate(date: string): Promise<Booking[]> {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const res = await fetcher('/api/dashboard')
+  // Pass the caller's local "today" — the backend used to fall back to the DB
+  // server's CURRENT_DATE, which drifts a calendar day off Sydney time for part of the day.
+  const res = await fetcher(`/api/dashboard?date=${todaySydney()}`)
   const d = res?.data ?? {}
   return {
     todaysVisitors:  d.todaysVisitors  ?? 0,

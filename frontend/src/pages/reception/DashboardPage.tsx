@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { KpiTiles, RecentVisitors } from '@/components/reception/KpiTiles'
 import { DayChart } from '@/components/reception/DayChart'
 import { BookingTable } from '@/components/reception/BookingTable'
+import { BookingSlideOver } from '@/components/reception/BookingSlideOver'
 import { getDashboardStats, getBookingsByDate } from '@/lib/db/bookings'
 import { getTenant } from '@/lib/db/tenants'
+import { toast } from '@/lib/toast'
+import { useStaffPermissions } from '@/lib/useStaffPermissions'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { todaySydney } from '@/lib/time'
 import type { DashboardStats, Booking } from '@/data/types'
@@ -20,6 +23,7 @@ const EMPTY_STATS: DashboardStats = {
 export default function DashboardPage() {
   usePageTitle('Glido | Dashboard')
   const today = todaySydney()
+  const perms = useStaffPermissions()
 
   const [stats,           setStats]           = useState<DashboardStats>(EMPTY_STATS)
   const [bookings,        setBookings]        = useState<Booking[]>([])
@@ -28,6 +32,18 @@ export default function DashboardPage() {
   const [isLoading,       setIsLoading]       = useState(true)
   const [capacityByHour,  setCapacityByHour]  = useState<Record<string, number>>({})
   const [defaultCapacity, setDefaultCapacity] = useState<number>(5)
+
+  // ── Live-arrival detection — toast when a genuinely new booking shows up on a poll ──
+  const seenIdsRef = useRef<Set<string> | null>(null)
+
+  // ── Split view ──
+  const [selected, setSelected] = useState<Booking | null>(null)
+  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true))
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -59,6 +75,17 @@ export default function DashboardPage() {
         }
       }
       setBookings([...groupMap.values()])
+
+      // Toast any booking that showed up since the last poll — skip the very first load
+      const currentIds = new Set(bs.map(b => b.id))
+      if (seenIdsRef.current) {
+        const newOnes = bs.filter(b => !seenIdsRef.current!.has(b.id))
+        for (const b of newOnes.slice(0, 3)) {
+          toast(`New booking: ${b.referenceNumber} — ${b.driverName}`, 'info')
+        }
+      }
+      seenIdsRef.current = currentIds
+
       const counts: Record<string, number> = {}
       countMap.forEach((v, k) => { counts[k] = v })
       setSlotCounts(counts)
@@ -79,16 +106,17 @@ export default function DashboardPage() {
   // Initial load + polling every 30s
   useEffect(() => {
     refresh()
-    const id = setInterval(refresh, 30000)
+    const id = setInterval(refresh, 15000)
     return () => clearInterval(id)
   }, [refresh])
 
   return (
-    <div>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
       <KpiTiles stats={stats} loading={isLoading} />
 
       {stats.held > 0 && (
-        <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.20)', borderRadius: 'var(--r-lg)', padding: '14px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.20)', borderRadius: 'var(--r-lg)', padding: '14px 20px', marginBottom: 'var(--card-gap)', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 'var(--r-sm)', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2L14 13H2L8 2Z" stroke="#EF4444" strokeWidth="1.5" strokeLinejoin="round"/><path d="M8 6.5V9" stroke="#EF4444" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="11" r="0.75" fill="#EF4444"/></svg>
           </div>
@@ -101,9 +129,21 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <BookingTable bookings={bookings} slotCounts={slotCounts} groupSlots={groupSlots} currentDate={today} loading={isLoading} />
-      <RecentVisitors stats={stats} loading={isLoading} />
+      <BookingTable bookings={bookings} slotCounts={slotCounts} groupSlots={groupSlots} currentDate={today} loading={isLoading} onSelect={setSelected} selectedId={selected?.id} />
+      <RecentVisitors stats={stats} loading={isLoading} onSelect={setSelected} selectedId={selected?.id} />
       <DayChart bookings={bookings} loading={isLoading} capacityByHour={capacityByHour} defaultCapacity={defaultCapacity} />
+      </div>
+
+      {/* Docked detail pane — split view (wide screens) */}
+      {selected && isWide && (
+        <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
+          <BookingSlideOver key={selected.id} docked booking={selected} perms={perms} onClose={() => setSelected(null)} onUpdated={() => refresh()} />
+        </div>
+      )}
+      {/* Detail overlay — narrow screens */}
+      {selected && !isWide && (
+        <BookingSlideOver key={selected.id} booking={selected} perms={perms} onClose={() => setSelected(null)} onUpdated={() => refresh()} />
+      )}
     </div>
   )
 }

@@ -27,6 +27,32 @@
   --r-lg:   16px;
   --r-xl:   20px;
   --r-full: 9999px;
+
+  /* ── Density scale (dashboard) ──
+     Drives header height, content padding, card padding/gaps and KPI sizing.
+     "Comfortable" (default) is already tighter than the legacy hardcoded values;
+     "Compact" (below) goes further for high-density / CargoWise-style operators.
+     Toggle sets [data-density] on <html>; see ReceptionLayout density control. */
+  --dash-header-h:   56px;
+  --dash-main-pad-x: 20px;
+  --dash-main-pad-y: 14px;
+  --card-pad:        16px;
+  --card-gap:        12px;
+  --kpi-pad-y:       14px;
+  --kpi-pad-x:       18px;
+  --kpi-value:       30px;
+}
+
+/* Compact density — more rows per screen, less air */
+[data-density="compact"] {
+  --dash-header-h:   48px;
+  --dash-main-pad-x: 14px;
+  --dash-main-pad-y: 10px;
+  --card-pad:        12px;
+  --card-gap:        8px;
+  --kpi-pad-y:       10px;
+  --kpi-pad-x:       14px;
+  --kpi-value:       26px;
 }
 
 @layer base {

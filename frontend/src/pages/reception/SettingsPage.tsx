@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useBlocker } from 'react-router-dom'
+import { useBlocker, useLocation } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { getTenant, updateTenant } from '@/lib/db/tenants'
 import { fetcher, postFetcher, patchFetcher, deleteFetcher, rawFetcher } from '@/lib/fetcher'
@@ -192,18 +192,27 @@ const GROUPS = [
 ] as const
 type GroupId = typeof GROUPS[number]['id']
 
+// Sections shown as jump-links in the left rail (labels must match GroupLabel text)
+const RAIL_SECTIONS: Record<string, string[]> = {
+  General:      ['Business Profile', 'Working Hours', 'Kiosk Agreement', 'Kiosk Devices'],
+  Bookings:     ['Slot Config', 'Pricing', 'Payment', 'Document Requirements'],
+  Integrations: ['Connected Systems'],
+  Team:         ['User Management'],
+}
+
 const LABEL: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 8 }
 
 function GroupLabel({ children, first }: { children: React.ReactNode; first?: boolean }) {
+  const anchorId = typeof children === 'string' ? 'sec-' + children.replace(/\s+/g, '-') : undefined
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: `${first ? 8 : 28}px 0 14px` }}>
+    <div id={anchorId} style={{ display: 'flex', alignItems: 'center', gap: 12, margin: `${first ? 4 : 18}px 0 10px`, scrollMarginTop: 16 }}>
       <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{children}</span>
       <span style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.07)' }} />
     </div>
   )
 }
-const INPUT: React.CSSProperties = { width: '100%', padding: '11px 14px', fontSize: 15, color: '#1C1917', background: '#FFFFFF', border: '1px solid #E2E0DD', borderRadius: 'var(--r-sm)', outline: 'none', transition: 'border-color 0.15s ease, box-shadow 0.15s ease', boxSizing: 'border-box' }
-const CARD: React.CSSProperties  = { background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)', marginBottom: 20 }
+const INPUT: React.CSSProperties = { width: '100%', padding: '9px 12px', fontSize: 15, color: '#1C1917', background: '#FFFFFF', border: '1px solid #E2E0DD', borderRadius: 'var(--r-sm)', outline: 'none', transition: 'border-color 0.15s ease, box-shadow 0.15s ease', boxSizing: 'border-box' }
+const CARD: React.CSSProperties  = { background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)', marginBottom: 12 }
 
 // ─── Brand Colour Picker ──────────────────────────────────────────────────────
 const COLOR_PRESETS = [
@@ -381,7 +390,7 @@ function FocusSelect({ children, disabled, ...props }: React.SelectHTMLAttribute
 
 function SectionHead({ title, desc }: { title: string; desc?: string }) {
   return (
-    <div style={{ marginBottom: 20 }}>
+    <div style={{ marginBottom: 14 }}>
       <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.02em', marginBottom: desc ? 4 : 0 }}>{title}</h3>
       {desc && <p style={{ fontSize: 15, color: 'var(--text-secondary)' }}>{desc}</p>}
     </div>
@@ -449,6 +458,7 @@ export default function SettingsPage() {
   const [generalLoading,  setGeneralLoading]  = useState(true)
   const [generalSaving,   setGeneralSaving]   = useState(false)
   const [logoUploading,   setLogoUploading]   = useState(false)
+  const [logoErr,         setLogoErr]         = useState(false)
 
   // Payment state
   const [eft,             setEft]             = useState({ bankName: '', accountName: '', bsb: '', accountNumber: '' })
@@ -613,6 +623,7 @@ export default function SettingsPage() {
       const tenant = await fetcher(`/api/tenants/${DEFAULT_TENANT_ID}`)
       const logoUrl = tenant?.data?.logo_url ?? tenant?.logo_url ?? ''
       logoJustUploaded.current = true
+      setLogoErr(false)
       setGeneral(g => ({ ...g, logoUrl }))
       toast('Logo uploaded', 'success')
     } catch (err: any) {
@@ -1313,20 +1324,28 @@ export default function SettingsPage() {
     (tab === 'Team'         && staffPermsSaving)
   )
 
+  const rrLoc = useLocation()
+  const scrollToSection = (label: string) => {
+    const el = document.getElementById('sec-' + label.replace(/\s+/g, '-'))
+    el?.scrollIntoView({ block: 'start' })
+  }
+  // Driven by the sidebar sub-menu: switch group first, then jump to the section once it renders
+  useEffect(() => {
+    const secMap: Record<string, string> = {
+      '#general': 'Business Profile', '#working-hours': 'Working Hours',
+      '#slot-config': 'Slot Config', '#pricing': 'Pricing', '#payment': 'Payment', '#doc-requirements': 'Document Requirements',
+      '#integrations': 'Connected Systems', '#user-management': 'User Management',
+    }
+    const targetGroup = HASH_TO_GROUP[rrLoc.hash]
+    const label = secMap[rrLoc.hash]
+    if (!targetGroup || !label) return
+    if (tab !== targetGroup) { setTab(targetGroup); return }  // wait for the group to render, then this effect re-runs
+    const t = setTimeout(() => scrollToSection(label), 140)
+    return () => clearTimeout(t)
+  }, [rrLoc.hash, rrLoc.key, tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* Tab switcher */}
-      <div style={{ display: 'flex', gap: 2, background: 'rgba(0,0,0,0.04)', borderRadius: 'var(--r-md)', padding: 4, marginBottom: 24, width: '100%' }}>
-        {visibleGroups.map(g => (
-          <button key={g.id} onClick={() => { setTab(g.id); window.location.hash = GROUP_TO_HASH[g.id] }} style={{
-            flex: 1, padding: '8px 16px', borderRadius: 'var(--r-full)', fontSize: 15, fontWeight: tab === g.id ? 600 : 500,
-            border: 'none', cursor: 'pointer', transition: 'all 0.15s ease', whiteSpace: 'nowrap', textAlign: 'center',
-            background: tab === g.id ? '#FFFFFF' : 'transparent',
-            color: tab === g.id ? '#1C1917' : 'var(--text-secondary)',
-            boxShadow: tab === g.id ? '0 1px 3px rgba(0,0,0,0.08),0 2px 6px rgba(0,0,0,0.05)' : 'none',
-          }}>{g.label}</button>
-        ))}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: 84 }}>
 
       {/* ── Working Hours (General group, rendered after Business Profile) ── */}
       {tab === 'General' && (
@@ -1511,11 +1530,11 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead title="Facility Details" desc="Basic information about your Container Freight Station." />
                 {generalLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     {[0,1,2,3,4,5].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="CFS Name *">
                       <FocusInput type="text" value={general.name} onChange={e => { setGeneral(g => ({ ...g, name: e.target.value })); setGeneralDirty(true) }} placeholder="Sydney CFS Terminal" />
                     </Field>
@@ -1556,15 +1575,18 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead title="Branding" desc="Logo and colour scheme shown on the visitor portal." />
                 {generalLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     {[0,1].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="Logo">
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {logoSrc && (
-                          <img src={logoSrc} alt="Logo" style={{ height: 48, objectFit: 'contain', maxWidth: 160, borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.08)', background: '#f9fafb' }} />
+                        {logoSrc && !logoErr && (
+                          <img src={logoSrc} alt="Logo" onError={() => setLogoErr(true)} style={{ height: 48, objectFit: 'contain', maxWidth: 160, borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.08)', background: '#f9fafb' }} />
+                        )}
+                        {general.logoUrl && logoErr && (
+                          <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0 }}>Logo failed to load — try uploading again.</p>
                         )}
                         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', fontSize: 15, fontWeight: 600, color: '#374151', background: '#FFFFFF', border: '1px solid #E2E0DD', borderRadius: 'var(--r-full)', cursor: logoUploading ? 'not-allowed' : 'pointer', opacity: logoUploading ? 0.6 : 1, alignSelf: 'flex-start' }}>
                           {logoUploading ? 'Uploading…' : general.logoUrl ? 'Change Logo' : 'Upload Logo'}
@@ -1739,12 +1761,12 @@ export default function SettingsPage() {
             <div style={CARD}>
               <SectionHead title="Slot Configuration" desc="Control how booking slots are structured and managed." />
               {slotConfigLoading ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   {[0,1,2,3,4].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                 </div>
               ) : (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="Slot Duration (minutes)">
                       <CustomSelect
                         placeholder="Select duration"
@@ -1912,11 +1934,11 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead title="Storage Charges" desc="Rates applied to LCL pickups with stored cargo." />
                 {pricingLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     {[0,1,2,3].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="Storage Rate ($/CBM/day)">
                       <FocusInput type="number" step="0.01" min="0" value={pricing.storageRate}
                         onChange={e => { setPricing(p => ({ ...p, storageRate: e.target.value })); setPricingDirty(true) }} />
@@ -1949,11 +1971,11 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead title="Free Storage Period" desc="Days of free storage before charges begin." />
                 {pricingLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     {[0,1].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="FCL Free Days">
                       <FocusInput type="number" min="0" value={pricing.fclFreeDays}
                         onChange={e => { setPricing(p => ({ ...p, fclFreeDays: e.target.value })); setPricingDirty(true) }} />
@@ -2112,11 +2134,11 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead title="Bank Transfer (EFT)" desc="Account details displayed to visitors choosing EFT payment." />
                 {paymentLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     {[0,1,2,3].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="Bank Name">
                       <FocusInput type="text" value={eft.bankName} onChange={e => { setEft(v => ({ ...v, bankName: e.target.value })); setEftDirty(true) }} placeholder="e.g. Commonwealth Bank" />
                     </Field>
@@ -2137,11 +2159,11 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead title="Stripe (Card Payments)" desc="Configure your Stripe account for card payment processing." />
                 {paymentLoading ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {[0,1].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <Field label="Stripe Publishable Key">
                       <FocusInput type="text" value={stripe.publishableKey} onChange={e => { setStripe(v => ({ ...v, publishableKey: e.target.value })); setStripeDirty(true) }} placeholder="pk_live_…" />
                     </Field>
@@ -2175,7 +2197,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Require payment toggle */}
-              <div style={{ ...CARD, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
+              <div style={{ ...CARD, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
                 <div>
                   <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 3 }}>Require payment to confirm booking</p>
                   <p style={{ fontSize: 15, color: 'var(--text-secondary)' }}>When enabled, visitors must complete payment before their slot is confirmed.</p>
@@ -2211,11 +2233,11 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead title="ICS API" desc="Enables automatic customs clearance status checks." />
                 {integrationsLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     {[0,1,2,3].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="API Endpoint">
                       <FocusInput type="url" value={cargowise.apiUrl} placeholder="https://cw1.cargowise.com/api/…"
                         onChange={e => { setCargowise(v => ({ ...v, apiUrl: e.target.value })); setCargowiseDirty(true) }} />
@@ -2251,11 +2273,11 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead title="Email (SMTP)" desc="Used for booking confirmations and notifications." />
                 {integrationsLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     {[0,1,2,3,4,5].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                     <Field label="SMTP Host">
                       <FocusInput type="text" value={smtp.host} placeholder="smtp.mailgun.org"
                         onChange={e => { setSmtp(v => ({ ...v, host: e.target.value })); setSmtpDirty(true) }} />

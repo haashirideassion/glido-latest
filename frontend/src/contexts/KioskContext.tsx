@@ -6,6 +6,7 @@ import { getBookingByRef, getBookingsByGroupRef, checkInBooking } from '@/lib/db
 import type { Booking } from '@/data/types'
 import { createWalkIn } from '@/lib/db/walk-ins'
 import { createCheckinRecord } from '@/lib/db/checkin-records'
+import { playSuccessTone, playErrorTone } from '@/lib/kioskSound'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import type { WalkInPurpose } from '@/data/types'
 
@@ -175,6 +176,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
         const groupSlots = await getBookingsByGroupRef(ref)
         if (groupSlots.length === 0) {
           dispatch({ type: 'SET_LOOKUP', result: null, error: true, loading: false })
+          playErrorTone()
           return
         }
         const activeSlots = groupSlots.filter(s => s.status === 'scheduled')
@@ -206,6 +208,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       const blockMsg = getStatusBlockMessage(booking.status)
       if (blockMsg) {
         dispatch({ type: 'SET_LOOKUP', result: null, error: true, loading: false, blockMessage: blockMsg })
+        playErrorTone()
         return
       }
 
@@ -224,9 +227,11 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           status: booking.status,
         },
       })
+      playSuccessTone()
       dispatch({ type: 'GO_TO', screen: 'confirm' })
     } catch {
       dispatch({ type: 'SET_LOOKUP', result: null, error: true, loading: false })
+      playErrorTone()
     }
   }, [state.referenceInput])
 
@@ -246,6 +251,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       address: '18 Harbour St, Sydney NSW 2000',
       nameMatchResult: matchResult, nameMatchScore: Math.round(score * 100),
     }})
+    if (matchResult === 'mismatch' || expired) playErrorTone(); else playSuccessTone()
   }, [state.lookupResult])
 
   const completeCheckIn = useCallback(async () => {

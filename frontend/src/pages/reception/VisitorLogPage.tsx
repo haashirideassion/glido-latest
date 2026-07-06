@@ -7,6 +7,8 @@ import { fmtDate, fmtDateTime as _fmtDateTime, todaySydney, TZ } from '@/lib/tim
 import { getVisitorLogRecords } from '@/lib/db/walk-ins'
 import { getTenant } from '@/lib/db/tenants'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
+import { AnimatedNumber, motion } from '@/lib/motion'
+import { EmptyState } from '@/components/reception/EmptyState'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 
@@ -52,12 +54,63 @@ const DEFAULT_VISIBLE: ColumnConfig = {
   personVisited: true, checkInTime: false, checkOutTime: false, notes: false,
 }
 
+function RecordPane({ record, docked, onClose }: { record: any; docked?: boolean; onClose: () => void }) {
+  const b = record.bookings as any
+  const fields: [string, string][] = [
+    ['Date',           fmtDate(record.check_in_time)],
+    ['Full Name',      record.licence_name || b?.driver_name || '—'],
+    ['Address',        record.licence_address || '—'],
+    ['ID Type',        record.licence_scan_method || 'Manual'],
+    ['ID Number',      record.licence_number || '—'],
+    ['Date of Birth',  fmtDate(record.licence_dob)],
+    ['Reason',         record.walk_in_reason || b?.service_type?.toUpperCase() || '—'],
+    ['Person Visited', record.visit_person_name || '—'],
+    ['Check-in Time',  fmtDateTime(record.check_in_time)],
+    ['Check-out Time', b?.completed_at ? fmtDateTime(b.completed_at) : '—'],
+  ]
+  const panelStyle: React.CSSProperties = docked
+    ? { position: 'relative', height: '100%', width: '100%', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(480px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }
+  return (
+    <>
+      {!docked && <motion.div onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(28,25,23,0.35)', backdropFilter: 'blur(4px)' }} />}
+      <motion.div
+        style={panelStyle}
+        initial={docked ? { opacity: 0, x: 16 } : { x: '100%' }}
+        animate={docked ? { opacity: 1, x: 0 } : { x: 0 }}
+        transition={docked ? { duration: 0.24, ease: [0.16, 1, 0.3, 1] } : { type: 'spring', stiffness: 400, damping: 40 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 12px 20px', borderBottom: '1px solid rgba(0,0,0,0.07)', flexShrink: 0 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: 0 }}>Visitor Record</h2>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 'var(--r-full)', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name={ICONS.close} size={16} />
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 20px' }}>
+          {fields.map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 0', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+              <span style={{ fontSize: 14, color: '#94A3B8', fontWeight: 500, flexShrink: 0 }}>{label}</span>
+              <span style={{ fontSize: 14, color: '#1C1917', fontWeight: 600, textAlign: 'right', maxWidth: 280, overflowWrap: 'anywhere' }}>{value}</span>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </>
+  )
+}
+
 export default function VisitorLogPage() {
   usePageTitle('Glido | ABF Visitor Log')
   const perms = useStaffPermissions()
   const [records, setRecords] = useState<VisitorRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedRecord, setSelectedRecord] = useState<typeof records[0] | null>(null)
+  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true))
+  useEffect(() => {
+    const onResize = () => setIsWide(window.innerWidth >= 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const [visibleCols, setVisibleCols] = useState<ColumnConfig>(DEFAULT_VISIBLE)
   const [from, setFrom]       = useState(daysAgo(7))
   const [to, setTo]           = useState(today())
@@ -159,7 +212,7 @@ export default function VisitorLogPage() {
           { label: 'Completed Visits',  value: stats.completed, sub: 'Signed out',        icon: ICONS.bookings, iconBg: 'rgba(34,197,94,0.10)',          iconFg: '#22C55E'              },
         ].map((k, i) => (
           <div key={k.label}
-            style={{ flex: 1, minWidth: 0, padding: '22px 26px', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
+            style={{ flex: 1, minWidth: 0, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
             onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
             onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
           >
@@ -169,7 +222,7 @@ export default function VisitorLogPage() {
               </div>
               <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.label}</p>
             </div>
-            <p style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{k.value}</p>
+            <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={k.value} /></p>
             <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{k.sub}</p>
           </div>
         ))}
@@ -230,8 +283,9 @@ export default function VisitorLogPage() {
         )}
       </div>
 
-      {/* Table */}
-      <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
+      {/* Table + docked detail pane */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
         <div style={{ padding: '14px 24px', borderBottom: '1px solid rgba(0,0,0,0.07)', background: 'rgba(0,0,0,0.01)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <p style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', margin: 0 }}>
             ABF Visitor Log <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 6 }}>Showing {records.length} records</span>
@@ -292,12 +346,8 @@ export default function VisitorLogPage() {
               })}
               {!loading && records.length === 0 && (
                 <tr>
-                  <td colSpan={Object.values(visibleCols).filter(Boolean).length || 9} style={{ padding: '64px 20px', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
-                      <Icon name={ICONS.reports} size={40} style={{ color: 'rgba(0,0,0,0.1)' }} />
-                    </div>
-                    <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-secondary)', margin: 0 }}>No visitor records found</p>
-                    <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: '4px 0 0' }}>Try adjusting your filters or date range.</p>
+                  <td colSpan={Object.values(visibleCols).filter(Boolean).length || 9}>
+                    <EmptyState compact variant="search" title="No visitor records found" subtitle="Try adjusting your filters or date range." />
                   </td>
                 </tr>
               )}
@@ -306,32 +356,17 @@ export default function VisitorLogPage() {
         </div>
       </div>
 
-      {/* Visitor Record slide-over */}
-      <style>{`@keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }`}</style>
-      {selectedRecord && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', justifyContent: 'flex-end' }} onClick={() => setSelectedRecord(null)}>
-          <div style={{ width: 480, maxWidth: '100vw', background: '#fff', height: '100%', overflowY: 'auto', padding: 32, boxShadow: '-8px 0 32px rgba(0,0,0,0.12)', animation: 'slideIn 0.2s ease' }} onClick={e => e.stopPropagation()}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 24 }}>Visitor Record</h2>
-            {[
-              ['Date',          fmtDate(selectedRecord.check_in_time)],
-              ['Full Name',     selectedRecord.licence_name || (selectedRecord.bookings as any)?.driver_name || '—'],
-              ['Address',       selectedRecord.licence_address || '—'],
-              ['ID Type',       selectedRecord.licence_scan_method || 'Manual'],
-              ['ID Number',     selectedRecord.licence_number || '—'],
-              ['Date of Birth', fmtDate(selectedRecord.licence_dob)],
-              ['Reason',        selectedRecord.walk_in_reason || (selectedRecord.bookings as any)?.service_type?.toUpperCase() || '—'],
-              ['Person Visited',selectedRecord.visit_person_name || '—'],
-              ['Check-in Time', fmtDateTime(selectedRecord.check_in_time)],
-              ['Check-out Time',(selectedRecord.bookings as any)?.completed_at ? fmtDateTime((selectedRecord.bookings as any).completed_at) : '—'],
-            ].map(([label, value]) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-                <span style={{ fontSize: 15, color: '#94A3B8', fontWeight: 500 }}>{label}</span>
-                <span style={{ fontSize: 15, color: '#1C1917', fontWeight: 600, textAlign: 'right', maxWidth: 260 }}>{value}</span>
-              </div>
-            ))}
-            <button onClick={() => setSelectedRecord(null)} style={{ marginTop: 24, width: '100%', padding: '12px 0', borderRadius: 'var(--r-full)', background: '#F3F4F6', border: 'none', fontWeight: 600, cursor: 'pointer' }}>Close</button>
-          </div>
+      {selectedRecord && isWide && (
+        <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
+          <RecordPane record={selectedRecord} docked onClose={() => setSelectedRecord(null)} />
         </div>
+      )}
+      </div>{/* end table row */}
+
+      {/* Visitor Record slide-over — narrow screens */}
+      <style>{`@keyframes slideIn { from { transform: translateX(100%) } to { transform: translateX(0) } }`}</style>
+      {selectedRecord && !isWide && (
+        <RecordPane record={selectedRecord} onClose={() => setSelectedRecord(null)} />
       )}
     </div>
   )

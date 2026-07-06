@@ -16,8 +16,6 @@ export function SlotPickerScreen() {
   const [selected,     setSelected]     = useState<Set<string>>(new Set())
   const [blockMessage, setBlockMessage] = useState<string | null>(null)
 
-  if (state.currentScreen !== 'slot-picker') return null
-
   const slots = state.slotPickerBookings
 
   const toggle = (id: string) => {

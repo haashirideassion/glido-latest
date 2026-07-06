@@ -8,8 +8,6 @@ export function IDScanScreen() {
   const tenant = useTenantInfo()
   const [agreed, setAgreed] = useState(false)
 
-  if (state.currentScreen !== 'idscan') return null
-
   const ld        = state.licenceData
   const match     = ld?.nameMatchResult
   const terms     = tenant?.kioskTerms?.trim() ?? ''

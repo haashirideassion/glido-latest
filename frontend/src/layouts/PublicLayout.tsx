@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useOutlet } from 'react-router-dom'
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
 import { GlidoLogo } from '@/lib/GlidoLogo'
 import { Icon, ICONS } from '@/lib/Icon'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTenantInfo } from '@/lib/useTenantInfo'
+
+const PAGE_EASE = [0.16, 1, 0.3, 1] as const
 
 const NAV_LINKS = [
   { to: '/modules',  label: 'Modules',     icon: ICONS.home     },
@@ -19,7 +22,10 @@ const FOOTER_COLS = [
 
 export default function PublicLayout() {
   const { pathname } = useLocation()
+  const isImmersive = pathname === '/book' || pathname === '/visitor-login' || pathname === '/login'
   const navigate = useNavigate()
+  const outlet = useOutlet()
+  const reduceMotionPage = useReducedMotion()
   const tenant = useTenantInfo()
   const { user, logout } = useAuth()
   const navRef    = useRef<HTMLElement>(null)
@@ -31,6 +37,16 @@ export default function PublicLayout() {
   // Visitor account dropdown
   const [visitorMenuOpen, setVisitorMenuOpen] = useState(false)
   const visitorMenuRef = useRef<HTMLDivElement>(null)
+
+  // Responsive: below 860px the nav pill + account button collapse into a hamburger
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth < 860 : false))
+  const [mobileOpen, setMobileOpen] = useState(false)
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 860)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  useEffect(() => { setMobileOpen(false) }, [pathname])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -126,6 +142,7 @@ export default function PublicLayout() {
   return (
     <>
       {/* ── Nav ── */}
+      {!isImmersive && (
       <header
         ref={navRef}
         style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50, padding: 0, pointerEvents: 'none', transition: 'padding 0.5s cubic-bezier(0.16,1,0.3,1)' }}
@@ -154,6 +171,7 @@ export default function PublicLayout() {
               <GlidoLogo height={21} onDark={false} />
             </Link>
 
+            {!isMobile && (
             <nav
               ref={wrapRef}
               style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2, padding: 4, background: 'rgba(0,0,0,0.045)', borderRadius: 'var(--r-full)' }}
@@ -188,9 +206,21 @@ export default function PublicLayout() {
                 </Link>
               ))}
             </nav>
+            )}
 
 
-            {user && (user.role === 'reception_staff' || user.role === 'reception_admin') ? (
+            {isMobile ? (
+              <button
+                type="button"
+                onClick={() => setMobileOpen(true)}
+                aria-label="Open menu"
+                style={{ width: 40, height: 40, borderRadius: 'var(--r-full)', border: '1px solid rgba(0,0,0,0.10)', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1C1917" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>
+                </svg>
+              </button>
+            ) : user && (user.role === 'reception_staff' || user.role === 'reception_admin') ? (
               // Reception staff landed on a public page — point them back
               <Link
                 to="/reception"
@@ -275,13 +305,69 @@ export default function PublicLayout() {
           </div>
         </div>
       </header>
+      )}
+
+      {/* ── Full-screen mobile menu ── */}
+      {!isImmersive && isMobile && mobileOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(250,250,249,0.94)', backdropFilter: 'blur(28px) saturate(140%)', WebkitBackdropFilter: 'blur(28px) saturate(140%)', display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto', animation: 'menuFadeIn 0.2s ease' }}>
+          <button onClick={() => setMobileOpen(false)} aria-label="Close menu"
+            style={{ position: 'fixed', top: 16, right: 16, width: 44, height: 44, borderRadius: '50%', border: '1px solid rgba(0,0,0,0.10)', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.08)', zIndex: 1 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1C1917" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+
+          <div style={{ marginTop: 80, marginBottom: 40, flexShrink: 0 }}>
+            <GlidoLogo height={26} onDark={false} />
+          </div>
+
+          <nav style={{ width: '100%', maxWidth: 360, padding: '0 22px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {NAV_LINKS.map(l => {
+              const active = pathname === l.to || (l.to === '/book' && pathname === '/visitor-login')
+              return (
+                <Link
+                  key={l.to}
+                  to={l.to === '/book' && !user ? '/visitor-login?redirect=/book' : l.to}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '15px 18px', borderRadius: 14, textDecoration: 'none', fontSize: 17, fontWeight: 600, color: active ? 'var(--brand-color)' : '#1C1917', background: active ? 'rgba(var(--brand-rgb),0.12)' : 'transparent' }}
+                >
+                  <Icon name={l.icon} size={21} style={{ color: active ? 'var(--brand-color)' : '#57534E' }} />
+                  <span>{l.label}</span>
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div style={{ width: '100%', maxWidth: 360, padding: '24px 22px 40px', marginTop: 'auto', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {user && (user.role === 'reception_staff' || user.role === 'reception_admin') ? (
+              <Link to="/reception" style={{ textAlign: 'center', padding: '14px', borderRadius: 999, background: 'rgba(var(--brand-rgb),0.10)', color: 'var(--brand-color)', textDecoration: 'none', fontWeight: 700, fontSize: 15 }}>Go to Reception →</Link>
+            ) : user ? (
+              <>
+                <Link to="/profile" style={{ textAlign: 'center', padding: '13px', borderRadius: 999, background: '#fff', border: '1px solid rgba(0,0,0,0.10)', color: '#1C1917', textDecoration: 'none', fontWeight: 600, fontSize: 15 }}>Profile</Link>
+                <Link to="/drivers" style={{ textAlign: 'center', padding: '13px', borderRadius: 999, background: '#fff', border: '1px solid rgba(0,0,0,0.10)', color: '#1C1917', textDecoration: 'none', fontWeight: 600, fontSize: 15 }}>Saved Drivers</Link>
+                <button type="button" onClick={handleSignOut} style={{ padding: '13px', borderRadius: 999, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.20)', color: '#DC2626', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
+              </>
+            ) : (
+              <Link to="/visitor-login" style={{ textAlign: 'center', padding: '14px', borderRadius: 999, background: 'var(--brand-color)', color: 'var(--brand-text)', textDecoration: 'none', fontWeight: 700, fontSize: 16, boxShadow: '0 8px 24px rgba(var(--brand-rgb),0.35)' }}>Login</Link>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Page content ── */}
-      <main style={{ paddingTop: 60 }}>
-        <Outlet />
+      <main style={{ paddingTop: isImmersive ? 0 : 60, position: 'relative' }}>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={pathname}
+            initial={reduceMotionPage ? undefined : { opacity: 0, y: 14, scale: 0.99 }}
+            animate={reduceMotionPage ? undefined : { opacity: 1, y: 0, scale: 1 }}
+            exit={reduceMotionPage ? undefined : { opacity: 0, y: -10, scale: 0.99 }}
+            transition={{ duration: 0.38, ease: PAGE_EASE }}
+          >
+            {outlet}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* ── Footer ── */}
+      {!isImmersive && (
       <footer style={{ borderTop: '1px solid #f0f0f0', background: '#fff', padding: '64px 24px 32px' }}>
         <div className="max-w-6xl mx-auto">
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 48, marginBottom: 48 }} className="footer-grid">
@@ -335,10 +421,12 @@ export default function PublicLayout() {
           </div>
         </div>
       </footer>
+      )}
 
       <style>{`
         @media (max-width:768px) { .footer-grid { grid-template-columns:1fr 1fr!important; gap:32px!important; } }
         @media (max-width:480px) { .footer-grid { grid-template-columns:1fr!important; } }
+        @keyframes menuFadeIn { from { opacity:0 } to { opacity:1 } }
         .nav-link:hover { color:var(--brand-color)!important; transform:translateY(-1.5px); }
         .nav-link:active { color:var(--brand-color)!important; transform:translateY(0) scale(0.96); }
         @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }

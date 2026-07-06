@@ -1,14 +1,25 @@
 import { useState, useRef, useEffect } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
 import { useWizard } from '@/contexts/WizardContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { Icon, ICONS } from '@/lib/Icon'
 import slotImg from '@/assets/slot.png'
 import { validators, sanitize } from '@/lib/validation'
 
+const SLOT_NUM_VARIANTS = {
+  enter:  (d: number) => ({ y: d >= 0 ? 42 : -42, opacity: 0, scale: 0.5, filter: 'blur(4px)' }),
+  center: { y: 0, opacity: 1, scale: 1, filter: 'blur(0px)' },
+  exit:   (d: number) => ({ y: d >= 0 ? -42 : 42, opacity: 0, scale: 0.5, filter: 'blur(4px)' }),
+}
+
 export function Step1ServiceType() {
   const { state, dispatch } = useWizard()
   const { user } = useAuth()
   const loggedIn = !!user
+  // Track direction of change so the number rolls up (increase) or down (decrease)
+  const prevCountRef = useRef(state.slotCount)
+  const dir = state.slotCount >= prevCountRef.current ? 1 : -1
+  useEffect(() => { prevCountRef.current = state.slotCount }, [state.slotCount])
 
   const set = (f: 'guestName' | 'guestEmail' | 'guestPhone' | 'companyName', v: string) =>
     dispatch({ type: 'SET', field: f, value: v })
@@ -57,7 +68,11 @@ export function Step1ServiceType() {
       </div>
 
       {/* Slot counter */}
-      <div style={{ border: '1.5px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', padding: '28px 24px', marginBottom: 28, background: '#fff' }}>
+      <div style={{
+        border: '1.5px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', padding: '28px 24px', marginBottom: 28,
+        background: 'linear-gradient(160deg, #FFFFFF 0%, #FAFAF9 100%)',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.03), 0 4px 14px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.7)',
+      }}>
         {/* Big counter display */}
         <div style={{ textAlign: 'center', paddingBottom: 24 }}>
           <p style={{ fontSize: 15, color: '#9CA3AF', marginBottom: 16, fontWeight: 500, letterSpacing: '0.06em', textTransform: 'uppercase' }}>How many slots?</p>
@@ -66,7 +81,8 @@ export function Step1ServiceType() {
               type="button"
               onClick={() => dispatch({ type: 'SET', field: 'slotCount', value: Math.max(1, state.slotCount - 1) })}
               disabled={state.slotCount <= 1}
-              style={{ width: 48, height: 48, borderRadius: 'var(--r-md)', border: '1.5px solid rgba(0,0,0,0.10)', background: '#fff', fontSize: 24, cursor: state.slotCount <= 1 ? 'not-allowed' : 'pointer', opacity: state.slotCount <= 1 ? 0.35 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', transition: 'opacity 0.15s' }}
+              className="wizard-stepper-btn"
+              style={{ width: 48, height: 48, fontSize: 24, borderRadius: 'var(--r-md)' }}
             >−</button>
 
             {editing ? (
@@ -88,20 +104,34 @@ export function Step1ServiceType() {
                 }}
               />
             ) : (
-              <span
+              <button
+                type="button"
                 title="Click to type a number"
+                aria-label={`${state.slotCount} slot${state.slotCount !== 1 ? 's' : ''} — click to type a different number`}
                 onClick={() => setEditing(true)}
-                style={{ fontSize: 64, fontWeight: 800, color: '#1C1917', lineHeight: 1, cursor: 'text', display: 'block', minWidth: 64, textAlign: 'center', fontFamily: 'inherit' }}
+                style={{ position: 'relative', display: 'inline-flex', height: 64, minWidth: 64, alignItems: 'center', justifyContent: 'center', cursor: 'text', overflow: 'hidden', background: 'none', border: 'none', padding: 0, fontFamily: 'inherit' }}
               >
-                {state.slotCount}
-              </span>
+                <AnimatePresence mode="popLayout" initial={false} custom={dir}>
+                  <motion.span
+                    key={state.slotCount}
+                    custom={dir}
+                    variants={SLOT_NUM_VARIANTS}
+                    initial="enter" animate="center" exit="exit"
+                    transition={{ type: 'spring', stiffness: 420, damping: 26 }}
+                    style={{ fontSize: 64, fontWeight: 800, color: '#1C1917', lineHeight: 1, fontFamily: 'inherit', display: 'block' }}
+                  >
+                    {state.slotCount}
+                  </motion.span>
+                </AnimatePresence>
+              </button>
             )}
 
             <button
               type="button"
               onClick={() => dispatch({ type: 'SET', field: 'slotCount', value: Math.min(10, state.slotCount + 1) })}
               disabled={state.slotCount >= 10}
-              style={{ width: 48, height: 48, borderRadius: 'var(--r-md)', border: '1.5px solid rgba(0,0,0,0.10)', background: '#fff', fontSize: 24, cursor: state.slotCount >= 10 ? 'not-allowed' : 'pointer', opacity: state.slotCount >= 10 ? 0.35 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', transition: 'opacity 0.15s' }}
+              className="wizard-stepper-btn"
+              style={{ width: 48, height: 48, fontSize: 24, borderRadius: 'var(--r-md)' }}
             >+</button>
           </div>
           <p style={{ fontSize: 15, color: '#9CA3AF', marginTop: 8 }}>slot{state.slotCount !== 1 ? 's' : ''}</p>
@@ -114,13 +144,8 @@ export function Step1ServiceType() {
               key={n}
               type="button"
               onClick={() => dispatch({ type: 'SET', field: 'slotCount', value: n })}
-              style={{
-                padding: '8px 20px', fontSize: 15, fontWeight: 600, borderRadius: 'var(--r-full)',
-                border: state.slotCount === n ? '1.5px solid var(--brand-color, #FC6514)' : '1.5px solid rgba(0,0,0,0.10)',
-                background: state.slotCount === n ? 'rgba(var(--brand-rgb),0.08)' : '#fff',
-                color: state.slotCount === n ? 'var(--brand-color, #FC6514)' : '#6B7280',
-                cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-              }}
+              className={`wizard-chip${state.slotCount === n ? ' active' : ''}`}
+              style={{ padding: '8px 20px', fontSize: 15 }}
             >{n}</button>
           ))}
         </div>
