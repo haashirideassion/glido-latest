@@ -38,6 +38,7 @@ const STATUS_STYLE: Record<string, React.CSSProperties> = {
 interface Props {
   bookings: Booking[]
   query?: string
+  viewMode?: 'cards' | 'list'
   onCancelled?: () => void
 }
 
@@ -165,7 +166,7 @@ async function downloadPDF(b: Booking) {
   doc.save(`booking-${b.referenceNumber}.pdf`)
 }
 
-export function MyBookingsList({ bookings, query, onCancelled }: Props) {
+export function MyBookingsList({ bookings, query, viewMode = 'cards', onCancelled }: Props) {
   const [cancelTarget,    setCancelTarget]    = useState<Booking | null>(null)
   const [cancellingId,    setCancellingId]    = useState<string | null>(null)
   const [detailBooking,   setDetailBooking]   = useState<Booking | null>(null)
@@ -213,8 +214,39 @@ export function MyBookingsList({ bookings, query, onCancelled }: Props) {
   return (
     <>
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {bookings.map(b => {
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: viewMode === 'list' ? 0 : 8 }}>
+        {viewMode === 'list' && (
+          <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-md)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 4px 16px rgba(0,0,0,0.06)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr 1fr 110px', gap: 12, padding: '9px 16px', background: '#FAFAF9', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+              {['Reference', 'Slot', 'Service · Load', 'Driver', 'Status'].map(h => (
+                <span key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</span>
+              ))}
+            </div>
+            {bookings.map(b => {
+              const statusStyle = STATUS_STYLE[b.status] ?? STATUS_STYLE.scheduled
+              const isPickup = b.serviceType === 'pickup'
+              const isSel = detailBooking?.id === b.id
+              return (
+                <div
+                  key={b.id}
+                  onClick={() => setDetailBooking(b)}
+                  style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr 1fr 110px', gap: 12, alignItems: 'center', padding: '11px 16px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: isSel ? 'rgba(var(--brand-rgb),0.05)' : 'transparent', transition: 'background 0.12s' }}
+                  onMouseOver={e => { if (!isSel) e.currentTarget.style.background = '#FAFAF9' }}
+                  onMouseOut={e  => { if (!isSel) e.currentTarget.style.background = 'transparent' }}
+                >
+                  <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, color: '#1C1917' }}>{b.referenceNumber}</span>
+                  <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{b.slotDate} · {b.slotStartTime}–{b.slotEndTime}</span>
+                  <span style={{ fontSize: 14, color: '#1C1917' }}>{isPickup ? 'Pick Up' : 'Drop Off'} · {(b.loadType ?? '').toUpperCase()}</span>
+                  <span style={{ fontSize: 14, color: '#1C1917' }}>{b.driverName || '—'}</span>
+                  <span style={{ ...statusStyle, display: 'inline-flex', width: 'fit-content', padding: '3px 9px', borderRadius: 'var(--r-full)', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    {STATUS_LABEL[b.status] ?? b.status}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {viewMode === 'cards' && bookings.map(b => {
           const statusStyle = STATUS_STYLE[b.status] ?? STATUS_STYLE.scheduled
           const isPickup  = b.serviceType === 'pickup'
           const isDropoff = b.serviceType === 'dropoff'

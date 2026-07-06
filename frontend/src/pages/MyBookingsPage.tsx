@@ -30,6 +30,13 @@ export default function MyBookingsPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [sortBy, setSortBy]           = useState('date_desc')
   const [page, setPage]               = useState(1)
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>(() => {
+    try { return (localStorage.getItem('glido_bookings_view') as 'cards' | 'list') || 'cards' } catch { return 'cards' }
+  })
+  const changeView = (v: 'cards' | 'list') => {
+    setViewMode(v)
+    try { localStorage.setItem('glido_bookings_view', v) } catch { /* noop */ }
+  }
 
   useEffect(() => {
     if (!ref && !user) return
@@ -136,7 +143,7 @@ export default function MyBookingsPage() {
         </form>
 
         {/* Filter + sort row */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
           <CustomSelect
             placeholder="All Statuses"
             value={statusFilter}
@@ -161,6 +168,32 @@ export default function MyBookingsPage() {
               { value: 'status',    label: 'By Status'    },
             ]}
           />
+          <div style={{ flex: 1 }} />
+          {/* View toggle — cards (default) vs a denser list */}
+          <div style={{ display: 'inline-flex', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', padding: 3, background: '#F7F6F5', gap: 2 }}>
+            <button
+              type="button"
+              onClick={() => changeView('cards')}
+              aria-label="Card view"
+              aria-pressed={viewMode === 'cards'}
+              title="Card view"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 30, borderRadius: 'var(--r-full)', border: 'none', cursor: 'pointer', background: viewMode === 'cards' ? '#fff' : 'transparent', boxShadow: viewMode === 'cards' ? '0 1px 3px rgba(0,0,0,0.10)' : 'none', color: viewMode === 'cards' ? 'var(--brand-color)' : '#78716C', transition: 'all 0.15s ease' }}
+            >
+              <Icon name={ICONS.bookings} size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={() => changeView('list')}
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+              title="List view"
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 30, borderRadius: 'var(--r-full)', border: 'none', cursor: 'pointer', background: viewMode === 'list' ? '#fff' : 'transparent', boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.10)' : 'none', color: viewMode === 'list' ? 'var(--brand-color)' : '#78716C', transition: 'all 0.15s ease' }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {ref && (
@@ -172,7 +205,7 @@ export default function MyBookingsPage() {
         {loading
           ? <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--text-tertiary)', fontSize: 15 }}>Loading…</div>
           : <>
-              <MyBookingsList bookings={paged} query={ref} onCancelled={() => {
+              <MyBookingsList bookings={paged} query={ref} viewMode={viewMode} onCancelled={() => {
                 setLoading(true)
                 const fetch = ref
                   ? getBookingByRef(ref).then(b => (b ? [b] : []))
