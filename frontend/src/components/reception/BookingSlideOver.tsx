@@ -94,7 +94,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
         <motion.div
           onClick={onClose}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }}
-          style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(28,25,23,0.35)', backdropFilter: 'blur(4px)' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(4px)' }}
         />
       )}
 
