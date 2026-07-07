@@ -386,11 +386,11 @@ function ComposeTab({
             {body.split(/(\{[^{}]*\})/g).map((seg, i) =>
               /^\{[^{}]*\}$/.test(seg) ? (
                 <mark key={i} style={{
-                  background: 'rgba(var(--brand-rgb),0.12)',
+                  background: 'rgba(var(--brand-rgb),0.15)',
                   color: 'var(--brand-color)',
                   borderRadius: 3,
-                  padding: '1px 3px',
-                  fontWeight: 700,
+                  padding: 0,
+                  fontWeight: 'inherit',
                   fontStyle: 'normal',
                 }}>{seg}</mark>
               ) : seg
