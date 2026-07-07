@@ -306,7 +306,7 @@ export default function BookingsPage() {
   usePageTitle('Glido | Bookings')
   const perms = useStaffPermissions()
 
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const _initialPreset: Preset = searchParams.get('filter') === 'today' ? 'today' : '30d'
   const [bookings,     setBookings]     = useState<Booking[]>([])
   const [prevBookings, setPrevBookings] = useState<Booking[]>([])
@@ -335,6 +335,18 @@ export default function BookingsPage() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  // Auto-select booking from ?select= query param (e.g. notification click)
+  const selectParam = searchParams.get('select')
+  useEffect(() => {
+    if (!selectParam || bookings.length === 0) return
+    const match = bookings.find(b => b.id === selectParam || b.referenceNumber === selectParam)
+    if (match) {
+      setSelected(match)
+      // Clear the param so background refreshes don't re-select after user closes
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('select'); return n }, { replace: true })
+    }
+  }, [bookings, selectParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reflect an in-pane update back into the list without a full reload
   const onBookingUpdated = useCallback((updated: Booking) => {
@@ -756,12 +768,21 @@ export default function BookingsPage() {
                         <div style={{ flex: 1 }} />
 
                         {/* Status badge */}
-                        <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, borderRadius: 'var(--r-xl)', padding: '3px 9px 3px 7px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                            <path d={cfg.icon} />
-                          </svg>
-                          {cfg.label}
-                        </span>
+                        {(b.status === 'scheduled' || b.status === 'checked_in') ? (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: cfg.color, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                              <path d={cfg.icon} />
+                            </svg>
+                            {cfg.label}
+                          </span>
+                        ) : (
+                          <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, borderRadius: 'var(--r-xl)', padding: '3px 9px 3px 7px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                              <path d={cfg.icon} />
+                            </svg>
+                            {cfg.label}
+                          </span>
+                        )}
                       </div>
 
                       {/* Bottom row */}
@@ -786,7 +807,7 @@ export default function BookingsPage() {
                             whileTap={isBusy ? undefined : { scale: 0.94 }}
                             style={{ height: 28, padding: '0 12px', fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: isBusy ? 0.6 : 1 }}
                           >
-                            {actionLoading[b.id] === 'checkin' ? 'Updating…' : 'Check In'}
+                            {actionLoading[b.id] === 'checkin' ? 'Updating…' : 'Mark as Checked In'}
                           </motion.button>
                         ) : b.status === 'checked_in' && perms.can_mark_complete ? (
                           <motion.button
@@ -795,7 +816,7 @@ export default function BookingsPage() {
                             whileTap={isBusy ? undefined : { scale: 0.94 }}
                             style={{ height: 28, padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#fff', background: isBusy ? '#6B7280' : '#1C1917', border: 'none', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
                           >
-                            {actionLoading[b.id] === 'complete' ? 'Updating…' : 'Complete'}
+                            {actionLoading[b.id] === 'complete' ? 'Updating…' : 'Mark as Complete'}
                           </motion.button>
                         ) : null}
                       </div>
@@ -845,7 +866,7 @@ export default function BookingsPage() {
 
       {/* Docked detail pane — Apple-Mail split view (wide screens) */}
       {selected && isWide && (
-        <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
+        <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <BookingSlideOver key={selected.id} docked booking={selected} perms={perms} onClose={() => setSelected(null)} onUpdated={onBookingUpdated} />
         </div>
       )}

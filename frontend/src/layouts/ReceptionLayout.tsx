@@ -543,10 +543,10 @@ export default function ReceptionLayout() {
                         // Destination route — specific ID > parsed ref > list fallback
                         const dest = (() => {
                           if (n.type === 'new_booking' || n.type === 'booking_cancelled') {
-                            if (n.reference_id) return `/reception/bookings/${n.reference_id}`
+                            if (n.reference_id) return `/reception/bookings?select=${n.reference_id}`
                             // Parse ref from body: "... · Ref GLD-2026-XXXXX"
                             const m = (n.body ?? '').match(/Ref (GLD-[A-Z0-9-]+)/)
-                            return m ? `/reception/bookings/${m[1]}` : '/reception/bookings'
+                            return m ? `/reception/bookings?select=${m[1]}` : '/reception/bookings'
                           }
                           if (n.type === 'checkin' || n.type === 'walkin')
                             return n.reference_id ? `/reception/visitors/${n.reference_id}` : '/reception/visitors'

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { Icon, ICONS } from '@/lib/Icon'
 import { fmtDateTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
+import { fetcher } from '@/lib/fetcher'
 import {
   checkInBooking, completeBooking, cancelBooking,
   rescheduleBooking, refreshIcsStatus,
@@ -46,6 +47,15 @@ interface Props {
 export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked = false, perms }: Props) {
   const [b, setB] = useState<Booking>(initial)
   const [loading, setLoading] = useState('')
+  const [checkin, setCheckin] = useState<any>(null)
+
+  // Fetch identity check record when booking is checked-in or completed
+  useEffect(() => {
+    if (b.status !== 'checked_in' && b.status !== 'completed') return
+    fetcher(`/api/checkin-records?bookingId=${encodeURIComponent(b.id)}`)
+      .then((res: any) => setCheckin((res?.data ?? [])[0] ?? null))
+      .catch(() => {})
+  }, [b.id, b.status])
 
   // Modal state
   const [confirmModal,    setConfirmModal]    = useState(false)
@@ -86,7 +96,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
   const icsStyle = ICS_BADGE[b.icsStatus ?? ''] ?? ICS_BADGE.unavailable
 
   const panelStyle: React.CSSProperties = docked
-    ? { position: 'relative', flex: '1 1 0', minHeight: 0, width: '100%', zIndex: 1, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    ? { position: 'relative', height: '100%', width: '100%', zIndex: 1, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
     : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(480px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
 
   return (
@@ -225,6 +235,47 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
             </section>
           )}
 
+          {/* Identity Check */}
+          {(b.status === 'checked_in' || b.status === 'completed') && perms.can_view_id_scan && (
+            <section>
+              <p style={SL}>Identity Check</p>
+              <div style={{ ...PANEL }}>
+                {!checkin ? (
+                  <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>No ID scan data available</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Name match badge */}
+                    {checkin.name_match_score != null && (() => {
+                      const score = checkin.name_match_score ?? 0
+                      const badge = score >= 85
+                        ? { label: 'Verified', bg: 'rgba(34,197,94,0.10)', color: '#16A34A', border: 'rgba(34,197,94,0.22)' }
+                        : score >= 60
+                          ? { label: 'Warning',  bg: 'rgba(251,191,36,0.10)', color: '#B45309', border: 'rgba(251,191,36,0.22)' }
+                          : { label: 'Mismatch', bg: 'rgba(239,68,68,0.10)',  color: '#EF4444', border: 'rgba(239,68,68,0.22)' }
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r-full)', background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
+                            <Icon name={ICONS.check} size={13} />{badge.label}
+                          </span>
+                          <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Score: {score}%</span>
+                        </div>
+                      )
+                    })()}
+                    {/* Fields grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {checkin.licence_name    && <IdField label="Name on Licence"  value={checkin.licence_name} />}
+                      {checkin.licence_number  && <IdField label="Licence Number"   value={checkin.licence_number} mono />}
+                      {checkin.licence_dob     && <IdField label="Date of Birth"    value={checkin.licence_dob} />}
+                      {checkin.licence_expiry  && <IdField label="Expiry"           value={checkin.licence_expiry} />}
+                      {checkin.licence_address && <IdField label="Address"          value={checkin.licence_address} />}
+                      {checkin.licence_scan_method && <IdField label="Scan Method"  value={checkin.licence_scan_method} />}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
           {/* Charges */}
           {b.totalAmount && perms.can_view_charge_details && (
             <section>
@@ -279,12 +330,12 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
         <div style={{ flexShrink: 0, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid rgba(0,0,0,0.07)', background: '#FFFFFF' }}>
           {b.status === 'scheduled' && (
             <ActionBtn color="green" loading={loading === 'checkin'} onClick={() => act('checkin', () => checkInBooking(b.id), `✓ ${b.driverName} checked in`, 'success')}>
-              <Icon name={ICONS.userCheck} size={16} /> Check In Visitor
+              <Icon name={ICONS.userCheck} size={16} /> Mark as Checked In
             </ActionBtn>
           )}
           {b.status === 'checked_in' && (
             <ActionBtn color="orange" loading={loading === 'complete'} onClick={() => setConfirmModal(true)}>
-              <Icon name={ICONS.checkSquare} size={16} /> Mark Complete
+              <Icon name={ICONS.checkSquare} size={16} /> Complete
             </ActionBtn>
           )}
           {(b.status === 'scheduled') && (
@@ -399,6 +450,15 @@ function Row({ label, value, icon, mono }: { label: string; value: string; icon?
         {label}
       </span>
       <span style={{ fontFamily: mono ? 'ui-monospace,monospace' : undefined, fontSize: 14, fontWeight: 600, color: mono ? '#78716C' : '#1C1917' }}>{value}</span>
+    </div>
+  )
+}
+
+function IdField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div style={{ background: '#F5F4F3', borderRadius: 'var(--r-sm)', padding: '8px 10px' }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{label}</p>
+      <p style={{ fontSize: 13, fontWeight: 600, color: '#1C1917', fontFamily: mono ? 'ui-monospace,monospace' : undefined, wordBreak: 'break-all' }}>{value}</p>
     </div>
   )
 }

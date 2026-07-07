@@ -237,11 +237,11 @@ export default function PublicLayout() {
                 <button
                   type="button"
                   onClick={() => setVisitorMenuOpen(v => !v)}
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 20px', fontSize: 15, fontWeight: 600, color: '#1C1917', background: 'linear-gradient(160deg,#F9F8F7 0%,#EEEDEC 100%)', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-full)', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.85)', fontFamily: 'inherit' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 20px', fontSize: 15, fontWeight: 600, color: isDarkPage ? 'rgba(255,255,255,0.85)' : '#1C1917', background: isDarkPage ? 'rgba(255,255,255,0.10)' : 'linear-gradient(160deg,#F9F8F7 0%,#EEEDEC 100%)', border: isDarkPage ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-full)', cursor: 'pointer', boxShadow: isDarkPage ? 'none' : '0 1px 3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.85)', fontFamily: 'inherit' }}
                 >
                   <Icon name={ICONS.user} size={16} style={{ opacity: 0.7 }} />
                   {user.firstName ?? 'My Account'}
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: 0.40, transition: 'transform 0.15s ease', transform: visitorMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ opacity: isDarkPage ? 0.60 : 0.40, transition: 'transform 0.15s ease', transform: visitorMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)', flexShrink: 0 }}>
                     <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
