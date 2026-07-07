@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CustomSelect } from '@/components/ui/CustomSelect'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
@@ -90,6 +90,7 @@ export default function WalkInsPage() {
   usePageTitle('Glido | Visitor Management')
   const perms = useStaffPermissions()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [visitors, setVisitors] = useState<VisitorEntry[]>([])
   const [loading,  setLoading]  = useState(true)
 
@@ -118,6 +119,17 @@ export default function WalkInsPage() {
     }
     return () => { cancelled = true }
   }, [selected])
+  // Auto-select visitor from ?select= param (notification click)
+  const selectParam = searchParams.get('select')
+  useEffect(() => {
+    if (!selectParam || visitors.length === 0) return
+    const match = visitors.find(v => v.id === selectParam)
+    if (match) {
+      setSelected(match)
+      setSearchParams(prev => { const n = new URLSearchParams(prev); n.delete('select'); return n }, { replace: true })
+    }
+  }, [visitors, selectParam]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const openEntry = (v: VisitorEntry) => { if (isWide) setSelected(v); else navigate(`/reception/visitors/${v.id}`) }
 
   // ── Filter state ─────────────────────────────────────────────────────────────

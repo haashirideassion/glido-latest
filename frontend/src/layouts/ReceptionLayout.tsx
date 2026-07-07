@@ -549,7 +549,7 @@ export default function ReceptionLayout() {
                             return m ? `/reception/bookings?select=${m[1]}` : '/reception/bookings'
                           }
                           if (n.type === 'checkin' || n.type === 'walkin')
-                            return n.reference_id ? `/reception/visitors/${n.reference_id}` : '/reception/visitors'
+                            return n.reference_id ? `/reception/visitors?select=${n.reference_id}` : '/reception/visitors'
                           return null
                         })()
                         // Parse booking body into { ref, detail } for prominent ref display
