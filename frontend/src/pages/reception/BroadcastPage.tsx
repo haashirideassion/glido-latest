@@ -670,8 +670,11 @@ function BroadcastPane({ broadcast, carriers, docked, onClose }: { broadcast: Br
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
             <span style={{ padding: '3px 10px', borderRadius: 'var(--r-full)', fontSize: 12, fontWeight: 600, background: '#F0FDF4', color: '#15803D', border: '1px solid rgba(34,197,94,0.2)' }}>Sent</span>
-            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 'var(--r-full)', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name={ICONS.close} size={16} />
+            <button onClick={onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-secondary)', transition: 'background 0.15s, color 0.15s' }}
+              onMouseOver={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#1C1917' }}
+              onMouseOut={e  => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </div>
         </div>

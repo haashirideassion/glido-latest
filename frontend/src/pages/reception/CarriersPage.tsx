@@ -420,11 +420,50 @@ function StatChip({ icon, label }: { icon: string; label: string }) {
 }
 
 // ─── Carrier detail pane (split view) ─────────────────────────────────────────
-function CarrierPane({ carrier, liveBookings, liveLastVisit, docked, onClose, onEdit, onDelete }: {
+function CarrierPane({ carrier, liveBookings, liveLastVisit, docked, onClose, onSaved, onDelete }: {
   carrier: Carrier; liveBookings?: number; liveLastVisit?: string | null; docked?: boolean
-  onClose: () => void; onEdit: () => void; onDelete: () => void
+  onClose: () => void; onSaved: (c: Carrier) => void; onDelete: () => void
 }) {
-  const isActive = carrier.status === 'active'
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState<CarrierInput>({
+    name: carrier.name, abn: carrier.abn, status: carrier.status,
+    contact_name: carrier.contact_name, contact_email: carrier.contact_email,
+    contact_phone: carrier.contact_phone, address: carrier.address,
+    notes: carrier.notes, total_bookings: carrier.total_bookings,
+    last_visit: carrier.last_visit, rating: carrier.rating,
+  })
+  const [saving, setSaving] = useState(false)
+
+  // Reset form when carrier changes (e.g. row switch)
+  useEffect(() => {
+    setEditing(false)
+    setForm({
+      name: carrier.name, abn: carrier.abn, status: carrier.status,
+      contact_name: carrier.contact_name, contact_email: carrier.contact_email,
+      contact_phone: carrier.contact_phone, address: carrier.address,
+      notes: carrier.notes, total_bookings: carrier.total_bookings,
+      last_visit: carrier.last_visit, rating: carrier.rating,
+    })
+  }, [carrier.id])
+
+  const set = (k: keyof CarrierInput, v: any) => setForm(f => ({ ...f, [k]: v || null }))
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { toast('Carrier name is required', 'error'); return }
+    setSaving(true)
+    try {
+      const saved = await updateCarrier(carrier.id, form)
+      toast('Carrier updated', 'success')
+      onSaved(saved)
+      setEditing(false)
+    } catch (err: any) {
+      toast(err?.message ?? 'Failed to save carrier', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const isActive = (editing ? form.status : carrier.status) === 'active'
   const PANEL: React.CSSProperties = { background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-sm)', padding: '12px 14px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }
   const SL: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }
   const rows = [
@@ -436,7 +475,8 @@ function CarrierPane({ carrier, liveBookings, liveLastVisit, docked, onClose, on
   ].filter(r => r.value)
   const panelStyle: React.CSSProperties = docked
     ? { position: 'relative', height: '100%', width: '100%', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
-    : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(460px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column' }
+    : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(460px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+
   return (
     <>
       {!docked && <motion.div onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }} style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(28,25,23,0.35)', backdropFilter: 'blur(4px)' }} />}
@@ -446,48 +486,123 @@ function CarrierPane({ carrier, liveBookings, liveLastVisit, docked, onClose, on
         animate={docked ? { opacity: 1, x: 0 } : { x: 0 }}
         transition={docked ? { duration: 0.24, ease: [0.16, 1, 0.3, 1] } : { type: 'spring', stiffness: 400, damping: 40 }}
       >
+        {/* ── Header ── */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 12px 18px', borderBottom: '1px solid rgba(0,0,0,0.07)', gap: 12, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
             <div style={{ width: 36, height: 36, borderRadius: 'var(--r-md)', background: isActive ? 'rgba(var(--brand-rgb),0.10)' : 'rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <iconify-icon icon="solar:buildings-bold-duotone" width={20} style={{ color: isActive ? 'var(--brand-color)' : '#9CA3AF' }} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{carrier.name}</h3>
-              <span style={{ fontSize: 12, fontWeight: 600, color: isActive ? '#16A34A' : '#6B7280' }}>{isActive ? 'Active' : 'Inactive'}</span>
+              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{editing ? form.name || carrier.name : carrier.name}</h3>
+              <span style={{ fontSize: 12, fontWeight: 600, color: isActive ? '#16A34A' : '#6B7280' }}>{editing ? 'Editing' : (isActive ? 'Active' : 'Inactive')}</span>
             </div>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 'var(--r-full)', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name={ICONS.close} size={16} />
+          <button onClick={editing ? () => setEditing(false) : onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-secondary)', transition: 'background 0.15s, color 0.15s' }}
+            onMouseOver={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#1C1917' }}
+            onMouseOut={e  => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: 16, background: '#F5F4F3', display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div style={PANEL}><p style={SL}>Bookings</p><p style={{ fontSize: 22, fontWeight: 800, color: '#1C1917', margin: 0, lineHeight: 1 }}>{liveBookings ?? carrier.total_bookings}</p></div>
-            <div style={PANEL}><p style={SL}>Last Visit</p><p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', margin: 0 }}>{liveLastVisit ?? carrier.last_visit ?? '—'}</p></div>
-          </div>
-          {rows.length > 0 && (
-            <section>
-              <p style={SL}>Details</p>
-              <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {rows.map(r => (
-                  <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0 }}><iconify-icon icon={r.icon} width={14} style={{ color: 'var(--text-secondary)' }} />{r.label}</span>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1917', textAlign: 'right', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.value}</span>
-                  </div>
-                ))}
+
+        {/* ── Body ── */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16, background: '#F5F4F3', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {editing ? (
+            /* ── Edit form ── */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px', gap: 12 }}>
+                <div>
+                  <label style={{ ...SL, display: 'block' }}>Company Name <span style={{ color: '#EF4444' }}>*</span></label>
+                  <input style={{ ...INPUT, borderRadius: 'var(--r-sm)' }} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    onFocus={e => focusStyle(e.target)} onBlur={e => blurStyle(e.target)} />
+                </div>
+                <div>
+                  <label style={{ ...SL, display: 'block' }}>Status</label>
+                  <CustomSelect value={form.status} onChange={v => setForm(f => ({ ...f, status: v as 'active' | 'inactive' }))} neutral
+                    options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
+                </div>
               </div>
-            </section>
-          )}
-          {carrier.rating != null && (
-            <section><p style={SL}>Rating</p><div style={PANEL}><StarRating value={carrier.rating} /></div></section>
-          )}
-          {carrier.notes && (
-            <section><p style={SL}>Notes</p><div style={{ ...PANEL, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{carrier.notes}</div></section>
+              <div>
+                <label style={{ ...SL, display: 'block' }}>ABN</label>
+                <input style={{ ...INPUT, borderRadius: 'var(--r-sm)' }} value={form.abn ?? ''} onChange={e => set('abn', e.target.value)}
+                  onFocus={e => focusStyle(e.target)} onBlur={e => blurStyle(e.target)} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ ...SL, display: 'block' }}>Contact Person</label>
+                  <input style={{ ...INPUT, borderRadius: 'var(--r-sm)' }} value={form.contact_name ?? ''} onChange={e => set('contact_name', e.target.value)}
+                    onFocus={e => focusStyle(e.target)} onBlur={e => blurStyle(e.target)} />
+                </div>
+                <div>
+                  <label style={{ ...SL, display: 'block' }}>Phone</label>
+                  <input style={{ ...INPUT, borderRadius: 'var(--r-sm)' }} type="tel" value={form.contact_phone ?? ''} onChange={e => set('contact_phone', e.target.value)}
+                    onFocus={e => focusStyle(e.target)} onBlur={e => blurStyle(e.target)} />
+                </div>
+              </div>
+              <div>
+                <label style={{ ...SL, display: 'block' }}>Email</label>
+                <input style={{ ...INPUT, borderRadius: 'var(--r-sm)' }} type="email" value={form.contact_email ?? ''} onChange={e => set('contact_email', e.target.value)}
+                  onFocus={e => focusStyle(e.target)} onBlur={e => blurStyle(e.target)} />
+              </div>
+              <div>
+                <label style={{ ...SL, display: 'block' }}>Address</label>
+                <input style={{ ...INPUT, borderRadius: 'var(--r-sm)' }} value={form.address ?? ''} onChange={e => set('address', e.target.value)}
+                  onFocus={e => focusStyle(e.target)} onBlur={e => blurStyle(e.target)} />
+              </div>
+              <div>
+                <label style={{ ...SL, display: 'block' }}>Rating</label>
+                <StarRating value={form.rating} onChange={v => setForm(f => ({ ...f, rating: v }))} />
+              </div>
+              <div>
+                <label style={{ ...SL, display: 'block' }}>Notes</label>
+                <textarea style={{ ...INPUT, borderRadius: 'var(--r-sm)', resize: 'vertical', minHeight: 80, lineHeight: 1.6 }}
+                  value={form.notes ?? ''} onChange={e => set('notes', e.target.value)}
+                  onFocus={e => focusStyle(e.target)} onBlur={e => blurStyle(e.target)} />
+              </div>
+            </div>
+          ) : (
+            /* ── Read-only view ── */
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={PANEL}><p style={SL}>Bookings</p><p style={{ fontSize: 22, fontWeight: 800, color: '#1C1917', margin: 0, lineHeight: 1 }}>{liveBookings ?? carrier.total_bookings}</p></div>
+                <div style={PANEL}><p style={SL}>Last Visit</p><p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', margin: 0 }}>{liveLastVisit ?? carrier.last_visit ?? '—'}</p></div>
+              </div>
+              {rows.length > 0 && (
+                <section>
+                  <p style={SL}>Details</p>
+                  <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {rows.map(r => (
+                      <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-secondary)', flexShrink: 0 }}><iconify-icon icon={r.icon} width={14} style={{ color: 'var(--text-secondary)' }} />{r.label}</span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1917', textAlign: 'right', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+              {carrier.rating != null && (
+                <section><p style={SL}>Rating</p><div style={PANEL}><StarRating value={carrier.rating} /></div></section>
+              )}
+              {carrier.notes && (
+                <section><p style={SL}>Notes</p><div style={{ ...PANEL, fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{carrier.notes}</div></section>
+              )}
+            </>
           )}
         </div>
+
+        {/* ── Footer ── */}
         <div style={{ flexShrink: 0, padding: '14px 16px', display: 'flex', gap: 8, borderTop: '1px solid rgba(0,0,0,0.07)', background: '#FFFFFF' }}>
-          <button onClick={onEdit} style={{ flex: 1, padding: '10px', borderRadius: 'var(--r-full)', border: '1.5px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name={ICONS.edit} size={15} /> Edit</button>
-          <button onClick={onDelete} style={{ flex: 1, padding: '10px', borderRadius: 'var(--r-full)', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.08)', color: '#DC2626', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name={ICONS.trash} size={15} /> Delete</button>
+          {editing ? (
+            <>
+              <button onClick={() => setEditing(false)} style={{ flex: 1, padding: '10px', borderRadius: 'var(--r-full)', border: '1.5px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>Cancel</button>
+              <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: '10px', borderRadius: 'var(--r-full)', border: 'none', background: saving ? 'rgba(0,0,0,0.08)' : 'var(--brand-color)', color: saving ? 'rgba(0,0,0,0.35)' : 'var(--brand-text)', fontSize: 15, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>{saving ? 'Saving…' : 'Save Changes'}</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setEditing(true)} style={{ flex: 1, padding: '10px', borderRadius: 'var(--r-full)', border: '1.5px solid #e5e7eb', background: '#fff', color: '#374151', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name={ICONS.edit} size={15} /> Edit</button>
+              <button onClick={onDelete} style={{ flex: 1, padding: '10px', borderRadius: 'var(--r-full)', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.08)', color: '#DC2626', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Icon name={ICONS.trash} size={15} /> Delete</button>
+            </>
+          )}
         </div>
       </motion.div>
     </>
@@ -737,8 +852,8 @@ export default function CarriersPage() {
 
           {/* Docked detail pane */}
           {selected && isWide && (
-            <div style={{ width: 460, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)' }}>
-              <CarrierPane carrier={selected} liveBookings={liveStats(selected.name)?.count} liveLastVisit={liveStats(selected.name)?.lastVisit} docked onClose={() => setSelected(null)} onEdit={() => setModal(selected)} onDelete={() => setDeleteTarget(selected)} />
+            <div style={{ width: 460, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <CarrierPane carrier={selected} liveBookings={liveStats(selected.name)?.count} liveLastVisit={liveStats(selected.name)?.lastVisit} docked onClose={() => setSelected(null)} onSaved={handleSaved} onDelete={() => setDeleteTarget(selected)} />
             </div>
           )}
         </div>
@@ -746,13 +861,13 @@ export default function CarriersPage() {
 
       {/* Detail overlay — narrow screens */}
       {selected && !isWide && (
-        <CarrierPane carrier={selected} liveBookings={liveStats(selected.name)?.count} liveLastVisit={liveStats(selected.name)?.lastVisit} onClose={() => setSelected(null)} onEdit={() => setModal(selected)} onDelete={() => setDeleteTarget(selected)} />
+        <CarrierPane carrier={selected} liveBookings={liveStats(selected.name)?.count} liveLastVisit={liveStats(selected.name)?.lastVisit} onClose={() => setSelected(null)} onSaved={handleSaved} onDelete={() => setDeleteTarget(selected)} />
       )}
 
       {/* ── Modals ── */}
-      {(modal === 'add' || (modal && modal !== 'add')) && (
+      {modal === 'add' && (
         <CarrierModal
-          carrier={modal === 'add' ? null : modal as Carrier}
+          carrier={null}
           onClose={() => setModal(null)}
           onSaved={handleSaved}
         />
