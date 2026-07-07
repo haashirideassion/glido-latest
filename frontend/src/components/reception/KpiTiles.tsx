@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { toast } from '@/lib/toast'
 import { Icon, ICONS } from '@/lib/Icon'
 import { AnimatedNumber } from '@/lib/motion'
 import { EmptyState } from '@/components/reception/EmptyState'
@@ -90,6 +91,11 @@ export function RecentVisitors({ stats, loading, onSelect, selectedId }: Props &
 
   return (
     <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', padding: 'var(--card-pad)', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)', marginBottom: 'var(--card-gap)' }}>
+      <style>{`
+        .booking-ref-copy { cursor: pointer; transition: color 0.15s ease; }
+        .booking-ref-copy:hover { color: var(--brand-color) !important; }
+        .booking-ref-copy:hover svg { opacity: 0.8; }
+      `}</style>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div>
             <h3 style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', margin: 0, letterSpacing: '-0.01em' }}>Recent Visitors</h3>
@@ -136,7 +142,17 @@ export function RecentVisitors({ stats, loading, onSelect, selectedId }: Props &
                   <div style={{ flex: 1, minWidth: 0, padding: '12px 16px' }}>
                     {/* Top row */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                      <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, color: '#1C1917', flexShrink: 0 }}>{b.referenceNumber}</span>
+                      <span
+                        className="booking-ref-copy"
+                        style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, color: '#1C1917', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                        title="Click to copy"
+                        onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(b.referenceNumber).then(() => toast('Reference copied', 'info')).catch(() => {}) }}
+                      >
+                        {b.referenceNumber}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                      </span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', background: '#F5F5F4', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-full)', padding: '2px 8px', whiteSpace: 'nowrap' }}>
                         {svcLabel}{loadLabel ? ` · ${loadLabel}` : ''}
                       </span>

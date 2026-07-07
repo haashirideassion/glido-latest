@@ -22,7 +22,8 @@ const FOOTER_COLS = [
 
 export default function PublicLayout() {
   const { pathname } = useLocation()
-  const isImmersive = pathname === '/book' || pathname === '/visitor-login' || pathname === '/login'
+  const isImmersive = false
+  const isDarkPage  = pathname === '/visitor-login' || pathname === '/login'
   const navigate = useNavigate()
   const outlet = useOutlet()
   const reduceMotionPage = useReducedMotion()
@@ -153,10 +154,10 @@ export default function PublicLayout() {
             pointerEvents: 'all',
             maxWidth: '100%',
             margin: 0,
-            background: 'rgba(255,255,255,0.88)',
-            backdropFilter: 'blur(20px) saturate(200%)',
-            WebkitBackdropFilter: 'blur(20px) saturate(200%)',
-            border: '1px solid rgba(0,0,0,0.07)',
+            background: isDarkPage ? 'rgba(8,10,14,0.45)' : 'rgba(255,255,255,0.88)',
+            backdropFilter: 'blur(20px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+            border: isDarkPage ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(0,0,0,0.07)',
             borderRadius: 0,
             boxShadow: 'none',
             transition: 'max-width 0.5s cubic-bezier(0.16,1,0.3,1),margin 0.5s cubic-bezier(0.16,1,0.3,1),border-radius 0.5s cubic-bezier(0.16,1,0.3,1),box-shadow 0.5s cubic-bezier(0.16,1,0.3,1)',
@@ -168,19 +169,19 @@ export default function PublicLayout() {
               onMouseOver={e => (e.currentTarget.style.opacity = '0.75')}
               onMouseOut={e  => (e.currentTarget.style.opacity = '1')}
             >
-              <GlidoLogo height={21} onDark={false} />
+              <GlidoLogo height={21} onDark={isDarkPage} />
             </Link>
 
             {!isMobile && (
             <nav
               ref={wrapRef}
-              style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2, padding: 4, background: 'rgba(0,0,0,0.045)', borderRadius: 'var(--r-full)' }}
+              style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2, padding: 4, background: isDarkPage ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.045)', borderRadius: 'var(--r-full)' }}
             >
               <div
                 ref={hlRef}
                 style={{
-                  position: 'absolute', borderRadius: 'var(--r-full)', background: '#fff',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.10),0 0 0 1px rgba(0,0,0,0.06)',
+                  position: 'absolute', borderRadius: 'var(--r-full)', background: isDarkPage ? 'rgba(255,255,255,0.13)' : '#fff',
+                  boxShadow: isDarkPage ? 'none' : '0 1px 3px rgba(0,0,0,0.10),0 0 0 1px rgba(0,0,0,0.06)',
                   opacity: 0, pointerEvents: 'none', zIndex: 0,
                   transition: 'opacity 0.2s ease,width 0.25s cubic-bezier(0.16,1,0.3,1),height 0.25s cubic-bezier(0.16,1,0.3,1),left 0.25s cubic-bezier(0.16,1,0.3,1),top 0.25s cubic-bezier(0.16,1,0.3,1)',
                 }}
@@ -195,7 +196,7 @@ export default function PublicLayout() {
                     display: 'inline-flex', alignItems: 'center', gap: 5,
                     padding: '7px 13px', borderRadius: 'var(--r-full)',
                     fontSize: 15, fontWeight: (pathname === l.to || (l.to === '/book' && pathname === '/visitor-login')) ? 700 : 500,
-                    color: (pathname === l.to || (l.to === '/book' && pathname === '/visitor-login')) ? 'var(--brand-color)' : '#78716C',
+                    color: (pathname === l.to || (l.to === '/book' && pathname === '/visitor-login')) ? 'var(--brand-color)' : isDarkPage ? 'rgba(255,255,255,0.65)' : '#78716C',
                     textDecoration: 'none',
                     transition: 'color 0.15s ease,transform 0.22s cubic-bezier(0.16,1,0.3,1)',
                     userSelect: 'none',
@@ -214,9 +215,9 @@ export default function PublicLayout() {
                 type="button"
                 onClick={() => setMobileOpen(true)}
                 aria-label="Open menu"
-                style={{ width: 40, height: 40, borderRadius: 'var(--r-full)', border: '1px solid rgba(0,0,0,0.10)', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                style={{ width: 40, height: 40, borderRadius: 'var(--r-full)', border: isDarkPage ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.10)', background: isDarkPage ? 'rgba(255,255,255,0.10)' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1C1917" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isDarkPage ? '#fff' : '#1C1917'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>
                 </svg>
               </button>
@@ -296,9 +297,9 @@ export default function PublicLayout() {
               <Link
                 ref={loginRef}
                 to="/visitor-login"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 20px', fontSize: 15, fontWeight: 600, color: '#1C1917', background: 'linear-gradient(160deg,#F9F8F7 0%,#EEEDEC 100%)', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-full)', textDecoration: 'none', boxShadow: '0 1px 3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.85)', flexShrink: 0, overflow: 'hidden', position: 'relative' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 20px', fontSize: 15, fontWeight: 600, color: isDarkPage ? 'rgba(255,255,255,0.85)' : '#1C1917', background: isDarkPage ? 'rgba(255,255,255,0.10)' : 'linear-gradient(160deg,#F9F8F7 0%,#EEEDEC 100%)', border: isDarkPage ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-full)', textDecoration: 'none', boxShadow: isDarkPage ? 'none' : '0 1px 3px rgba(0,0,0,0.06),inset 0 1px 0 rgba(255,255,255,0.85)', flexShrink: 0, overflow: 'hidden', position: 'relative' }}
               >
-                <Icon name={ICONS.users} size={13} style={{ opacity: 0.55 }} />
+                <Icon name={ICONS.users} size={13} style={{ opacity: isDarkPage ? 0.75 : 0.55 }} />
                 Login
               </Link>
             )}

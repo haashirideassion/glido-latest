@@ -15,13 +15,16 @@ export function SlotGrid({ slots, selectedSlotId, onSelect }: Props) {
     <p style={{ fontSize: 15, color: 'var(--text-tertiary)', padding: '16px 0', textAlign: 'center' }}>No slots available for this date.</p>
   )
 
+  const groups = [{ label: 'Morning', group: morning }, { label: 'Afternoon', group: afternoon }, { label: 'Evening', group: evening }]
+    .filter(g => g.group.length > 0)
+  const showLabels = groups.length > 1
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {[{ label: 'Morning', group: morning }, { label: 'Afternoon', group: afternoon }, { label: 'Evening', group: evening }]
-        .filter(g => g.group.length > 0)
+      {groups
         .map(({ label, group }) => (
           <div key={label}>
-            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 8 }}>{label}</p>
+            {showLabels && <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.10em', textTransform: 'uppercase', marginBottom: 8 }}>{label}</p>}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(120px,1fr))', gap: 8 }}>
               {group.map(slot => {
                 const full     = slot.busyness === 'full'

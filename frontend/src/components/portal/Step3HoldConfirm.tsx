@@ -133,25 +133,6 @@ export function Step3HoldConfirm() {
         </div>
       )}
 
-      {/* Copy from the previous slot — quick fill for repetitive multi-slot bookings */}
-      {multi && !applyAll && activeSlot > 0 && state.slotConfigs[activeSlot - 1]?.loadType && (
-        <button
-          type="button"
-          onClick={() => setLoad(activeCfg.index, state.slotConfigs[activeSlot - 1].loadType as 'fcl' | 'lcl')}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600,
-            color: 'var(--brand-color)', background: 'rgba(var(--brand-rgb),0.06)',
-            border: '1px solid rgba(var(--brand-rgb),0.18)', borderRadius: 999, padding: '6px 14px',
-            marginBottom: 16, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-            <path d="M3 10.5V3.5C3 2.9 3.4 2.5 4 2.5H10.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-          Copy from Slot {activeSlot}
-        </button>
-      )}
 
       {/* Cards — single slot view */}
       <style>{`@keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`}</style>

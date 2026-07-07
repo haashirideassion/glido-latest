@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { flushSync } from 'react-dom'
 import { useWizard, useHoldTimer, calcCharges } from '@/contexts/WizardContext'
 import { Icon, ICONS } from '@/lib/Icon'
 import timerImg from '@/assets/timer.png'
@@ -196,11 +197,18 @@ export function Step7Confirmation() {
       const _seenRefs = new Set<string>()
       const uniqueRefs = refs.filter(r => !!r.ref).filter(r => { if (_seenRefs.has(r.ref)) return false; _seenRefs.add(r.ref); return true })
       console.log('[Submit Debug] final refs:', uniqueRefs)
-      dispatch({ type: 'SET', field: 'confirmationRef',  value: uniqueRefs[0]?.ref ?? null })
-      dispatch({ type: 'SET', field: 'confirmationRefs', value: uniqueRefs })
-      dispatch({ type: 'SET', field: 'bookingConfirmed', value: true })
-      dispatch({ type: 'SET', field: 'submitting', value: false })
-      dispatch({ type: 'SET', field: 'step', value: 8 })
+      // flushSync forces React to commit these dispatches synchronously before any
+      // user interaction can fire. Without this, React 18's async batching means
+      // useBlocker in BookingWizard is still registered (shouldBlock=true from the
+      // last committed render) when the user clicks a nav link, silently blocking
+      // all navigation on the confirmation screen.
+      flushSync(() => {
+        dispatch({ type: 'SET', field: 'confirmationRef',  value: uniqueRefs[0]?.ref ?? null })
+        dispatch({ type: 'SET', field: 'confirmationRefs', value: uniqueRefs })
+        dispatch({ type: 'SET', field: 'bookingConfirmed', value: true })
+        dispatch({ type: 'SET', field: 'submitting', value: false })
+        dispatch({ type: 'SET', field: 'step', value: 8 })
+      })
       toast('Booking confirmed! Check your email for details.', 'success')
     } catch (err: any) {
       console.log('[Submit Debug] createBooking error:', err)

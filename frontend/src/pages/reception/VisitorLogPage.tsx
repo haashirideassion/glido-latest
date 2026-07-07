@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
 import { CustomSelect } from '@/components/ui/CustomSelect'
 import { fmtDate, fmtDateTime as _fmtDateTime, todaySydney, TZ } from '@/lib/time'
 import { getVisitorLogRecords } from '@/lib/db/walk-ins'
-import { getTenant } from '@/lib/db/tenants'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
 import { AnimatedNumber, motion } from '@/lib/motion'
 import { EmptyState } from '@/components/reception/EmptyState'
@@ -29,30 +27,10 @@ interface VisitorRecord {
   }
 }
 
-interface ColumnConfig {
-  date:          boolean
-  fullName:      boolean
-  address:       boolean
-  idType:        boolean
-  idNumber:      boolean
-  dob:           boolean
-  idSignedBy:    boolean
-  reason:        boolean
-  personVisited: boolean
-  checkInTime:   boolean
-  checkOutTime:  boolean
-  notes:         boolean
-}
-
 const fmtDateTime = (iso?: string) => iso ? _fmtDateTime(iso) : '—'
 const today = () => todaySydney()
 const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toLocaleDateString('sv-SE', { timeZone: TZ })
 
-const DEFAULT_VISIBLE: ColumnConfig = {
-  date: true, fullName: true, address: true, idType: true,
-  idNumber: true, dob: true, idSignedBy: true, reason: true,
-  personVisited: true, checkInTime: false, checkOutTime: false, notes: false,
-}
 
 function RecordPane({ record, docked, onClose }: { record: any; docked?: boolean; onClose: () => void }) {
   const b = record.bookings as any
@@ -82,8 +60,13 @@ function RecordPane({ record, docked, onClose }: { record: any; docked?: boolean
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px 12px 20px', borderBottom: '1px solid rgba(0,0,0,0.07)', flexShrink: 0 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: 0 }}>Visitor Record</h2>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 'var(--r-full)', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name={ICONS.close} size={16} />
+          <button onClick={onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-secondary)', transition: 'background 0.15s, color 0.15s' }}
+            onMouseOver={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#1C1917' }}
+            onMouseOut={e  => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
           </button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 20px 20px' }}>
@@ -111,24 +94,11 @@ export default function VisitorLogPage() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  const [visibleCols, setVisibleCols] = useState<ColumnConfig>(DEFAULT_VISIBLE)
   const [from, setFrom]       = useState(daysAgo(7))
   const [to, setTo]           = useState(today())
   const [status,    setStatus]    = useState('')
   const [visitType, setVisitType] = useState('')
   const [search,    setSearch]    = useState('')
-
-  // Load report_config.visibleColumns on mount
-  useEffect(() => {
-    getTenant(DEFAULT_TENANT_ID)
-      .then(data => {
-        const rc = (data?.report_config as any)
-        if (rc?.visibleColumns && typeof rc.visibleColumns === 'object') {
-          setVisibleCols({ ...DEFAULT_VISIBLE, ...rc.visibleColumns })
-        }
-      })
-      .catch(() => { /* use defaults */ })
-  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -283,77 +253,131 @@ export default function VisitorLogPage() {
         )}
       </div>
 
-      {/* Table + docked detail pane */}
+      {/* Cards + docked detail pane */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
       <div style={{ flex: 1, minWidth: 0, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
-        <div style={{ padding: '14px 24px', borderBottom: '1px solid rgba(0,0,0,0.07)', background: 'rgba(0,0,0,0.01)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+
+        {/* Header */}
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid rgba(0,0,0,0.07)', background: 'rgba(0,0,0,0.01)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <p style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', margin: 0 }}>
-            ABF Visitor Log <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 6 }}>Showing {records.length} records</span>
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {loading && <span style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Loading…</span>}
-          </div>
-        </div>
-        <div style={{ overflowX: 'auto', position: 'relative' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 15, whiteSpace: 'nowrap' }}>
-            <thead>
-              <tr style={{ background: '#F7F6F5', borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                {visibleCols.date          && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>Date</th>}
-                {visibleCols.fullName      && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15, position: 'sticky', left: 0, zIndex: 2, background: '#F7F6F5' }}>Full Name</th>}
-                {visibleCols.address       && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>Address</th>}
-                {visibleCols.idType        && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>ID Type</th>}
-                {visibleCols.idNumber      && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15, position: 'sticky', left: 160, zIndex: 2, background: '#F7F6F5' }}>ID Number</th>}
-                {visibleCols.dob           && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>DOB</th>}
-                {visibleCols.idSignedBy    && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>ID Signed By</th>}
-                {visibleCols.reason        && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>Reason</th>}
-                {visibleCols.personVisited && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>Person Visited</th>}
-                {visibleCols.checkInTime   && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>Entry Time</th>}
-                {visibleCols.checkOutTime  && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>Exit Time</th>}
-                {visibleCols.notes         && <th style={{ textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }}>Notes</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {records.filter(r => {
+            ABF Visitor Log <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', marginLeft: 6 }}>{loading ? 'Loading…' : `${(() => {
+              const b_filter = records.filter(r => {
                 const b = r.bookings as any
-                if (visitType === 'walk_in'  && !r.is_walk_in)  return false
-                if (visitType === 'booking'  && r.is_walk_in)   return false
-                if (status && b?.status !== status)             return false
+                if (visitType === 'walk_in' && !(r as any).is_walk_in) return false
+                if (visitType === 'booking' && (r as any).is_walk_in)  return false
+                if (status && b?.status !== status) return false
                 return true
-              }).map(r => {
-                const b = r.bookings as any
+              })
+              return b_filter.length
+            })()} records`}</span>
+          </p>
+        </div>
+
+        {/* Cards list */}
+        {loading ? (
+          <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>Loading…</div>
+        ) : (() => {
+          const filtered = records.filter(r => {
+            const b = r.bookings as any
+            if (visitType === 'walk_in' && !(r as any).is_walk_in) return false
+            if (visitType === 'booking' && (r as any).is_walk_in)  return false
+            if (status && b?.status !== status) return false
+            return true
+          })
+          if (filtered.length === 0) return (
+            <EmptyState compact variant="search" title="No visitor records found" subtitle="Try adjusting your filters or date range." />
+          )
+
+          const STATUS_CFG: Record<string, { label: string; bg: string; color: string; border: string; icon: string }> = {
+            scheduled:  { label: 'Scheduled',  bg: '#EFF6FF', color: '#2563EB', border: '#BFDBFE', icon: 'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+            checked_in: { label: 'On-Site',    bg: '#F0FDF4', color: '#16A34A', border: '#BBF7D0', icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+            completed:  { label: 'Completed',  bg: '#F9FAFB', color: '#374151', border: '#E5E7EB', icon: 'M10.125 2.25h-4.5c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125v-9M10.125 2.25h.375a9 9 0 0 1 9 9v.375M10.125 2.25A3.375 3.375 0 0 1 13.5 5.625v1.5c0 .621.504 1.125 1.125 1.125h1.5a3.375 3.375 0 0 1 3.375 3.375M9 15l2.25 2.25L15 12' },
+            walk_in:    { label: 'Walk-in',    bg: '#FFFBEB', color: '#D97706', border: '#FDE68A', icon: 'M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z' },
+          }
+          const BAR_COLOR: Record<string, string> = {
+            checked_in: '#16A34A',
+            completed:  '#94A3B8',
+            scheduled:  '#2563EB',
+            walk_in:    '#F59E0B',
+          }
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 10px' }}>
+              {filtered.map(r => {
+                const b      = r.bookings as any
+                const isWalkIn = (r as any).is_walk_in
                 const name   = r.licence_name || b?.driver_name || '—'
-                const reason = r.walk_in_reason || b?.service_type?.toUpperCase() || '—'
+                const reason = r.walk_in_reason || (b?.service_type ? (b.service_type === 'pickup' ? 'Pick Up' : 'Drop Off') : null) || '—'
+                const bStatus = isWalkIn && !b ? 'walk_in' : (b?.status ?? 'walk_in')
+                const cfg    = STATUS_CFG[bStatus] ?? STATUS_CFG.walk_in
+                const barColor = BAR_COLOR[bStatus] ?? '#E5E7EB'
+                const isSel  = selectedRecord?.id === r.id
+
                 return (
-                  <tr key={r.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', transition: 'background 0.1s', cursor: 'pointer' }}
-                    onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
-                    onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
+                  <div
+                    key={r.id}
                     onClick={() => setSelectedRecord(r)}
+                    style={{ display: 'flex', cursor: 'pointer', border: `1px solid ${isSel ? 'rgba(var(--brand-rgb),0.35)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', background: isSel ? 'rgba(var(--brand-rgb),0.05)' : '#fff', transition: 'box-shadow 0.15s, background 0.12s, border-color 0.12s' }}
+                    onMouseOver={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.10)' }}
+                    onMouseOut={e  => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)' }}
                   >
-                    {visibleCols.date          && <td style={{ padding: '14px 20px', color: '#1C1917', fontWeight: 500 }}>{fmtDate(r.check_in_time)}</td>}
-                    {visibleCols.fullName      && <td style={{ padding: '14px 20px', fontWeight: 700, color: '#1C1917', position: 'sticky', left: 0, zIndex: 1, background: '#fff' }}>{name}</td>}
-                    {visibleCols.address       && <td style={{ padding: '14px 20px', color: 'var(--text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.licence_address || '—'}</td>}
-                    {visibleCols.idType        && <td style={{ padding: '14px 20px', color: 'var(--text-muted)' }}>{r.licence_scan_method || 'Manual'}</td>}
-                    {visibleCols.idNumber      && <td style={{ padding: '14px 20px', fontFamily: 'ui-monospace,monospace', color: 'var(--brand-color)', fontWeight: 700, position: 'sticky', left: 160, zIndex: 1, background: '#fff' }}>{r.licence_number || '—'}</td>}
-                    {visibleCols.dob           && <td style={{ padding: '14px 20px', color: 'var(--text-muted)' }}>{fmtDate(r.licence_dob)}</td>}
-                    {visibleCols.idSignedBy    && <td style={{ padding: '14px 20px', color: 'var(--text-muted)' }}>—</td>}
-                    {visibleCols.reason        && <td style={{ padding: '14px 20px' }}><span style={{ background: 'rgba(0,0,0,0.04)', padding: '4px 10px', borderRadius: 'var(--r-sm)', fontWeight: 600, color: '#374151' }}>{reason}</span></td>}
-                    {visibleCols.personVisited && <td style={{ padding: '14px 20px', color: '#1C1917', fontWeight: 600 }}>{r.visit_person_name || '—'}</td>}
-                    {visibleCols.checkInTime   && <td style={{ padding: '14px 20px', color: '#16A34A', fontWeight: 700 }}>{fmtDateTime(r.check_in_time)}</td>}
-                    {visibleCols.checkOutTime  && <td style={{ padding: '14px 20px', color: 'var(--text-muted)' }}>{b?.completed_at ? fmtDateTime(b.completed_at) : '—'}</td>}
-                    {visibleCols.notes         && <td style={{ padding: '14px 20px', color: 'var(--text-muted)' }}>—</td>}
-                  </tr>
+                    {/* Left colour bar */}
+                    <div style={{ width: 5, flexShrink: 0, background: barColor }} />
+
+                    <div style={{ flex: 1, minWidth: 0, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {/* Top row: name + id type + date/time + status */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: '#1C1917' }}>{name}</span>
+
+                        {r.licence_scan_method && (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)', padding: '1px 7px', borderRadius: 'var(--r-sm)' }}>
+                            {r.licence_scan_method}
+                          </span>
+                        )}
+
+                        <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+                          {fmtDateTime(r.check_in_time)}
+                        </span>
+
+                        <div style={{ flex: 1 }} />
+
+                        {/* Status badge */}
+                        <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, borderRadius: 'var(--r-xl)', padding: '3px 9px 3px 7px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                            <path d={cfg.icon} />
+                          </svg>
+                          {cfg.label}
+                        </span>
+                      </div>
+
+                      {/* Bottom row: ID number + reason + person visited */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        {r.licence_number && (
+                          <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, fontWeight: 700, color: 'var(--brand-color)' }}>
+                            {r.licence_number}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', background: 'rgba(0,0,0,0.04)', padding: '1px 8px', borderRadius: 'var(--r-sm)' }}>
+                          {reason}
+                        </span>
+                        {r.visit_person_name && (
+                          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                            → {r.visit_person_name}
+                          </span>
+                        )}
+                        {r.licence_address && (
+                          <span style={{ fontSize: 12, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
+                            {r.licence_address}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 )
               })}
-              {!loading && records.length === 0 && (
-                <tr>
-                  <td colSpan={Object.values(visibleCols).filter(Boolean).length || 9}>
-                    <EmptyState compact variant="search" title="No visitor records found" subtitle="Try adjusting your filters or date range." />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          )
+        })()}
       </div>
 
       {selectedRecord && isWide && (

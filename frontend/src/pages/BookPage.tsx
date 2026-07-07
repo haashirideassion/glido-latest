@@ -287,7 +287,7 @@ function ConfirmedScreen() {
   console.log('[QR DEBUG] full state:', state)
 
   return (
-    <div style={{ minHeight: 'calc(100vh - 56px)', background: 'var(--surface-tint)', padding: '40px 24px 64px' }}>
+    <div style={{ minHeight: 'calc(100vh - 60px)', background: 'var(--surface-tint)', padding: '40px 24px 64px' }}>
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
 
         {/* Success banner */}

@@ -504,7 +504,12 @@ export default function BookingsPage() {
   return (
     <>
     {/* Pulse animation keyframes */}
-    <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}`}</style>
+    <style>{`
+      @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+      .booking-ref-copy { cursor: pointer; transition: color 0.15s ease; }
+      .booking-ref-copy:hover { color: var(--brand-color) !important; }
+      .booking-ref-copy:hover svg { opacity: 0.8; }
+    `}</style>
 
     <div>
       {/* KPI tiles */}
@@ -581,28 +586,54 @@ export default function BookingsPage() {
         )}
       </div>
 
-      {/* ── Bulk action bar — appears once rows are selected ── */}
+      {/* ── Floating bulk action bar — fixed bottom centre ── */}
       {selectedIds.size > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 16px', background: 'rgba(var(--brand-rgb),0.06)', border: '1px solid rgba(var(--brand-rgb),0.22)', borderRadius: 'var(--r-md)' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--brand-color)' }}>
-            {selectedIds.size} selected
+        <div style={{ position: 'fixed', bottom: 28, left: '50%', transform: 'translateX(-50%)', zIndex: 200, display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 6px 6px 14px', background: '#1C1917', borderRadius: 9999, boxShadow: '0 8px 32px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.18)', whiteSpace: 'nowrap', animation: 'slideUp 0.18s ease' }}>
+          <style>{`@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}`}</style>
+
+          {/* Count badge */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 24, height: 24, padding: '0 8px', background: 'rgba(255,255,255,0.15)', borderRadius: 9999, fontSize: 13, fontWeight: 700, color: '#fff', marginRight: 4 }}>
+            {selectedIds.size}
           </span>
-          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.65)', marginRight: 8 }}>
+            selected
+          </span>
+
+          {/* Divider */}
+          <span style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.15)', margin: '0 4px', flexShrink: 0 }} />
+
           {perms.can_mark_complete && (
             <button onClick={bulkCheckIn} disabled={bulkBusy}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: '#fff', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: bulkBusy ? 'wait' : 'pointer', opacity: bulkBusy ? 0.6 : 1, fontFamily: 'inherit' }}>
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: '#1C1917', background: bulkBusy ? 'rgba(255,255,255,0.5)' : '#fff', border: 'none', borderRadius: 9999, cursor: bulkBusy ? 'wait' : 'pointer', fontFamily: 'inherit', transition: 'background 0.12s' }}
+              onMouseOver={e => { if (!bulkBusy) e.currentTarget.style.background = '#F3F4F6' }}
+              onMouseOut={e  => { if (!bulkBusy) e.currentTarget.style.background = '#fff' }}
+            >
               <Icon name={ICONS.check} size={14} /> {bulkBusy ? 'Working…' : 'Mark pre-processed'}
             </button>
           )}
           {perms.can_export_csv && (
             <button onClick={bulkExport}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
-              <Icon name={ICONS.download} size={14} /> Export selected
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.10)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 9999, cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s' }}
+              onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
+              onMouseOut={e  => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)' }}
+            >
+              <Icon name={ICONS.download} size={14} /> Export
             </button>
           )}
+
+          {/* Divider */}
+          <span style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.15)', margin: '0 4px', flexShrink: 0 }} />
+
+          {/* Dismiss × */}
           <button onClick={clearSelection}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: 'var(--text-tertiary)', background: 'none', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
-            Clear
+            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 9999, cursor: 'pointer', color: 'rgba(255,255,255,0.6)', transition: 'background 0.12s, color 0.12s', flexShrink: 0 }}
+            onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; e.currentTarget.style.color = '#fff' }}
+            onMouseOut={e  => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }}
+            title="Clear selection"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
           </button>
         </div>
       )}
@@ -644,153 +675,135 @@ export default function BookingsPage() {
           />
         ) : (
           <div>
-            {/* Dense table — compacts to key columns when the detail pane is open */}
-            {(() => {
-            const paneOpen = !!selected && isWide
-            const TH: React.CSSProperties = { textAlign: 'left', padding: '8px 14px', fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#FAFAF9', position: 'sticky', top: 0, zIndex: 1 }
-            const TD: React.CSSProperties = { padding: '9px 14px', fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(0,0,0,0.05)' }
-            return (
-            <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ ...TH, width: 4, padding: 0 }} />
-                  <th style={{ ...TH, width: 32 }}>
-                    <input
-                      type="checkbox"
-                      aria-label="Select all visible bookings"
-                      checked={pagedRows.length > 0 && pagedRows.every(b => selectedIds.has(b.id))}
-                      onChange={() => {
-                        const allSelected = pagedRows.every(b => selectedIds.has(b.id))
-                        setSelectedIds(prev => {
-                          const next = new Set(prev)
-                          for (const b of pagedRows) { if (allSelected) next.delete(b.id); else next.add(b.id) }
-                          return next
-                        })
-                      }}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  </th>
-                  <th style={TH}>Reference</th>
-                  <th style={TH}>Driver</th>
-                  <th style={TH}>Slot</th>
-                  {!paneOpen && <th style={TH}>Service</th>}
-                  {!paneOpen && <th style={TH}>HBL / Container</th>}
-                  <th style={TH}>Status</th>
-                  <th style={{ ...TH, textAlign: 'right' }} />
-                </tr>
-              </thead>
-              <tbody>
-              {pagedRows.map((b) => {
-                const ics    = b.icsStatus ?? ''
-                const cfg    = STATUS_CONFIG[b.status] ?? STATUS_CONFIG.scheduled
-                const isHeld = ics === 'held'
-                const isBusy = !!actionLoading[b.id]
-                const hbl    = b.houseBillNumber ?? b.containerNumber ?? null
-                const isSel  = selected?.id === b.id
+            {/* Select-all row */}
+            {pagedRows.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px 4px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                <input
+                  type="checkbox"
+                  aria-label="Select all visible bookings"
+                  checked={pagedRows.every(b => selectedIds.has(b.id))}
+                  onChange={() => {
+                    const allSelected = pagedRows.every(b => selectedIds.has(b.id))
+                    setSelectedIds(prev => {
+                      const next = new Set(prev)
+                      for (const b of pagedRows) { if (allSelected) next.delete(b.id); else next.add(b.id) }
+                      return next
+                    })
+                  }}
+                  style={{ cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Select all on this page</span>
+              </div>
+            )}
+
+            {/* Cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 10px' }}>
+              {pagedRows.map(b => {
+                const ics        = b.icsStatus ?? 'unavailable'
+                const cfg        = STATUS_CONFIG[b.status] ?? STATUS_CONFIG.scheduled
+                const isBusy     = !!actionLoading[b.id]
+                const hbl        = b.houseBillNumber ?? b.containerNumber ?? null
+                const isSel      = selected?.id === b.id
+                const displayRef = b.groupReference ?? b.referenceNumber
 
                 return (
-                  <tr
+                  <div
                     key={b.id}
                     onClick={() => setSelected(b)}
-                    style={{ cursor: 'pointer', background: isSel ? 'rgba(var(--brand-rgb),0.06)' : isHeld ? 'rgba(239,68,68,0.03)' : 'transparent', transition: 'background 0.12s' }}
-                    onMouseOver={e => { if (!isSel) e.currentTarget.style.background = '#FAFAF9' }}
-                    onMouseOut={e  => { if (!isSel) e.currentTarget.style.background = isHeld ? 'rgba(239,68,68,0.03)' : 'transparent' }}
+                    style={{ display: 'flex', cursor: 'pointer', border: `1px solid ${isSel ? 'rgba(var(--brand-rgb),0.35)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', background: isSel ? 'rgba(var(--brand-rgb),0.05)' : '#fff', transition: 'box-shadow 0.15s, background 0.12s, border-color 0.12s' }}
+                    onMouseOver={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.10)' }}
+                    onMouseOut={e  => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)' }}
                   >
-                    {/* ICS colour bar + selection accent */}
-                    <td style={{ width: 4, padding: 0 }}>
-                      <div style={{ width: isSel ? 4 : 3, height: 34, background: isSel ? 'var(--brand-color)' : (ICS_BAR_COLOR[ics] ?? ICS_BAR_COLOR.unavailable), borderRadius: '0 3px 3px 0' }} />
-                    </td>
+                    {/* ICS colour bar */}
+                    <div style={{ width: 5, flexShrink: 0, background: ICS_BAR_COLOR[ics] ?? ICS_BAR_COLOR.unavailable }} />
 
-                    {/* Bulk-select checkbox */}
-                    <td style={{ width: 32, padding: '9px 14px' }} onClick={e => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        aria-label={`Select booking ${b.referenceNumber}`}
-                        checked={selectedIds.has(b.id)}
-                        onChange={() => toggleSelect(b.id)}
-                        style={{ cursor: 'pointer' }}
-                      />
-                    </td>
+                    <div style={{ flex: 1, minWidth: 0, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {/* Top row */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        {/* Bulk checkbox */}
+                        <input
+                          type="checkbox"
+                          aria-label={`Select booking ${b.referenceNumber}`}
+                          checked={selectedIds.has(b.id)}
+                          onChange={() => toggleSelect(b.id)}
+                          onClick={e => e.stopPropagation()}
+                          style={{ cursor: 'pointer' }}
+                        />
 
-                    {/* Reference (copyable) */}
-                    <td style={TD}>
-                      <button
-                        type="button"
-                        style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, color: '#1C1917', display: 'inline-flex', alignItems: 'center', gap: 5, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                        title="Click to copy"
-                        aria-label={`Copy reference ${b.referenceNumber}`}
-                        onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(b.referenceNumber).then(() => toast('Reference copied', 'info')).catch(() => {}) }}
-                      >
-                        {b.referenceNumber}
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.35, flexShrink: 0 }}>
-                          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                        </svg>
-                      </button>
-                    </td>
-
-                    {/* Driver (+ rego) */}
-                    <td style={TD}>
-                      <span style={{ fontWeight: 600, color: '#1C1917' }}>{b.driverName}</span>
-                      {b.vehicleRegistration && <span style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>{b.vehicleRegistration}</span>}
-                    </td>
-
-                    {/* Slot */}
-                    <td style={TD}>
-                      <span style={{ color: '#1C1917', fontWeight: 500 }}>{b.slotStartTime ?? '—'}</span>
-                      <span style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>{fmtShortDate(b.slotDate)}</span>
-                    </td>
-
-                    {/* Service · Load (hidden when pane open) */}
-                    {!paneOpen && (
-                      <td style={TD}>{b.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off'} · {(b.loadType ?? '').toUpperCase()}</td>
-                    )}
-
-                    {/* HBL / Container (hidden when pane open) */}
-                    {!paneOpen && (
-                      <td style={{ ...TD, fontFamily: hbl ? 'ui-monospace,monospace' : undefined, color: hbl ? '#1C1917' : 'var(--text-tertiary)' }}>{hbl ?? '—'}</td>
-                    )}
-
-                    {/* Status */}
-                    <td style={TD}>
-                      <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, borderRadius: 'var(--r-full)', padding: '3px 9px 3px 7px', fontSize: 11.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={cfg.icon} /></svg>
-                        {cfg.label}
-                      </span>
-                    </td>
-
-                    {/* Quick primary action */}
-                    <td style={{ ...TD, textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                      {b.status === 'scheduled' && perms.can_mark_complete ? (
-                        <motion.button
-                          onClick={e => handleCheckIn(b, e)}
-                          disabled={isBusy}
-                          whileTap={isBusy ? undefined : { scale: 0.94 }}
-                          style={{ height: 30, padding: '0 12px', fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: isBusy ? 0.6 : 1 }}
+                        {/* Reference (copyable) */}
+                        <span
+                          className="booking-ref-copy"
+                          style={{ fontFamily: 'ui-monospace,monospace', fontSize: 14, fontWeight: 700, color: '#1C1917', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                          title="Click to copy"
+                          onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(displayRef).then(() => toast('Reference copied', 'info')).catch(() => {}) }}
                         >
-                          {actionLoading[b.id] === 'checkin' ? 'Updating…' : 'Check In'}
-                        </motion.button>
-                      ) : b.status === 'checked_in' && perms.can_mark_complete ? (
-                        <motion.button
-                          onClick={e => handleComplete(b, e)}
-                          disabled={isBusy}
-                          whileTap={isBusy ? undefined : { scale: 0.94 }}
-                          style={{ height: 30, padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#fff', background: isBusy ? '#6B7280' : '#1C1917', border: 'none', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                        >
-                          {actionLoading[b.id] === 'complete' ? 'Updating…' : 'Complete'}
-                        </motion.button>
-                      ) : (
-                        <span style={{ color: 'var(--text-tertiary)', opacity: 0.5 }}>›</span>
-                      )}
-                    </td>
-                  </tr>
+                          {displayRef}
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+                            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                          </svg>
+                        </span>
+
+                        {/* Service · Load */}
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                          {b.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off'} · {(b.loadType ?? '').toUpperCase()}
+                        </span>
+
+                        {/* Slot time + date */}
+                        <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+                          {b.slotStartTime}{b.slotEndTime ? ` – ${b.slotEndTime}` : ''}{b.slotDate ? ` · ${fmtShortDate(b.slotDate)}` : ''}
+                        </span>
+
+                        <div style={{ flex: 1 }} />
+
+                        {/* Status badge */}
+                        <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, borderRadius: 'var(--r-xl)', padding: '3px 9px 3px 7px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                            <path d={cfg.icon} />
+                          </svg>
+                          {cfg.label}
+                        </span>
+                      </div>
+
+                      {/* Bottom row */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: '#1C1917' }}>{b.driverName}</span>
+                        {b.vehicleRegistration && (
+                          <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)', padding: '1px 7px', borderRadius: 'var(--r-sm)' }}>
+                            {b.vehicleRegistration}
+                          </span>
+                        )}
+                        {hbl && (
+                          <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: 'var(--text-tertiary)' }}>
+                            {hbl}
+                          </span>
+                        )}
+                        <div style={{ flex: 1 }} />
+                        {/* Quick action */}
+                        {b.status === 'scheduled' && perms.can_mark_complete ? (
+                          <motion.button
+                            onClick={e => handleCheckIn(b, e)}
+                            disabled={isBusy}
+                            whileTap={isBusy ? undefined : { scale: 0.94 }}
+                            style={{ height: 28, padding: '0 12px', fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: isBusy ? 0.6 : 1 }}
+                          >
+                            {actionLoading[b.id] === 'checkin' ? 'Updating…' : 'Check In'}
+                          </motion.button>
+                        ) : b.status === 'checked_in' && perms.can_mark_complete ? (
+                          <motion.button
+                            onClick={e => handleComplete(b, e)}
+                            disabled={isBusy}
+                            whileTap={isBusy ? undefined : { scale: 0.94 }}
+                            style={{ height: 28, padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#fff', background: isBusy ? '#6B7280' : '#1C1917', border: 'none', borderRadius: 'var(--r-full)', cursor: isBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                          >
+                            {actionLoading[b.id] === 'complete' ? 'Updating…' : 'Complete'}
+                          </motion.button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                 )
               })}
-              </tbody>
-            </table>
             </div>
-            )
-            })()}
 
             {totalPages > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid rgba(0,0,0,0.06)' }}>

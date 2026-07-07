@@ -97,13 +97,9 @@ export function LookupScreen() {
   }
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 32px' }}>
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 448, textAlign: 'center' }}>
 
-        {/* Header */}
-        <div style={{ width: 64, height: 64, background: 'rgba(var(--brand-rgb),0.09)', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-          <Icon name={ICONS.search} size={36} style={{ color: 'var(--brand-color)' }} />
-        </div>
         <h2 style={{ fontSize: '1.875rem', fontWeight: 700, marginBottom: 8, color: '#1C1917' }}>Find Your Booking</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 28 }}>Select how you'd like to look up your booking</p>
 

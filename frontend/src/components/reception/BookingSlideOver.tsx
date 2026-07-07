@@ -86,7 +86,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
   const icsStyle = ICS_BADGE[b.icsStatus ?? ''] ?? ICS_BADGE.unavailable
 
   const panelStyle: React.CSSProperties = docked
-    ? { position: 'relative', height: '100%', width: '100%', zIndex: 1, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    ? { position: 'relative', flex: '1 1 0', minHeight: 0, width: '100%', zIndex: 1, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
     : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(480px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
 
   return (
@@ -123,16 +123,18 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
               {STATUS_LABEL[b.status] ?? b.status}
             </span>
           </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 'var(--r-full)', border: 'none', background: 'rgba(0,0,0,0.05)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'background 0.15s' }}
-            onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.10)')}
-            onMouseOut={e  => (e.currentTarget.style.background = 'rgba(0,0,0,0.05)')}
+          <button onClick={onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-secondary)', transition: 'background 0.15s, color 0.15s' }}
+            onMouseOver={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#1C1917' }}
+            onMouseOut={e  => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
           >
-            <Icon name={ICONS.close} size={16} />
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
           </button>
         </div>
 
         {/* ── Body ── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 20, background: '#F5F4F3' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 20, background: '#F5F4F3' }}>
 
           {/* Driver */}
           <section>
@@ -215,10 +217,6 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
                     <Icon name={ICONS.refresh} size={12} />
                     {loading === 'ics' ? 'Refreshing…' : 'Refresh ICS'}
                   </button>
-                  <span style={{ color: 'rgba(0,0,0,0.12)' }}>|</span>
-                  <a href="https://ics.abf.gov.au" target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: 'var(--brand-color)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    Open in ICS portal <Icon name={ICONS.arrowRight} size={12} />
-                  </a>
                 </div>
               </div>
               {b.icsLastCheckedAt && (

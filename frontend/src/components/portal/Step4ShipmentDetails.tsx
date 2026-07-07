@@ -7,6 +7,19 @@ import { getSlotsByDate } from '@/lib/db/slots'
 import { Icon, ICONS } from '@/lib/Icon'
 import { toast } from '@/lib/toast'
 import { todaySydney, TZ } from '@/lib/time'
+import { postFetcher } from '@/lib/fetcher'
+
+/** Fire-and-forget: increment held count for a real DB slot (skip virtual gen- slots) */
+function holdSlot(slotId: string | null | undefined) {
+  if (!slotId || slotId.startsWith('gen-')) return
+  postFetcher(`/api/v2/slots/${slotId}/hold`, {}).catch(() => { /* best-effort */ })
+}
+
+/** Fire-and-forget: decrement held count for a real DB slot */
+function releaseSlot(slotId: string | null | undefined) {
+  if (!slotId || slotId.startsWith('gen-')) return
+  postFetcher(`/api/v2/slots/${slotId}/release`, {}).catch(() => { /* best-effort */ })
+}
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import type { TimeSlot } from '@/data/types'
 import type { TenantRow } from '@/lib/db/tenants'
@@ -225,6 +238,38 @@ export function Step4ShipmentDetails() {
     return () => { cancelled = true }
   }, [state.selectedDate, tenant, tenantLoading, multi]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Silent polling: refresh slot availability every 10s while picker is open ─
+  useEffect(() => {
+    if (multi || !state.selectedDate || tenantLoading || !tenant) return
+    const poll = () => {
+      const wh    = tenant?.working_hours as unknown as WorkingHoursConfig | null
+      const dayKey = getDayKey(state.selectedDate)
+      const dayCfg = wh?.[dayKey]
+      if (dayCfg && !dayCfg.enabled) return
+      const durationMin     = tenant?.slot_duration_min     ?? 60
+      const capacityByHour  = (tenant as any)?.slot_capacity_by_hour  as Record<string, number> | undefined
+      const capacityByCombo = (tenant as any)?.slot_capacity_by_combo as Record<string, number> | undefined
+      const comboKey        = `${state.serviceType ?? 'pickup'}-${state.loadType ?? 'lcl'}`
+      const capacity        = capacityByCombo?.[comboKey] ?? tenant?.max_bookings_per_slot ?? 10
+      const periodsCfg: PeriodConfig = {
+        morning:   { ...(wh?.periods?.morning   ?? DEFAULT_PERIODS.morning)   },
+        afternoon: { ...(wh?.periods?.afternoon ?? DEFAULT_PERIODS.afternoon) },
+        evening:   { ...(wh?.periods?.evening   ?? DEFAULT_PERIODS.evening)   },
+      }
+      getSlotsByDate(state.selectedDate)
+        .then(dbSlots => {
+          const slots: TimeSlot[] = dayCfg?.enabled && dayCfg.open && dayCfg.close
+            ? generateSlotsFromConfig(state.selectedDate, dayCfg, durationMin, capacity, dbSlots, periodsCfg, capacityByHour)
+            : dbSlots.map(s => ({ ...s, capacity: s.capacity > 0 ? s.capacity : capacity }))
+          // Silent update — no loading flash
+          dispatch({ type: 'SET_SLOTS', slots, loading: false })
+        })
+        .catch(() => { /* best-effort */ })
+    }
+    const id = setInterval(poll, 5_000)
+    return () => clearInterval(id)
+  }, [state.selectedDate, tenant, tenantLoading, multi, state.serviceType, state.loadType]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const wh       = tenant?.working_hours as unknown as WorkingHoursConfig | null
   const periods: PeriodConfig = {
     morning:   { ...(wh?.periods?.morning   ?? DEFAULT_PERIODS.morning)   },
@@ -244,9 +289,13 @@ export function Step4ShipmentDetails() {
   if (!multi) {
     const selectSlot = (slot: TimeSlot) => {
       if (state.selectedSlotId === slot.id) {
+        releaseSlot(state.selectedSlotId)
         dispatch({ type: 'DESELECT_SLOT' })
         return
       }
+      // Release any previously held slot before holding the new one
+      releaseSlot(state.selectedSlotId)
+      holdSlot(slot.id)
       dispatch({ type: 'SELECT_SLOT', slotId: slot.id, label: `${slot.startTime} – ${slot.endTime}` })
       setTimeout(() => {
         dispatch({ type: 'SET', field: 'step', value: (state.step + 1) as any })
@@ -332,6 +381,7 @@ export function Step4ShipmentDetails() {
 
     if (isSelected) {
       // Deselect
+      releaseSlot(state.selectedSlotId)
       if (applyAll) {
         for (const cfg of state.slotConfigs) {
           dispatchSlotDetail(cfg.index, 'selectedSlotId',    null)
@@ -344,6 +394,10 @@ export function Step4ShipmentDetails() {
       dispatch({ type: 'DESELECT_SLOT' })
       return
     }
+
+    // Release previous hold and hold the new slot
+    releaseSlot(state.selectedSlotId)
+    holdSlot(slot.id)
 
     if (applyAll) {
       for (const cfg of state.slotConfigs) {
@@ -358,7 +412,7 @@ export function Step4ShipmentDetails() {
     // Start the hold timer (works for both single and multi-slot)
     dispatch({ type: 'SELECT_SLOT', slotId: slot.id, label })
     // Auto-advance to next tab
-    setActiveSlot(a => Math.min(a + 1, state.slotConfigs.length - 1))
+    setActiveSlot(Math.min(activeSlot + 1, state.slotConfigs.length - 1))
     // If all slots are now filled, advance to the next wizard step
     const allFilled = applyAll || state.slotConfigs.every(c =>
       c.index === slotIndex ? true : c.selectedSlotId !== null
@@ -475,32 +529,6 @@ export function Step4ShipmentDetails() {
           )
         })}
       </div>
-
-      {/* Copy from the previous slot — quick fill for repetitive multi-slot bookings */}
-      {!applyAll && activeSlot > 0 && state.slotConfigs[activeSlot - 1]?.selectedSlotId && (
-        <button
-          type="button"
-          onClick={() => {
-            const prev = state.slotConfigs[activeSlot - 1]
-            dispatchSlotDetail(activeCfg4.index, 'selectedDate',      prev.selectedDate)
-            dispatchSlotDetail(activeCfg4.index, 'selectedSlotId',    prev.selectedSlotId)
-            dispatchSlotDetail(activeCfg4.index, 'selectedSlotLabel', prev.selectedSlotLabel)
-            dispatch({ type: 'SELECT_SLOT', slotId: prev.selectedSlotId as string, label: prev.selectedSlotLabel })
-          }}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600,
-            color: 'var(--brand-color)', background: 'rgba(var(--brand-rgb),0.06)',
-            border: '1px solid rgba(var(--brand-rgb),0.18)', borderRadius: 999, padding: '6px 14px',
-            marginBottom: 16, cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-            <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-            <path d="M3 10.5V3.5C3 2.9 3.4 2.5 4 2.5H10.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-          Copy from Slot {activeSlot} · {state.slotConfigs[activeSlot - 1].selectedSlotLabel}
-        </button>
-      )}
 
       {/* Active slot picker */}
       <style>{`@keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`}</style>
@@ -697,22 +725,7 @@ function PeriodTabs({ groups, active, onChange }: {
   active: string
   onChange: (key: string) => void
 }) {
-  if (groups.length === 1) {
-    return (
-      <div style={{ marginBottom: 16 }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          fontSize: 14, fontWeight: 700, color: 'var(--brand-color)',
-          background: 'rgba(var(--brand-rgb),0.08)',
-          border: '1px solid rgba(var(--brand-rgb),0.18)',
-          borderRadius: 'var(--r-xl)', padding: '4px 12px',
-          textTransform: 'uppercase', letterSpacing: '0.06em',
-        }}>
-          {groups[0].period.label.replace(' Slots', '')}
-        </span>
-      </div>
-    )
-  }
+  if (groups.length === 1) return null
   return (
     <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)' }}>
       {groups.map(({ key, period }) => {

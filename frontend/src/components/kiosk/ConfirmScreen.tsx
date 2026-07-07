@@ -7,7 +7,7 @@ export function ConfirmScreen() {
   const r = state.lookupResult
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 32px' }}>
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 448, textAlign: 'center' }}>
         <h2 style={{ fontSize: '1.875rem', fontWeight: 700, marginBottom: 4, color: '#1C1917' }}>Booking Found</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 32 }}>Please confirm this is your booking</p>

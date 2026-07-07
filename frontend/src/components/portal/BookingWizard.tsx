@@ -1,5 +1,7 @@
 import { useWizard, useHoldTimer } from '@/contexts/WizardContext'
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { postFetcher } from '@/lib/fetcher'
 import { useBlocker, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
 import { Icon, ICONS } from '@/lib/Icon'
@@ -65,10 +67,15 @@ export default function BookingWizard() {
   }, [state.step])
 
   const handleHoldExpire = useCallback(() => {
+    // Release the server-side hold before sending the user back
+    const heldId = state.selectedSlotId
+    if (heldId && !heldId.startsWith('gen-')) {
+      postFetcher(`/api/v2/slots/${heldId}/release`, {}).catch(() => { /* best-effort */ })
+    }
     // Navigate back to the slot picker step and show an expiry modal
     dispatch({ type: 'SET', field: 'step', value: 4 })
     setHoldExpiredModal(true)
-  }, [dispatch])
+  }, [dispatch, state.selectedSlotId])
 
   const { holdActive, holdLabel, expiring } = useHoldTimer(handleHoldExpire)
 
@@ -93,7 +100,15 @@ export default function BookingWizard() {
   const brandRgb   = hexToRgb(brandColor)
 
   const next = () => { dispatch({ type: 'SET', field: 'step', value: state.step + 1 }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
-  const back = () => { dispatch({ type: 'SET', field: 'step', value: state.step - 1 }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const back = () => {
+    // If going back from step 7, STOP_HOLD_TIMER was fired on mount (sets holdSeconds=-1).
+    // Re-dispatch SELECT_SLOT to restart the countdown so the pill reappears on steps 4-6.
+    if (state.step === 7 && state.holdSeconds <= 0 && state.selectedSlotId) {
+      dispatch({ type: 'SELECT_SLOT', slotId: state.selectedSlotId, label: state.selectedSlotLabel ?? '' })
+    }
+    dispatch({ type: 'SET', field: 'step', value: state.step - 1 })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const [savingLink, setSavingLink] = useState(false)
   const copyResumeLink = async () => {
@@ -128,7 +143,7 @@ export default function BookingWizard() {
     : state.selectedSlotLabel
 
   return (
-    <div style={{ background: '#fff', height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+    <div style={{ background: '#fff', height: 'calc(100dvh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
 
       {/* Immersive 3D world behind the whole wizard */}
       {state.step !== 8 && (
@@ -314,14 +329,14 @@ export default function BookingWizard() {
         }
       `}</style>
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 2 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative', zIndex: 2, pointerEvents: 'none' }}>
 
-        {/* ── Compact header (sits over the 3D world) ── */}
+        {/* ── Stepper (sits over the 3D world) ── */}
         {state.step !== 8 && (
           <div
             className="wiz-header"
             style={{
-              position: 'relative', zIndex: 4, overflow: 'visible', padding: '18px 24px 14px', flexShrink: 0,
+              position: 'relative', zIndex: 4, overflow: 'visible', padding: '14px 24px 14px', flexShrink: 0, pointerEvents: 'auto',
               background: 'linear-gradient(180deg, rgba(255,255,255,0.86) 0%, rgba(255,255,255,0.74) 46%, rgba(255,255,255,0.5) 72%, rgba(255,255,255,0.18) 90%, transparent 100%)',
               backdropFilter: 'blur(16px) saturate(1.3)', WebkitBackdropFilter: 'blur(16px) saturate(1.3)',
             }}
@@ -335,58 +350,15 @@ export default function BookingWizard() {
               <GridSvg side="right" />
             </div>
 
-            {/* Save & resume later — copies a link that restores this exact progress */}
-            {state.step > 1 && state.step < 8 && !state.bookingConfirmed && (
-              <motion.button
-                type="button"
-                onClick={copyResumeLink}
-                disabled={savingLink}
-                aria-label="Copy a link to resume this booking later"
-                title="Copy a link to resume this booking later"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.94 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 22 }}
-                style={{ position: 'absolute', top: 20, right: 68, zIndex: 3, height: 36, padding: '0 14px', borderRadius: 999, border: '1px solid rgba(0,0,0,0.10)', background: 'linear-gradient(160deg, #FFFFFF 0%, #F3F2F1 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', gap: 7, cursor: savingLink ? 'wait' : 'pointer', color: '#57534E', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', opacity: savingLink ? 0.6 : 1 }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07L11 5" />
-                  <path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07L13 19" />
-                </svg>
-                Save &amp; resume later
-              </motion.button>
-            )}
-
-            {/* Close */}
-            <motion.button
-              type="button"
-              onClick={() => navigate('/')}
-              aria-label="Close booking"
-              whileHover={{ scale: 1.08, rotate: 90 }}
-              whileTap={{ scale: 0.92 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 22 }}
-              style={{ position: 'absolute', top: 20, right: 24, zIndex: 3, width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(0,0,0,0.10)', background: 'linear-gradient(160deg, #FFFFFF 0%, #F3F2F1 100%)', boxShadow: '0 1px 2px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#57534E' }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-            </motion.button>
-
-            {/* Logo, with a soft ambient glow behind it */}
-            <div style={{ position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'center', marginBottom: 28 }}>
-              <div style={{ position: 'absolute', width: 180, height: 64, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(var(--brand-rgb),0.16), transparent 75%)', filter: 'blur(6px)', pointerEvents: 'none' }} />
-              <div style={{ position: 'relative', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.08))' }}>
-                <GlidoLogo height={22} />
-              </div>
-            </div>
-
-            {/* Stepper (also serves as the progress indicator) */}
+            {/* Stepper */}
             <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', maxWidth: WRAP, margin: '0 auto' }}>
               {STEP_CTX.flatMap((ctx, i) => {
                 const n = i + 1
-                const done       = n < state.step
-                const active     = n === state.step
-                const filled     = done || active
-                // Connector between step n-1 and step n — classify relative to active step
-                const connCompleted  = done || active          // leading into completed or active step → solid orange
-                const connAfterActive = (n - 1) === state.step // leaving the active step → fade to grey
+                const done             = n < state.step
+                const active           = n === state.step
+                const filled           = done || active
+                const connCompleted    = done || active
+                const connAfterActive  = (n - 1) === state.step
                 const fillPct = connCompleted ? '100%' : connAfterActive ? '48%' : '0%'
                 const els = []
 
@@ -464,10 +436,10 @@ export default function BookingWizard() {
             7: <Step7Confirmation />,
           }[state.step]
           return (
-            <div className="wiz-scroll" style={{ background: 'transparent', flex: 1, overflowY: 'auto', minHeight: 0, display: 'flex', flexDirection: 'column', paddingBottom: 132 }}>
+            <div className="wiz-scroll" style={{ background: 'transparent', flex: 1, overflowY: 'auto', minHeight: 0, display: 'flex', flexDirection: 'column', paddingBottom: 132, pointerEvents: 'none' }}>
               <div className="wiz-body" style={{ maxWidth: WRAP, width: '100%', margin: '0 auto', paddingTop: 'clamp(150px, 25vh, 300px)' }}>
                 {/* Frosted glass panel — brings the form into focus over the blurred world */}
-                <div className="wiz-glass" style={{ background: 'rgba(255,255,255,0.68)', backdropFilter: 'blur(18px) saturate(1.25)', WebkitBackdropFilter: 'blur(18px) saturate(1.25)', border: '1px solid rgba(255,255,255,0.7)', borderRadius: 26, boxShadow: '0 10px 44px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.6)', padding: '24px 26px' }}>
+                <div className="wiz-glass" style={{ background: 'rgba(255,255,255,0.68)', backdropFilter: 'blur(18px) saturate(1.25)', WebkitBackdropFilter: 'blur(18px) saturate(1.25)', border: '1px solid rgba(255,255,255,0.7)', borderRadius: 26, boxShadow: '0 10px 44px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.6)', padding: '24px 26px', pointerEvents: 'auto' }}>
                   <div style={{ display: showPanel ? 'grid' : 'block', gridTemplateColumns: showPanel ? (panelLeft ? '240px 1fr' : '1fr 240px') : undefined, gap: showPanel ? 24 : undefined, alignItems: 'flex-start' }}>
                     <div style={{ minWidth: 0, order: panelLeft ? 2 : undefined, perspective: 1400 }}>
                       <AnimatePresence mode="wait" initial={false} custom={dirRef.current}>
@@ -499,43 +471,6 @@ export default function BookingWizard() {
       {state.step !== 8 && (
         <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20, background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
 
-          {/* Floating pills */}
-          {holdActive && state.step >= 5 && (
-            <div style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', paddingBottom: 10, pointerEvents: 'none' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: `1.5px solid ${expiring ? 'rgba(239,68,68,0.35)' : 'rgba(var(--brand-rgb),0.28)'}`, boxShadow: '0 4px 18px rgba(0,0,0,0.09),0 2px 8px rgba(var(--brand-rgb),0.12)', whiteSpace: 'nowrap' }}>
-                <Icon name={ICONS.clock} size={26} style={{ color: expiring ? '#EF4444' : 'var(--brand-color)', flexShrink: 0 }} />
-                <span style={{ fontSize: 15, fontWeight: 700, color: expiring ? '#EF4444' : '#1C1917' }}>
-                  Slot held · <span style={{ fontFamily: 'ui-monospace,monospace' }}>{holdLabel}</span>
-                </span>
-              </div>
-            </div>
-          )}
-
-          {state.step === 1 && state.slotCount > 1 && (
-            <div style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', paddingBottom: 10, pointerEvents: 'none' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: '1.5px solid rgba(var(--brand-rgb),0.28)', boxShadow: '0 4px 18px rgba(0,0,0,0.09)', whiteSpace: 'nowrap' }}>
-                <span style={{ width: 7, height: 7, borderRadius: 'var(--r-full)', background: 'var(--brand-color)', flexShrink: 0, display: 'inline-block' }} />
-                <span style={{ fontSize: 15, fontWeight: 700, color: '#1C1917' }}>{state.slotCount} slots — you'll enter shipment details for each one separately.</span>
-              </div>
-            </div>
-          )}
-
-          {state.step === 4 && (
-            <div style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', paddingBottom: 10, pointerEvents: 'none' }}>
-              {state.selectedSlotLabel ? (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: '1.5px solid rgba(239,68,68,0.30)', boxShadow: '0 4px 18px rgba(0,0,0,0.09)', whiteSpace: 'nowrap' }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 'var(--r-full)', background: '#EF4444', flexShrink: 0, display: 'inline-block' }} />
-                  <span style={{ fontSize: 15, fontWeight: 700, color: '#1C1917' }}>{state.selectedSlotLabel}</span>
-                  <span style={{ fontSize: 13, color: '#9CA3AF', background: 'rgba(0,0,0,0.05)', borderRadius: 'var(--r-sm)', padding: '2px 7px', fontWeight: 500 }}>selected</span>
-                  <span style={{ fontSize: 13, color: '#EF4444', fontWeight: 600 }}>· {tenant?.slotHoldDurationMin ?? 10}-min hold on Next →</span>
-                </div>
-              ) : (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: '1.5px solid rgba(0,0,0,0.10)', boxShadow: '0 4px 18px rgba(0,0,0,0.06)', whiteSpace: 'nowrap' }}>
-                  <span style={{ fontSize: 15, fontWeight: 500, color: '#9CA3AF' }}>Select a time slot to hold your booking</span>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Nav row */}
           <div style={{ position: 'relative', height: 74, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
@@ -586,7 +521,7 @@ export default function BookingWizard() {
           </div>
 
           {/* Mini footer */}
-          <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', flexShrink: 0 }} className="wiz-site-footer-row">
+          <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', flexShrink: 0, pointerEvents: 'auto' }} className="wiz-site-footer-row">
             <div style={{ width: '100%', maxWidth: WRAP, margin: '0 auto', padding: '9px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxSizing: 'border-box' }}>
               <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>© 2026 {tenant?.name || 'Glido CFS'} · Sydney Container Freight Station</span>
               <div style={{ display: 'flex', gap: 18 }}>
@@ -600,6 +535,51 @@ export default function BookingWizard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Footer floating pills — all portaled to escape motion.div CSS transform stacking context */}
+      {state.step === 1 && state.slotCount > 1 && createPortal(
+        <div style={{ position: 'fixed', bottom: 124, right: 24, zIndex: 100, pointerEvents: 'none', maxWidth: 320 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 16px', borderRadius: 12, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', boxShadow: '0 4px 6px rgba(0,0,0,0.04),0 10px 28px rgba(0,0,0,0.10)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--brand-color)', flexShrink: 0, marginTop: 4, display: 'inline-block' }} />
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#1C1917', margin: 0, lineHeight: 1.4 }}>{state.slotCount} slots selected</p>
+              <p style={{ fontSize: 12, color: '#78716C', margin: '2px 0 0', lineHeight: 1.4 }}>You'll enter shipment details for each one separately.</p>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {state.step === 4 && createPortal(
+        <div style={{ position: 'fixed', bottom: 172, left: '50%', transform: 'translateX(-50%)', zIndex: 100, pointerEvents: 'none' }}>
+          {state.selectedSlotLabel ? (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: '1.5px solid rgba(239,68,68,0.30)', boxShadow: '0 4px 18px rgba(0,0,0,0.09)', whiteSpace: 'nowrap' }}>
+              <span style={{ width: 7, height: 7, borderRadius: 'var(--r-full)', background: '#EF4444', flexShrink: 0, display: 'inline-block' }} />
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#1C1917' }}>{state.selectedSlotLabel}</span>
+              <span style={{ fontSize: 13, color: '#9CA3AF', background: 'rgba(0,0,0,0.05)', borderRadius: 'var(--r-sm)', padding: '2px 7px', fontWeight: 500 }}>selected</span>
+              <span style={{ fontSize: 13, color: '#EF4444', fontWeight: 600 }}>· {tenant?.slotHoldDurationMin ?? 10}-min hold on Next →</span>
+            </div>
+          ) : (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: '1.5px solid rgba(0,0,0,0.10)', boxShadow: '0 4px 18px rgba(0,0,0,0.06)', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 15, fontWeight: 500, color: '#9CA3AF' }}>Select a time slot to hold your booking</span>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {/* Hold timer pill — portal to escape motion.div CSS transform stacking context */}
+      {holdActive && state.step >= 4 && state.step !== 8 && createPortal(
+        <div style={{ position: 'fixed', bottom: 120, left: '50%', transform: 'translateX(-50%)', zIndex: 100, pointerEvents: 'none' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: `1.5px solid ${expiring ? 'rgba(239,68,68,0.35)' : 'rgba(var(--brand-rgb),0.28)'}`, boxShadow: '0 4px 18px rgba(0,0,0,0.09),0 2px 8px rgba(var(--brand-rgb),0.12)', whiteSpace: 'nowrap' }}>
+            <Icon name={ICONS.clock} size={26} style={{ color: expiring ? '#EF4444' : 'var(--brand-color)', flexShrink: 0 }} />
+            <span style={{ fontSize: 15, fontWeight: 700, color: expiring ? '#EF4444' : '#1C1917' }}>
+              Slot held · <span style={{ fontFamily: 'ui-monospace,monospace' }}>{holdLabel}</span>
+            </span>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   )

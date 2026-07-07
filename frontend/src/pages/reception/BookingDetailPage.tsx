@@ -752,9 +752,6 @@ export default function BookingDetailPage() {
                       <Icon name={ICONS.refresh} size={17}/>{acting === 'ics' ? 'Refreshing…' : 'Refresh ICS'}
                     </button>
                   )}
-                  <a href="https://ics.abf.gov.au" target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: 'var(--brand-color)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 500 }}>
-                    Open portal <Icon name={ICONS.arrowRight} size={17}/>
-                  </a>
                 </div>
               </div>
               <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 15, fontWeight: 600, padding: '5px 12px', borderRadius: 'var(--r-full)', ...cssToObj(icsStyle) } as any}>

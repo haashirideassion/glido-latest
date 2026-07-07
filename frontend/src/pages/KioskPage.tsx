@@ -297,6 +297,26 @@ function OfflineBanner() {
 function KioskContent() {
   const { state } = useKiosk()
   const reduce = useReducedMotion()
+  const tenant = useTenantInfo()
+
+  // Inject brand colour after auth — the top-level KioskPage must NOT call
+  // useTenantInfo() because it fires before the device JWT is stored, and
+  // api-client deduplicates in-flight GETs by URL, so an unauthenticated
+  // request would shadow the authenticated one that WelcomeScreen needs.
+  useEffect(() => {
+    const color = tenant?.primaryColor
+    if (!color || !/^#[0-9A-Fa-f]{6}$/.test(color)) return
+    const r = parseInt(color.slice(1, 3), 16)
+    const g = parseInt(color.slice(3, 5), 16)
+    const b = parseInt(color.slice(5, 7), 16)
+    document.documentElement.style.setProperty('--brand-color', color)
+    document.documentElement.style.setProperty('--brand-rgb', `${r},${g},${b}`)
+    const luminance = (0.2126 * (r / 255) ** 2.2 + 0.7152 * (g / 255) ** 2.2 + 0.0722 * (b / 255) ** 2.2)
+    const contrastWithBlack = (luminance + 0.05) / 0.05
+    const contrastWithWhite = 1.05 / (luminance + 0.05)
+    document.documentElement.style.setProperty('--brand-text', contrastWithBlack >= contrastWithWhite ? '#000000' : '#ffffff')
+  }, [tenant?.primaryColor])
+
   const prevOrderRef = useRef(SCREEN_ORDER[state.currentScreen])
   const dirRef = useRef(1)
 
@@ -306,43 +326,84 @@ function KioskContent() {
     prevOrderRef.current = currentOrder
   }
 
-  const showScene = state.currentScreen !== 'screensaver'
+  const s = state.currentScreen
+
+  // Screensaver gets its own full-screen layer — skip the normal layout
+  if (s === 'screensaver') {
+    return (
+      <div style={{ height: '100%', position: 'relative' }}>
+        <OfflineBanner />
+        {SCREEN_ELEMENTS.screensaver}
+      </div>
+    )
+  }
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <div style={{ height: '100%', position: 'relative', overflow: 'hidden', background: '#F5F4F2' }}>
       <OfflineBanner />
-      <KioskStepper />
-      {showScene && (
-        <div style={{ position: 'relative', flexShrink: 0, height: 'clamp(190px, 30vh, 340px)', zIndex: 1 }}>
-          <KioskScene3D screen={state.currentScreen} service={state.lookupResult?.service ?? null} />
-        </div>
-      )}
-      <div style={{
-        flex: 1, position: 'relative', overflowY: 'auto', overflowX: 'hidden', minHeight: 0, perspective: 1400, zIndex: 2,
-        ...(showScene ? {
-          marginTop: -26,
-          borderRadius: '30px 30px 0 0',
-          background: 'rgba(255,255,255,0.74)',
-          backdropFilter: 'blur(20px) saturate(1.25)', WebkitBackdropFilter: 'blur(20px) saturate(1.25)',
-          boxShadow: '0 -2px 24px rgba(15,23,42,0.08), inset 0 1.5px 0 rgba(255,255,255,0.7)',
-          borderTop: '1px solid rgba(255,255,255,0.7)',
-        } : {}),
-      }}>
-        <AnimatePresence mode="wait" initial={false} custom={dirRef.current}>
-          <motion.div
-            key={state.currentScreen}
-            custom={dirRef.current}
-            variants={reduce ? fadeVariants : parallaxVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            style={{ minHeight: '100%' }}
-          >
-            {SCREEN_ELEMENTS[state.currentScreen]}
-          </motion.div>
-        </AnimatePresence>
+
+      {/* ── 3D zone — absolute at top 37.5%, same visual position as before ── */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '37.5%', zIndex: 1, paddingTop: 70 }}>
+        <KioskScene3D screen={s} service={state.lookupResult?.service ?? null} />
+        {/* Bottom fade — blends 3D into card */}
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: 80, pointerEvents: 'none',
+          background: 'linear-gradient(to bottom, transparent, #F5F4F2)',
+        }} />
       </div>
+
+      {/* ── Stepper — floats above everything ── */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 5,
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.72) 55%, rgba(255,255,255,0.15) 85%, transparent 100%)',
+        backdropFilter: 'blur(16px) saturate(1.3)', WebkitBackdropFilter: 'blur(16px) saturate(1.3)',
+      }}>
+        <KioskStepper />
+      </div>
+
+      {/* ── Scroll zone — full height, pointer-events none so 3D stays interactable ── */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+        overflowY: 'auto', overflowX: 'hidden', zIndex: 2,
+        pointerEvents: 'none',
+      }}>
+        {/* Spacer pushes card below the 3D zone */}
+        <div style={{ height: 'calc(37.5vh - 32px)', flexShrink: 0 }} />
+        {/* Card area re-enables pointer events */}
+        <div style={{
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'flex-start',
+          paddingBottom: 24, paddingLeft: 20, paddingRight: 20,
+          pointerEvents: 'auto',
+        }}>
+          {/* Glassmorphic card — same treatment as /book */}
+          <div style={{
+            background: 'rgba(255,255,255,0.72)',
+            backdropFilter: 'blur(20px) saturate(1.3)', WebkitBackdropFilter: 'blur(20px) saturate(1.3)',
+            border: '1px solid rgba(255,255,255,0.7)',
+            borderRadius: 26,
+            boxShadow: '0 10px 44px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.6)',
+            padding: '28px 24px',
+            width: '100%', maxWidth: 480,
+            perspective: 1400,
+          }}>
+            <AnimatePresence mode="wait" initial={false} custom={dirRef.current}>
+              <motion.div
+                key={s}
+                custom={dirRef.current}
+                variants={reduce ? fadeVariants : parallaxVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              >
+                {SCREEN_ELEMENTS[s]}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
     </div>
   )
 }
@@ -351,23 +412,6 @@ function KioskContent() {
 export default function KioskPage() {
   usePageTitle('Glido | Kiosk')
   const [authStatus, setAuthStatus] = useState<AuthStatus>('checking')
-  const tenant = useTenantInfo()
-
-  // Inject tenant brand colour as CSS custom properties — same pattern as PublicLayout
-  useEffect(() => {
-    const color = tenant?.primaryColor
-    if (!color || !/^#[0-9A-Fa-f]{6}$/.test(color)) return
-    const r = parseInt(color.slice(1, 3), 16)
-    const g = parseInt(color.slice(3, 5), 16)
-    const b = parseInt(color.slice(5, 7), 16)
-    document.documentElement.style.setProperty('--brand-color', color)
-    document.documentElement.style.setProperty('--brand-rgb', `${r},${g},${b}`)
-    // Pick readable text colour for buttons/chips filled with the brand colour
-    const luminance = (0.2126 * (r / 255) ** 2.2 + 0.7152 * (g / 255) ** 2.2 + 0.0722 * (b / 255) ** 2.2)
-    const contrastWithBlack = (luminance + 0.05) / 0.05
-    const contrastWithWhite = 1.05 / (luminance + 0.05)
-    document.documentElement.style.setProperty('--brand-text', contrastWithBlack >= contrastWithWhite ? '#000000' : '#ffffff')
-  }, [tenant?.primaryColor])
 
   useEffect(() => {
     const token = localStorage.getItem(DEVICE_TOKEN_KEY)

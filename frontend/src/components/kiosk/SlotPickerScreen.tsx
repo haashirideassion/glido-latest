@@ -53,15 +53,9 @@ export function SlotPickerScreen() {
   }
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 32px' }}>
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 480 }}>
 
-        {/* Header */}
-        <div style={{ width: 64, height: 64, background: 'rgba(var(--brand-rgb),0.09)', borderRadius: 'var(--r-lg)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--brand-color,#FC6514)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-        </div>
         <h2 style={{ fontSize: '1.875rem', fontWeight: 700, marginBottom: 8, color: '#1C1917', textAlign: 'center' }}>Select Your Slot</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: 28, textAlign: 'center' }}>
           This booking has {slots.length} scheduled slots. Select the one{slots.length > 1 ? 's' : ''} you are checking in for today.

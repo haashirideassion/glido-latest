@@ -239,10 +239,12 @@ export function KioskProvider({ children }: { children: ReactNode }) {
   const acceptConsent  = useCallback(() => goTo('idscan'),  [goTo])
 
   const simulateScan = useCallback(() => {
-    const scannedName  = state.lookupResult?.driverName ?? 'Carlos Mendez'
-    const bookingName  = state.lookupResult?.driverName ?? ''
+    const isWalkIn     = !state.lookupResult
+    // For walk-ins (yard visits), use the name they entered — no booking to mismatch against
+    const scannedName  = isWalkIn ? (state.walkInName.trim() || 'Visitor') : (state.lookupResult?.driverName ?? 'Carlos Mendez')
+    const bookingName  = isWalkIn ? scannedName : (state.lookupResult?.driverName ?? '')
     const score        = jaroWinkler(scannedName, bookingName)
-    const matchResult  = score >= 0.85 ? 'matched' : score >= 0.60 ? 'warning' : 'mismatch'
+    const matchResult: LicenceData['nameMatchResult'] = isWalkIn ? 'matched' : (score >= 0.85 ? 'matched' : score >= 0.60 ? 'warning' : 'mismatch')
     const expiryDate   = new Date(2028, 5, 12)
     const expired      = expiryDate < new Date()
     dispatch({ type: 'SET_LICENCE', expired, data: {
@@ -252,7 +254,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       nameMatchResult: matchResult, nameMatchScore: Math.round(score * 100),
     }})
     if (matchResult === 'mismatch' || expired) playErrorTone(); else playSuccessTone()
-  }, [state.lookupResult])
+  }, [state.lookupResult, state.walkInName])
 
   const completeCheckIn = useCallback(async () => {
     const ld = state.licenceData
@@ -338,18 +340,18 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     if (state.currentScreen === 'screensaver') { resetFlow(); goTo('welcome') }
   }, [state.currentScreen, resetFlow, goTo])
 
-  // Arrived countdown — initialise to 5 then tick every second
+  // Arrived countdown — initialise to 10 then tick every second
   useEffect(() => {
     if (state.currentScreen !== 'arrived') return
-    dispatch({ type: 'SET_COUNTDOWN', value: 5 })
+    dispatch({ type: 'SET_COUNTDOWN', value: 10 })
     const id = setInterval(() => {
       dispatch({ type: 'TICK_COUNTDOWN' })
     }, 1000)
-    // After 6 s (5 ticks + 1 buffer) reset to welcome
+    // After 11 s (10 ticks + 1 buffer) reset to welcome
     const reset = setTimeout(() => {
       clearInterval(id)
       dispatch({ type: 'RESET_FLOW' })
-    }, 6000)
+    }, 11000)
     return () => { clearInterval(id); clearTimeout(reset) }
   }, [state.currentScreen]) // eslint-disable-line react-hooks/exhaustive-deps
 

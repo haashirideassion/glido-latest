@@ -74,7 +74,7 @@ export function WalkInScreen() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Scrollable content */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px 40px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 0 16px' }}>
       <div style={{ width: '100%', maxWidth: 480, margin: '0 auto' }}>
         <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1C1917', margin: '0 0 4px', textAlign: 'center' }}>{bodyTitle}</h2>
         <p style={{ fontSize: 15, color: 'var(--text-secondary)', margin: '0 0 24px', textAlign: 'center' }}>{bodySubtitle}</p>

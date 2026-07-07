@@ -483,7 +483,7 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
     const o = orbit.current
     o.az = damp(o.az, o.taz, 7, dt)
     o.el = damp(o.el, o.tel, 7, dt)
-    const R = 34, hz = Math.cos(o.el) * R
+    const R = 42, hz = Math.cos(o.el) * R
     // Re-centre on the midpoint of the depot queue and the destination city (ground/road grow the same way)
     cur.camX = damp(cur.camX, -extra / 2, 7, dt)
     st.camera.position.set(cur.camX + Math.cos(o.az) * hz, Math.sin(o.el) * R + 1, Math.sin(o.az) * hz)
@@ -495,8 +495,10 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
     // truck out of frame. Zoom out further as the canvas aspect narrows so the whole
     // convoy stays visible instead of just the empty stretch of road.
     const aspect = st.size.width / Math.max(1, st.size.height)
-    const aspectFactor = clamp(aspect / 2.2, 0.55, 1)
-    const tgtZoom = Math.max(9, 30 / (1 + extra / 32)) * aspectFactor
+    // Wide desktop canvas (aspect ~3): zoom out to show the full diorama.
+    // Narrow/tall canvas (mobile): zoom out further so nothing is cropped.
+    const aspectFactor = clamp(aspect / 1.6, 0.45, 1.1)
+    const tgtZoom = Math.max(4.8, 16 / (1 + extra / 32)) * aspectFactor
     oc.zoom = damp(oc.zoom, tgtZoom, 7, dt)
     oc.updateProjectionMatrix()
   })
@@ -627,7 +629,7 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
 
 export function WizardScene3D(props: Props) {
   const brand = useBrandColor()
-  const orbit = useRef({ az: 0.92, el: 0.34, taz: 0.92, tel: 0.34, dragging: false, lx: 0, ly: 0 })
+  const orbit = useRef({ az: 0.88, el: 0.28, taz: 0.88, tel: 0.28, dragging: false, lx: 0, ly: 0 })
   const [grabbing, setGrabbing] = useState(false)
 
   const onDown = (e: React.PointerEvent) => { const o = orbit.current; o.dragging = true; o.lx = e.clientX; o.ly = e.clientY; setGrabbing(true); (e.target as Element).setPointerCapture?.(e.pointerId) }

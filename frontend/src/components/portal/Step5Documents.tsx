@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { motion } from 'motion/react'
 import { fetchSavedDrivers } from '@/lib/useSavedDrivers'
 import type { SavedDriver } from '@/lib/useSavedDrivers'
@@ -268,9 +269,9 @@ export function Step5Documents() {
           })}
         </div>
 
-        {/* Slot-switch toast */}
-        {countdown !== null && stepCountdown === null && (
-          <div style={{ position: 'fixed', bottom: 122, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#1C1917', borderRadius: 'var(--r-full)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 14, whiteSpace: 'nowrap' }}>
+        {/* Slot-switch toast — portalled to body to escape motion.div transform */}
+        {countdown !== null && stepCountdown === null && createPortal(
+          <div style={{ position: 'fixed', bottom: 182, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#1C1917', borderRadius: 'var(--r-full)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 14, whiteSpace: 'nowrap' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 8 }}>
                 Slot {activeSlot5 + 1} complete ✓ — moving to Slot {activeSlot5 + 2} in {countdown}s
@@ -282,12 +283,13 @@ export function Step5Documents() {
             <button type="button" onClick={clearCountdown} style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.20)', borderRadius: 'var(--r-full)', padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' }}>
               Stay
             </button>
-          </div>
+          </div>,
+          document.body
         )}
 
-        {/* Step-advance toast — shown when all slots are done */}
-        {stepCountdown !== null && (
-          <div style={{ position: 'fixed', bottom: 122, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#1C1917', borderRadius: 'var(--r-full)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 14, whiteSpace: 'nowrap' }}>
+        {/* Step-advance toast — portalled to body to escape motion.div transform */}
+        {stepCountdown !== null && createPortal(
+          <div style={{ position: 'fixed', bottom: 182, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#1C1917', borderRadius: 'var(--r-full)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 14, whiteSpace: 'nowrap' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 8 }}>
                 All slots complete ✓ — continuing in {stepCountdown}s
@@ -299,7 +301,8 @@ export function Step5Documents() {
             <button type="button" onClick={clearStepCountdown} style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.20)', borderRadius: 'var(--r-full)', padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' }}>
               Stay
             </button>
-          </div>
+          </div>,
+          document.body
         )}
 
         {/* Active slot panel */}
@@ -374,9 +377,9 @@ export function Step5Documents() {
 
   return (
     <div>
-      {/* Step-advance toast — single slot */}
-      {stepCountdown !== null && (
-        <div style={{ position: 'fixed', bottom: 122, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#1C1917', borderRadius: 'var(--r-full)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 14, whiteSpace: 'nowrap' }}>
+      {/* Step-advance toast — single slot, portalled to body */}
+      {stepCountdown !== null && createPortal(
+        <div style={{ position: 'fixed', bottom: 182, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, background: '#1C1917', borderRadius: 'var(--r-full)', boxShadow: '0 8px 32px rgba(0,0,0,0.28)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 14, whiteSpace: 'nowrap' }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 8 }}>
               All done ✓ — continuing in {stepCountdown}s
@@ -388,7 +391,8 @@ export function Step5Documents() {
           <button type="button" onClick={clearStepCountdown} style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.20)', borderRadius: 'var(--r-full)', padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' }}>
             Stay
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>

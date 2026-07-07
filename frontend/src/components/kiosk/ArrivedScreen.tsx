@@ -8,7 +8,7 @@ export function ArrivedScreen() {
   const countdown = state.arrivedCountdown
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px', textAlign: 'center' }}>
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
       <div style={{ width: 112, height: 112, background: 'rgba(22,163,74,0.10)', borderRadius: 'var(--r-full)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
         <Icon name={ICONS.check} size={64} style={{ color: '#16A34A' }} />
       </div>

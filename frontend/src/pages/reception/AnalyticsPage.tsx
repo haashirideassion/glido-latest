@@ -218,6 +218,7 @@ export default function AnalyticsPage() {
   const [customActive, setCustomActive] = useState(false)
   const [funnel, setFunnel] = useState<FunnelStepCount[]>([])
   const [funnelLoading, setFunnelLoading] = useState(true)
+  const [comboFilter, setComboFilter] = useState<string>('all')
 
   const days = PERIODS.find(p => p.key === period)!.days
 
@@ -279,18 +280,35 @@ export default function AnalyticsPage() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
 
+  const COMBOS = [
+    { key: 'all',         label: 'All',          service: null,      load: null    },
+    { key: 'fcl-pickup',  label: 'FCL — Pick Up', service: 'pickup',  load: 'fcl'  },
+    { key: 'fcl-dropoff', label: 'FCL — Drop Off',service: 'dropoff', load: 'fcl'  },
+    { key: 'lcl-pickup',  label: 'LCL — Pick Up', service: 'pickup',  load: 'lcl'  },
+    { key: 'lcl-dropoff', label: 'LCL — Drop Off',service: 'dropoff', load: 'lcl'  },
+  ] as const
+
+  const filterBookings = (bookings: Booking[]) => {
+    if (comboFilter === 'all') return bookings
+    const combo = COMBOS.find(c => c.key === comboFilter)
+    if (!combo || !combo.service) return bookings
+    return bookings.filter(b => b.serviceType === combo.service && b.loadType === combo.load)
+  }
+
   const stats = useMemo(() => {
-    const total     = current.length
-    const prevTotal = prev.length
+    const filtered     = filterBookings(current)
+    const filteredPrev = filterBookings(prev)
+    const total     = filtered.length
+    const prevTotal = filteredPrev.length
     const avgDaily  = Math.round(total / days)
-    const prevAvg   = Math.round(prevTotal / days)
+    const prevAvg   = Math.round(filteredPrev.length / days)
 
     // daily counts for chart
     const dateRange: string[] = []
     for (let i = days - 1; i >= 0; i--) dateRange.push(isoAgo(i))
     const countByDate: Record<string, number> = {}
     dateRange.forEach(d => { countByDate[d] = 0 })
-    current.forEach(b => { if (countByDate[b.slotDate] !== undefined) countByDate[b.slotDate]++ })
+    filtered.forEach(b => { if (countByDate[b.slotDate] !== undefined) countByDate[b.slotDate]++ })
     const dailyCounts = dateRange.map(d => countByDate[d])
 
     // chart x labels — show every N-th date to avoid crowding
@@ -306,7 +324,7 @@ export default function AnalyticsPage() {
 
     // peak hour
     const hourMap: Record<number, number> = {}
-    current.forEach(b => {
+    filtered.forEach(b => {
       const h = parseInt(b.slotStartTime?.split(':')[0] ?? '0', 10)
       hourMap[h] = (hourMap[h] ?? 0) + 1
     })
@@ -320,13 +338,13 @@ export default function AnalyticsPage() {
 
     // no-shows: scheduled bookings where date has passed
     const today = todaySydney()
-    const noShows    = current.filter(b => b.status === 'scheduled' && b.slotDate < today).length
-    const noShowsPrev= prev.filter(b => b.status === 'scheduled' && b.slotDate < today).length
+    const noShows    = filtered.filter(b => b.status === 'scheduled' && b.slotDate < today).length
+    const noShowsPrev= filteredPrev.filter(b => b.status === 'scheduled' && b.slotDate < today).length
     const noShowPct  = total > 0 ? (noShows / total * 100).toFixed(1) + '%' : '0.0%'
 
     // carrier breakdown by companyName
     const carrierMap: Record<string, number> = {}
-    current.forEach(b => {
+    filtered.forEach(b => {
       const key = b.companyName?.trim() || 'Individual'
       carrierMap[key] = (carrierMap[key] ?? 0) + 1
     })
@@ -336,18 +354,24 @@ export default function AnalyticsPage() {
       .map(([label, value]) => ({ label, value }))
 
     // status counts
-    const completed  = current.filter(b => b.status === 'completed').length
-    const checkedIn  = current.filter(b => b.status === 'checked_in').length
-    const scheduled  = current.filter(b => b.status === 'scheduled').length
-    const cancelled  = current.filter(b => b.status === 'cancelled').length
+    const completed  = filtered.filter(b => b.status === 'completed').length
+    const checkedIn  = filtered.filter(b => b.status === 'checked_in').length
+    const scheduled  = filtered.filter(b => b.status === 'scheduled').length
+    const cancelled  = filtered.filter(b => b.status === 'cancelled').length
 
     // service split
-    const pickups  = current.filter(b => b.serviceType === 'pickup').length
-    const dropoffs = current.filter(b => b.serviceType === 'dropoff').length
+    const pickups  = filtered.filter(b => b.serviceType === 'pickup').length
+    const dropoffs = filtered.filter(b => b.serviceType === 'dropoff').length
 
     // load split
-    const fcl = current.filter(b => b.loadType === 'fcl').length
-    const lcl = current.filter(b => b.loadType === 'lcl').length
+    const fcl = filtered.filter(b => b.loadType === 'fcl').length
+    const lcl = filtered.filter(b => b.loadType === 'lcl').length
+
+    // 4-combo breakdown (always off the unfiltered current for the breakdown card)
+    const fclPickup  = current.filter(b => b.loadType === 'fcl' && b.serviceType === 'pickup').length
+    const fclDropoff = current.filter(b => b.loadType === 'fcl' && b.serviceType === 'dropoff').length
+    const lclPickup  = current.filter(b => b.loadType === 'lcl' && b.serviceType === 'pickup').length
+    const lclDropoff = current.filter(b => b.loadType === 'lcl' && b.serviceType === 'dropoff').length
 
     return {
       total, prevTotal, avgDaily, prevAvg,
@@ -356,8 +380,9 @@ export default function AnalyticsPage() {
       carrierSegments,
       completed, checkedIn, scheduled, cancelled,
       pickups, dropoffs, fcl, lcl,
+      fclPickup, fclDropoff, lclPickup, lclDropoff,
     }
-  }, [current, prev, days])
+  }, [current, prev, days, comboFilter])
 
   const periodLabel = PERIODS.find(p => p.key === period)!.label
 
@@ -366,8 +391,32 @@ export default function AnalyticsPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Header row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
+      {/* Header row — combo pills left, date filter right */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+
+        {/* Combo filter pills */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {COMBOS.map(c => {
+          const active = comboFilter === c.key
+          return (
+            <button
+              key={c.key}
+              onClick={() => setComboFilter(c.key)}
+              style={{
+                padding: '7px 16px', fontSize: 13, fontWeight: active ? 700 : 500,
+                borderRadius: 'var(--r-full)', fontFamily: 'inherit', cursor: 'pointer',
+                border: active ? '1.5px solid var(--brand-color)' : '1.5px solid rgba(0,0,0,0.10)',
+                background: active ? 'var(--brand-color)' : '#fff',
+                color: active ? '#fff' : '#374151',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {c.label}
+            </button>
+          )
+        })}
+        </div>
+
         {/* Date range + actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
@@ -390,8 +439,8 @@ export default function AnalyticsPage() {
             <Icon name={ICONS.download} size={15} /> Export CSV
           </button>
         </div>
-      </div>
 
+      </div>
 
       {/* KPI tiles */}
       {(() => {
@@ -475,20 +524,20 @@ export default function AnalyticsPage() {
           }
         </div>
 
-        {/* Service + Load split */}
+        {/* Booking type combinations */}
         <div style={CARD}>
-          <p style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: '0 0 4px' }}>Service & Load Split</p>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 20px' }}>Pickup vs Drop-off, FCL vs LCL</p>
+          <p style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: '0 0 4px' }}>Booking Type Breakdown</p>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 20px' }}>All 4 service × load combinations</p>
           {loading
             ? <div style={{ height: 140, background: '#F8FAFC', borderRadius: 'var(--r-sm)' }} />
             : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <BarRow label="Pick Up"  value={stats.pickups}  total={stats.total} color="var(--brand-color)" />
-                <BarRow label="Drop Off" value={stats.dropoffs} total={stats.total} color="#F59E0B" />
+                <BarRow label="FCL — Pick Up"  value={stats.fclPickup}  total={stats.total} color="#2563EB" />
+                <BarRow label="FCL — Drop Off" value={stats.fclDropoff} total={stats.total} color="#7C3AED" />
                 <div style={{ borderTop: '1px solid rgba(0,0,0,0.06)', paddingTop: 14 }}>
-                  <BarRow label="LCL (Loose Cargo)"        value={stats.lcl} total={stats.total} color="#7C3AED" />
+                  <BarRow label="LCL — Pick Up"  value={stats.lclPickup}  total={stats.total} color="#10B981" />
                 </div>
-                <BarRow label="FCL (Full Container)" value={stats.fcl} total={stats.total} color="#10B981" />
+                <BarRow label="LCL — Drop Off" value={stats.lclDropoff} total={stats.total} color="#F59E0B" />
               </div>
             )
           }

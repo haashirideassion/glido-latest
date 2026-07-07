@@ -590,25 +590,25 @@ export default function CarriersPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
 
       {/* ── Stats ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
         {[
           { label: 'Total Carriers',  value: totalCarriers,  sub: 'Registered companies', icon: ICONS.users,     iconBg: 'rgba(28,25,23,0.06)',   iconFg: '#1C1917'  },
           { label: 'Active Carriers', value: activeCarriers, sub: 'Currently active',      icon: ICONS.check,     iconBg: 'rgba(34,197,94,0.10)',  iconFg: '#22C55E'  },
           { label: 'Total Bookings',  value: totalBookings,  sub: 'Across all carriers',   icon: ICONS.bookings,  iconBg: 'rgba(37,99,235,0.10)',  iconFg: '#2563EB'  },
           { label: 'New This Month',  value: thisMonth,      sub: 'New registrations',     icon: ICONS.calendar,  iconBg: 'rgba(251,191,36,0.10)', iconFg: '#FBBF24'  },
-        ].map(stat => (
-          <div key={stat.label} style={{ ...CARD, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', transition: 'background 0.18s ease' }}
+        ].map((stat, i) => (
+          <div key={stat.label} style={{ flex: 1, minWidth: 0, padding: 'var(--kpi-pad-y) var(--kpi-pad-x)', borderLeft: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.07)', transition: 'background 0.18s ease' }}
             onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
-            onMouseOut={e  => (e.currentTarget.style.background = '#FFFFFF')}
+            onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
               <div style={{ width: 34, height: 34, borderRadius: 'var(--r-md)', background: stat.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${stat.iconFg}22` }}>
                 <Icon name={stat.icon} size={17} style={{ color: stat.iconFg }} />
               </div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0 }}>{stat.label}</p>
+              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stat.label}</p>
             </div>
             <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={stat.value} /></p>
-            <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0 }}>{stat.sub}</p>
+            <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stat.sub}</p>
           </div>
         ))}
       </div>

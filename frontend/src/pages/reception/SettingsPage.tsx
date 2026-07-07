@@ -641,7 +641,8 @@ export default function SettingsPage() {
 
         // Populate working hours
         const wh = tenant.working_hours as unknown as WorkingHoursState | null
-        if (wh && typeof wh === 'object') {
+        const hasDayEntries = wh && typeof wh === 'object' && ('mon' in wh || 'tue' in wh)
+        if (hasDayEntries) {
           setWorkingHours({
             mon: { ...DEFAULT_HOURS.mon, ...wh.mon },
             tue: { ...DEFAULT_HOURS.tue, ...wh.tue },
@@ -661,6 +662,9 @@ export default function SettingsPage() {
               evening:   { ...DEFAULT_PERIODS.evening,   ...periods.evening   },
             })
           }
+        } else {
+          // No day entries saved yet — mark dirty so the next Save writes defaults
+          setWhDirty(true)
         }
       })
       .catch(() => { /* use defaults */ })

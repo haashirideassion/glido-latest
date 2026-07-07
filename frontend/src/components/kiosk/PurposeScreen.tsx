@@ -21,15 +21,10 @@ export function PurposeScreen() {
   const { dispatch, goTo } = useKiosk()
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px' }}>
+    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 540, textAlign: 'center' }}>
 
-        {/* Header icon */}
-        <div style={{ ...ICON_BOX, background: 'rgba(var(--brand-rgb),0.09)', margin: '0 auto 24px' }}>
-          <Icon name={ICONS.users} size={32} style={{ color: 'var(--brand-color)', display: 'block' }} />
-        </div>
-
-        <div style={{ marginBottom: 36 }}>
+        <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 22, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.03em', lineHeight: 1.2, marginBottom: 8 }}>
             What brings you here today?
           </h2>

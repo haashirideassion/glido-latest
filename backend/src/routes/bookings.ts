@@ -134,6 +134,19 @@ router.post('/', async (req: Request, res: Response) => {
       ]
     )
     const bk = result.rows[0]
+
+    // Upsert the time_slot row so virtual (gen-) slots get persisted, then increment confirmed
+    if (bk.slot_date && bk.slot_start_time && bk.slot_end_time) {
+      await pool.query(
+        `INSERT INTO time_slots (date, start_time, end_time, capacity, confirmed, held, tenant_id)
+         VALUES ($1, $2, $3, 10, 1, 0, $4)
+         ON CONFLICT (date, start_time, tenant_id) DO UPDATE
+           SET confirmed = time_slots.confirmed + 1,
+               held      = GREATEST(time_slots.held - 1, 0)`,
+        [bk.slot_date, bk.slot_start_time, bk.slot_end_time, bk.tenant_id]
+      )
+    }
+
     const serviceLabel = bk.service_type === 'pickup' ? 'Pick Up' : 'Drop Off'
     const loadLabel = (bk.load_type ?? '').toUpperCase()
     const slotDay = new Date(bk.slot_date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })

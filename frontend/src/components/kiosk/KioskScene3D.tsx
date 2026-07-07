@@ -270,7 +270,7 @@ export function KioskScene3D({ screen, service }: { screen: string; service: str
       <Canvas
         orthographic dpr={[1, 2]} shadows
         gl={{ alpha: true, antialias: true, powerPreference: 'high-performance' }}
-        camera={{ zoom: 34, near: -100, far: 200 }}
+        camera={{ zoom: 17, near: -100, far: 200 }}
         style={{ background: 'transparent' }}
         onCreated={({ camera }) => { const R = 34, o = orbit.current; camera.position.set(Math.cos(o.az) * Math.cos(o.el) * R, Math.sin(o.el) * R, Math.sin(o.az) * Math.cos(o.el) * R) }}
       >

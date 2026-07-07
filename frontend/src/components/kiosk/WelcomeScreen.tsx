@@ -100,9 +100,9 @@ export function WelcomeScreen() {
   }, [])
 
   return (
-    <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 32px', position: 'relative' }}>
-      <LanguageSwitcher />
-      <div style={{ marginBottom: 40, textAlign: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', position: 'relative' }}>
+      {/* <LanguageSwitcher /> */}
+      <div style={{ marginBottom: 24, textAlign: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
           {tenant?.logoUrl
             ? <img src={logoSrc} alt={tenant.name || 'Logo'} style={{ maxHeight: 56, objectFit: 'contain', display: 'block' }} />
@@ -126,13 +126,13 @@ export function WelcomeScreen() {
       </div>
 
       {todayHours && (
-        <div style={{ marginTop: 40, borderRadius: 'var(--r-lg)', padding: '12px 24px', textAlign: 'center', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.07)' }}>
-          <p style={{ fontSize: 15, color: 'var(--text-secondary)', fontWeight: 600 }}>
+        <div style={{ marginTop: 20, borderRadius: 'var(--r-lg)', padding: '10px 20px', textAlign: 'center', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.07)' }}>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 600 }}>
             {todayHours.open ? t('openToday', { hours: `${todayHours.open_} – ${todayHours.close}` }) : t('closedToday')}
           </p>
         </div>
       )}
-      <p style={{ marginTop: 24, fontSize: 15, color: 'var(--text-tertiary)' }}>{t('needHelp')}</p>
+      <p style={{ marginTop: 16, fontSize: 14, color: 'var(--text-tertiary)' }}>{t('needHelp')}</p>
     </div>
   )
 }

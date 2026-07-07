@@ -169,9 +169,6 @@ export const BookingDetailPage = ({ booking: b }: Props) => (
                 >
                   <Icon name={ICONS.refresh} size={12} />Refresh ICS
                 </button>
-                <a href="https://ics.abf.gov.au" target="_blank" style="font-size:12px; color:var(--brand-color); text-decoration:none; display:flex; align-items:center; gap:4px; font-weight:500;">
-                  Open portal <Icon name={ICONS.arrowRight} size={12} />
-                </a>
               </div>
             </div>
             <span class={`inline-flex items-center px-3 py-1 rounded-full border ${ICS_BADGE_CLASS[b.icsStatus]}`} style="font-size:13px; font-weight:600;">
