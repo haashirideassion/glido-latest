@@ -19,9 +19,24 @@ router.get('/', async (req: Request, res: Response) => {
     if (tenantId)               { conditions.push(`tenant_id = $${i++}`);   params.push(tenantId) }
     if (isWalkIn !== undefined) { conditions.push(`is_walk_in = $${i++}`);  params.push(isWalkIn === 'true') }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+    const where = conditions.length > 0
+      ? `WHERE ${conditions.map(c => `cr.${c}`).join(' AND ')}`
+      : ''
+    // Join the linked booking so the visitor log can surface service/load type (Pick Up/Drop
+    // Off · FCL/LCL). Nested under `bookings` to match the shape the frontend already reads.
     const { rows } = await pool.query(
-      `SELECT * FROM checkin_records ${where} ORDER BY check_in_time DESC`,
+      `SELECT cr.*,
+              CASE WHEN b.id IS NULL THEN NULL ELSE json_build_object(
+                'driver_name',  b.driver_name,
+                'service_type', b.service_type,
+                'load_type',    b.load_type,
+                'status',       b.status,
+                'completed_at', b.completed_at
+              ) END AS bookings
+         FROM checkin_records cr
+         LEFT JOIN bookings b ON b.id = cr.booking_id
+         ${where}
+         ORDER BY cr.check_in_time DESC`,
       params
     )
     return res.json({ success: true, data: rows })

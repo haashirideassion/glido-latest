@@ -5,6 +5,7 @@ import { fmtDateShort, TZ, todaySydney } from '@/lib/time'
 import { getBookings, getBookingsByDateRange } from '@/lib/db/bookings'
 import type { Booking } from '@/data/types'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
+import { AnimatedNumber } from '@/lib/motion'
 
 declare const echarts: any
 
@@ -128,7 +129,7 @@ export default function ReportsPage() {
             onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.015)')}
             onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
           >
-            <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', color: s.color, lineHeight: 1, margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{s.value}</p>
+            <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', color: s.color, lineHeight: 1, margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}><AnimatedNumber value={s.value} /></p>
             <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-tertiary)', margin: 0 }}>{s.label}</p>
           </div>
         ))}

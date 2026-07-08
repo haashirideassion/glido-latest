@@ -5,6 +5,7 @@ import { getFunnelSummary, type FunnelStepCount } from '@/lib/db/wizard-funnel'
 import type { Booking } from '@/data/types'
 import { todaySydney, TZ } from '@/lib/time'
 import { Icon, ICONS } from '@/lib/Icon'
+import { AnimatedNumber } from '@/lib/motion'
 
 const FUNNEL_STEP_LABELS: Record<number, string> = {
   1: 'Slots', 2: 'Service Type', 3: 'Load Type', 4: 'Time Slot',
@@ -444,11 +445,14 @@ export default function AnalyticsPage() {
 
       {/* KPI tiles */}
       {(() => {
+        // numValue carries the raw count for tiles that are genuinely numeric, so they can
+        // count up with AnimatedNumber. peakLabel/noShowPct are formatted strings (a time label,
+        // a percentage) — not plain counts — so they render as-is with no numValue.
         const vals = [
-          { value: loading ? '—' : String(stats.total),    sub: null,   delta: loading ? null : pctDelta(stats.total, stats.prevTotal),   deltaUp: (stats.total ?? 0) >= (stats.prevTotal ?? 0) },
-          { value: loading ? '—' : String(stats.avgDaily), sub: null,   delta: loading ? null : pctDelta(stats.avgDaily, stats.prevAvg),   deltaUp: (stats.avgDaily ?? 0) >= (stats.prevAvg ?? 0) },
-          { value: loading ? '—' : stats.peakLabel,        sub: 'Most busy hour in period',             delta: null, deltaUp: false },
-          { value: loading ? '—' : stats.noShowPct,        sub: 'Scheduled but never checked in',       delta: null, deltaUp: false },
+          { value: loading ? '—' : String(stats.total),    numValue: loading ? null : stats.total,    sub: null,   delta: loading ? null : pctDelta(stats.total, stats.prevTotal),   deltaUp: (stats.total ?? 0) >= (stats.prevTotal ?? 0) },
+          { value: loading ? '—' : String(stats.avgDaily), numValue: loading ? null : stats.avgDaily, sub: null,   delta: loading ? null : pctDelta(stats.avgDaily, stats.prevAvg),   deltaUp: (stats.avgDaily ?? 0) >= (stats.prevAvg ?? 0) },
+          { value: loading ? '—' : stats.peakLabel,        numValue: null,                            sub: 'Most busy hour in period',             delta: null, deltaUp: false },
+          { value: loading ? '—' : stats.noShowPct,        numValue: null,                            sub: 'Scheduled but never checked in',       delta: null, deltaUp: false },
         ]
         return (
           <div style={{ display: 'flex', alignItems: 'stretch', background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', overflow: 'hidden', marginBottom: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)' }}>
@@ -466,7 +470,7 @@ export default function AnalyticsPage() {
                     </div>
                     <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</p>
                   </div>
-                  <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{v.value}</p>
+                  <p style={{ fontSize: 'var(--kpi-value)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: '#1C1917', margin: '0 0 6px', fontVariantNumeric: 'tabular-nums' }}>{v.numValue != null ? <AnimatedNumber value={v.numValue} /> : v.value}</p>
                   {v.delta != null
                     ? <p style={{ fontSize: 14, fontWeight: 600, color: v.deltaUp ? '#16A34A' : '#DC2626', margin: 0 }}>{v.deltaUp ? '↑' : '↓'} {v.delta} vs prev period</p>
                     : <p style={{ fontSize: 14, color: 'var(--text-tertiary)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v.sub}</p>

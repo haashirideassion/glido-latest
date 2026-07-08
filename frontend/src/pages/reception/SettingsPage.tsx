@@ -65,14 +65,20 @@ const DEFAULT_PRICING: PricingState = {
   lclFreeDays:      '3',
 }
 
+// Single hour × combo capacity matrix — replaces the old separate "Capacity by Booking Type"
+// (one number per combo, applied to every hour) and "Per-hour Capacity" (one number per hour,
+// applied to every combo) sections. Those two could both claim to cap the same booking with
+// no defined precedence; one cell now is simply *the* answer for that exact pairing.
+// e.g. { "08:00": { "pickup-lcl": 5, "pickup-fcl": 3, "dropoff-lcl": 5, "dropoff-fcl": 5 }, ... }
+const COMBOS = ['pickup-lcl', 'pickup-fcl', 'dropoff-lcl', 'dropoff-fcl'] as const
+
 interface SlotConfigState {
   slotDuration:       string
   maxBookingsPerSlot: string
   advanceBookingDays: string
   sameDayCutoff:      string
   holdDuration:       string
-  capacityByHour:     Record<string, number>  // e.g. { "08:00": 4, "09:00": 6 }
-  capacityByCombo:    Record<string, number>
+  capacityMatrix:     Record<string, Record<string, number>>
 }
 
 const DEFAULT_SLOT_CONFIG: SlotConfigState = {
@@ -81,8 +87,7 @@ const DEFAULT_SLOT_CONFIG: SlotConfigState = {
   advanceBookingDays: '30',
   sameDayCutoff:      '08:00',
   holdDuration:       '10',
-  capacityByHour:     {},
-  capacityByCombo:    { 'pickup-lcl': 5, 'pickup-fcl': 5, 'dropoff-lcl': 5, 'dropoff-fcl': 5 },
+  capacityMatrix:     {},
 }
 
 /** Generate hourly (or sub-hourly) time-bucket start times between open and close. */
@@ -443,12 +448,24 @@ export default function SettingsPage() {
   }
   const tabFromHash = (): GroupId => HASH_TO_GROUP[window.location.hash] ?? 'General'
 
+  // True section isolation — each sidebar link shows ONLY its own section (not the whole group).
+  // `tab` (the group) is still tracked so the group-level save logic keeps working; `section`
+  // decides which single panel actually renders.
+  const HASH_TO_SECTION: Record<string, string> = {
+    '#general': 'general', '#working-hours': 'working-hours',
+    '#slot-config': 'slot-config', '#pricing': 'pricing', '#payment': 'payment',
+    '#doc-requirements': 'doc-requirements', '#integrations': 'integrations',
+    '#user-management': 'user-management',
+  }
+  const sectionFromHash = (): string => HASH_TO_SECTION[window.location.hash] ?? 'general'
+
   const [tab, setTab] = useState<GroupId>(tabFromHash)
+  const [section, setSection] = useState<string>(sectionFromHash)
   const [saved, setSaved] = useState(false)
 
-  // Sync tab when the hash changes (back/forward navigation)
+  // Sync tab + section when the hash changes (back/forward navigation)
   useEffect(() => {
-    const onHashChange = () => setTab(tabFromHash())
+    const onHashChange = () => { setTab(tabFromHash()); setSection(sectionFromHash()) }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -926,22 +943,34 @@ export default function SettingsPage() {
       .then(tenant => {
         if (!tenant) return
         const defaultCap = tenant.max_bookings_per_slot ?? 5
-        const savedCap   = (tenant as any).slot_capacity_by_hour as Record<string, number> | null
-        // If no per-hour map exists yet, pre-fill every bucket with the global default
         const wh        = tenant.working_hours as any
         const openTime  = wh?.mon?.open  ?? '07:00'
         const closeTime = wh?.mon?.close ?? '18:00'
         const duration  = tenant.slot_duration_min ?? 60
         const buckets   = makeTimeBuckets(openTime, closeTime, duration)
-        const capacityByHour = savedCap ?? Object.fromEntries(buckets.map(b => [b, defaultCap]))
+
+        const savedMatrix = (tenant as any).slot_capacity_matrix as Record<string, Record<string, number>> | null
+        let capacityMatrix: Record<string, Record<string, number>>
+        if (savedMatrix) {
+          capacityMatrix = savedMatrix
+        } else {
+          // One-time fallback — synthesize a starting matrix from whichever legacy values
+          // this tenant had configured, so nothing already set is silently lost.
+          const legacyByHour  = ((tenant as any).slot_capacity_by_hour  as Record<string, number> | null) ?? {}
+          const legacyByCombo = ((tenant as any).slot_capacity_by_combo as Record<string, number> | null) ?? {}
+          capacityMatrix = Object.fromEntries(buckets.map(b => [
+            b,
+            Object.fromEntries(COMBOS.map(c => [c, legacyByHour[b] ?? legacyByCombo[c] ?? defaultCap])),
+          ]))
+        }
+
         setSlotConfig({
           slotDuration:       String(tenant.slot_duration_min      ?? DEFAULT_SLOT_CONFIG.slotDuration),
           maxBookingsPerSlot: String(tenant.max_bookings_per_slot  ?? DEFAULT_SLOT_CONFIG.maxBookingsPerSlot),
           advanceBookingDays: String(tenant.advance_booking_days   ?? DEFAULT_SLOT_CONFIG.advanceBookingDays),
           sameDayCutoff:      tenant.same_day_cutoff_time          ?? '',
           holdDuration:       String(tenant.slot_hold_duration_min ?? DEFAULT_SLOT_CONFIG.holdDuration),
-          capacityByHour,
-          capacityByCombo:    ((tenant as any).slot_capacity_by_combo as Record<string, number> | null) ?? DEFAULT_SLOT_CONFIG.capacityByCombo,
+          capacityMatrix,
         })
       })
       .catch(() => { /* use defaults */ })
@@ -958,10 +987,7 @@ export default function SettingsPage() {
         advance_booking_days:     Math.min(30, Math.max(1, Number(slotConfig.advanceBookingDays))),
         // same_day_cutoff_time: slotConfig.sameDayCutoff || null,
         slot_hold_duration_min:   Number(slotConfig.holdDuration),
-        slot_capacity_by_hour:    Object.keys(slotConfig.capacityByHour).length > 0
-          ? slotConfig.capacityByHour
-          : null,
-        slot_capacity_by_combo:   slotConfig.capacityByCombo,
+        slot_capacity_matrix:     slotConfig.capacityMatrix,
       } as any)
       toast('Slot configuration saved', 'success')
       setSlotConfigDirty(false)
@@ -1329,30 +1355,20 @@ export default function SettingsPage() {
   )
 
   const rrLoc = useLocation()
-  const scrollToSection = (label: string) => {
-    const el = document.getElementById('sec-' + label.replace(/\s+/g, '-'))
-    el?.scrollIntoView({ block: 'start' })
-  }
-  // Driven by the sidebar sub-menu: switch group first, then jump to the section once it renders
+  // Driven by the sidebar sub-menu (react-router <Link> hashes): select the group (for save
+  // logic) and the single visible section, then reset scroll — each section is its own panel.
   useEffect(() => {
-    const secMap: Record<string, string> = {
-      '#general': 'Business Profile', '#working-hours': 'Working Hours',
-      '#slot-config': 'Slot Config', '#pricing': 'Pricing', '#payment': 'Payment', '#doc-requirements': 'Document Requirements',
-      '#integrations': 'Connected Systems', '#user-management': 'User Management',
-    }
     const targetGroup = HASH_TO_GROUP[rrLoc.hash]
-    const label = secMap[rrLoc.hash]
-    if (!targetGroup || !label) return
-    if (tab !== targetGroup) { setTab(targetGroup); return }  // wait for the group to render, then this effect re-runs
-    const t = setTimeout(() => scrollToSection(label), 140)
-    return () => clearTimeout(t)
-  }, [rrLoc.hash, rrLoc.key, tab]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (targetGroup) setTab(targetGroup)
+    setSection(HASH_TO_SECTION[rrLoc.hash] ?? 'general')
+    window.scrollTo({ top: 0 })
+  }, [rrLoc.hash, rrLoc.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: 84 }}>
 
       {/* ── Working Hours (General group, rendered after Business Profile) ── */}
-      {tab === 'General' && (
+      {section === 'working-hours' && (
         <form onSubmit={saveWorkingHours} style={{ order: 2 }}>
           <GroupLabel>Working Hours</GroupLabel>
           {/* Operating Hours card */}
@@ -1527,7 +1543,7 @@ export default function SettingsPage() {
           )}
 
           {/* General — Business Profile */}
-          {tab === 'General' && (
+          {section === 'general' && (
             <div>
               <GroupLabel first>Business Profile</GroupLabel>
               {/* Facility Details */}
@@ -1760,8 +1776,8 @@ export default function SettingsPage() {
           )}
 
           {/* Slot Config */}
-          {tab === 'Bookings' && <GroupLabel first>Slot Config</GroupLabel>}
-          {tab === 'Bookings' && (
+          {section === 'slot-config' && <GroupLabel first>Slot Config</GroupLabel>}
+          {section === 'slot-config' && (
             <div style={CARD}>
               <SectionHead title="Slot Configuration" desc="Control how booking slots are structured and managed." />
               {slotConfigLoading ? (
@@ -1776,7 +1792,8 @@ export default function SettingsPage() {
                         placeholder="Select duration"
                         value={slotConfig.slotDuration}
                         onChange={v => {
-                          // Rebuild capacity grid when duration changes, preserving existing values
+                          // Rebuild the capacity matrix's rows when duration changes, preserving
+                          // any cells that already existed for buckets that still exist.
                           const dur = Number(v)
                           const enabledPeriods = Object.values(slotPeriods).filter(p => p.enabled)
                           const wh             = Object.values(workingHours).filter((d: any) => d.enabled) as { open: string; close: string }[]
@@ -1785,11 +1802,12 @@ export default function SettingsPage() {
                           const whClose = enabledPeriods.length ? enabledPeriods.map(p => p.end).sort().reverse()[0]
                             : wh.length ? wh.map(d => d.close).sort().reverse()[0] : '18:00'
                           const buckets = makeTimeBuckets(whOpen, whClose, dur)
-                          const newCap: Record<string, number> = {}
+                          const defaultCap = Number(slotConfig.maxBookingsPerSlot)
+                          const newMatrix: Record<string, Record<string, number>> = {}
                           for (const b of buckets) {
-                            newCap[b] = slotConfig.capacityByHour[b] ?? Number(slotConfig.maxBookingsPerSlot)
+                            newMatrix[b] = slotConfig.capacityMatrix[b] ?? Object.fromEntries(COMBOS.map(c => [c, defaultCap]))
                           }
-                          setSlotConfig(s => ({ ...s, slotDuration: v, capacityByHour: newCap }))
+                          setSlotConfig(s => ({ ...s, slotDuration: v, capacityMatrix: newMatrix }))
                           setSlotConfigDirty(true)
                         }}
                         options={[
@@ -1818,40 +1836,6 @@ export default function SettingsPage() {
                     </Field>
                   </div>
 
-                  {/* Capacity by combination — full width */}
-                  <div style={{ marginTop: 24, paddingTop: 24, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
-                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.09em', marginBottom: 4 }}>Capacity by Booking Type</p>
-                    <p style={{ fontSize: 14, color: 'var(--text-tertiary)', marginBottom: 16 }}>Max bookings per time slot for each service + load type combination.</p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr 1fr', gap: 12, alignItems: 'center', maxWidth: 480 }}>
-                      {/* Header row */}
-                      <div />
-                      {(['LCL', 'FCL'] as const).map(load => (
-                        <div key={load} style={{ textAlign: 'center', fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{load}</div>
-                      ))}
-                      {/* Data rows */}
-                      {(['pickup', 'dropoff'] as const).map(svc => (
-                        <>
-                          <div key={`${svc}-lbl`} style={{ fontSize: 15, fontWeight: 600, color: '#1C1917' }}>{svc === 'pickup' ? 'Pick Up' : 'Drop Off'}</div>
-                          {(['lcl', 'fcl'] as const).map(load => {
-                            const key = `${svc}-${load}`
-                            return (
-                              <FocusInput
-                                key={key}
-                                type="number" min="1" max="999"
-                                value={String(slotConfig.capacityByCombo[key] ?? 5)}
-                                onChange={e => {
-                                  setSlotConfig(s => ({ ...s, capacityByCombo: { ...s.capacityByCombo, [key]: Number(e.target.value) } }))
-                                  setSlotConfigDirty(true)
-                                }}
-                                style={{ textAlign: 'center' }}
-                              />
-                            )
-                          })}
-                        </>
-                      ))}
-                    </div>
-                  </div>
-
                   {/* Validation banner — working hours extend beyond slot periods */}
                   {(() => {
                     const enabledPeriods = Object.values(slotPeriods).filter(p => p.enabled)
@@ -1861,7 +1845,7 @@ export default function SettingsPage() {
                     const whClose   = wh.map(d => d.close).sort().reverse()[0]
                     if (whClose <= periodEnd) return null
                     return (
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.28)', borderRadius: 'var(--r-sm)', padding: '11px 14px', marginBottom: 20, marginTop: 16 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.28)', borderRadius: 'var(--r-sm)', padding: '11px 14px', marginBottom: 20, marginTop: 24 }}>
                         <p style={{ fontSize: 14, color: '#92400E', lineHeight: 1.5, margin: 0 }}>
                           Your working hours extend beyond your enabled slot periods (closes at <strong>{whClose}</strong>, last period ends at <strong>{periodEnd}</strong>). Bookings will only be accepted during enabled slot periods.
                         </p>
@@ -1869,7 +1853,12 @@ export default function SettingsPage() {
                     )
                   })()}
 
-                  {/* Per-hour capacity grid — open/close derived from enabled slot periods */}
+                  {/* Capacity matrix — one table, rows = hour, columns = service+load combo.
+                      Replaces the old separate "Capacity by Booking Type" (one number per
+                      combo, applied to every hour) and "Per-hour Capacity" (one number per
+                      hour, applied to every combo) sections — those two numbers could both
+                      claim to cap the same booking with no defined precedence between them.
+                      One cell is now simply the answer for that exact hour+combo pairing. */}
                   {(() => {
                     const dur            = Number(slotConfig.slotDuration) || 60
                     const enabledPeriods = Object.values(slotPeriods).filter(p => p.enabled)
@@ -1879,48 +1868,63 @@ export default function SettingsPage() {
                     const whClose = enabledPeriods.length ? enabledPeriods.map(p => p.end).sort().reverse()[0]
                       : wh.length ? wh.map(d => d.close).sort().reverse()[0] : '18:00'
                     const buckets = makeTimeBuckets(whOpen, whClose, dur)
+                    const defaultCap = Number(slotConfig.maxBookingsPerSlot)
+                    const COMBO_LABELS: Record<string, string> = {
+                      'pickup-lcl': 'Pick Up · LCL', 'pickup-fcl': 'Pick Up · FCL',
+                      'dropoff-lcl': 'Drop Off · LCL', 'dropoff-fcl': 'Drop Off · FCL',
+                    }
                     return (
                       <div style={{ marginTop: 24 }}>
                         <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 10 }}>
-                          Per-hour Capacity
+                          Capacity by Hour &amp; Booking Type
                         </p>
                         <p style={{ fontSize: 14, color: 'var(--text-tertiary)', marginBottom: 12, lineHeight: 1.5 }}>
-                          Set the maximum number of bookings allowed per time slot. Leave a slot at 0 to block it.
+                          Max bookings for each time slot, broken down by service + load type. Leave a cell at 0 to block that combination for that hour.
                         </p>
-                        <div style={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 'var(--r-md)', overflow: 'hidden', maxHeight: 320, overflowY: 'auto' }}>
-                          {buckets.map((bucket, i) => (
-                            <div
-                              key={bucket}
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns: '1fr auto',
-                                alignItems: 'center',
-                                gap: 16,
-                                padding: '10px 16px',
-                                background: i % 2 === 0 ? '#fff' : '#FAFAF9',
-                                borderBottom: i < buckets.length - 1 ? '1px solid rgba(0,0,0,0.06)' : 'none',
-                              }}
-                            >
-                              <span style={{ fontSize: 15, fontWeight: 500, color: '#374151', fontFamily: 'ui-monospace,monospace' }}>
-                                {bucketLabel(bucket, dur)}
-                              </span>
-                              <FocusInput
-                                type="number"
-                                min="0"
-                                max="999"
-                                value={String(slotConfig.capacityByHour[bucket] ?? Number(slotConfig.maxBookingsPerSlot))}
-                                onChange={e => {
-                                  const val = Math.max(0, parseInt(e.target.value, 10) || 0)
-                                  setSlotConfig(s => ({
-                                    ...s,
-                                    capacityByHour: { ...s.capacityByHour, [bucket]: val },
-                                  }))
-                                  setSlotConfigDirty(true)
-                                }}
-                                style={{ width: 72, textAlign: 'center' }}
-                              />
-                            </div>
-                          ))}
+                        <div style={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 'var(--r-md)', overflow: 'auto', maxHeight: 420 }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+                            <thead>
+                              <tr style={{ position: 'sticky', top: 0, background: '#FAFAF9', zIndex: 1 }}>
+                                <th style={{ textAlign: 'left', padding: '10px 16px', fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid rgba(0,0,0,0.09)' }}>Hour</th>
+                                {COMBOS.map(c => (
+                                  <th key={c} style={{ textAlign: 'center', padding: '10px 12px', fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid rgba(0,0,0,0.09)' }}>
+                                    {COMBO_LABELS[c]}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {buckets.map((bucket, i) => (
+                                <tr key={bucket} style={{ background: i % 2 === 0 ? '#fff' : '#FAFAF9' }}>
+                                  <td style={{ padding: '8px 16px', fontSize: 15, fontWeight: 500, color: '#374151', fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', borderBottom: i < buckets.length - 1 ? '1px solid rgba(0,0,0,0.06)' : 'none' }}>
+                                    {bucketLabel(bucket, dur)}
+                                  </td>
+                                  {COMBOS.map(c => (
+                                    <td key={c} style={{ padding: '6px 10px', textAlign: 'center', borderBottom: i < buckets.length - 1 ? '1px solid rgba(0,0,0,0.06)' : 'none' }}>
+                                      <FocusInput
+                                        type="number"
+                                        min="0"
+                                        max="999"
+                                        value={String(slotConfig.capacityMatrix[bucket]?.[c] ?? defaultCap)}
+                                        onChange={e => {
+                                          const val = Math.max(0, parseInt(e.target.value, 10) || 0)
+                                          setSlotConfig(s => ({
+                                            ...s,
+                                            capacityMatrix: {
+                                              ...s.capacityMatrix,
+                                              [bucket]: { ...s.capacityMatrix[bucket], [c]: val },
+                                            },
+                                          }))
+                                          setSlotConfigDirty(true)
+                                        }}
+                                        style={{ width: 64, textAlign: 'center' }}
+                                      />
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     )
@@ -1931,8 +1935,8 @@ export default function SettingsPage() {
           )}
 
           {/* Pricing */}
-          {tab === 'Bookings' && <GroupLabel>Pricing</GroupLabel>}
-          {tab === 'Bookings' && (
+          {section === 'pricing' && <GroupLabel first>Pricing</GroupLabel>}
+          {section === 'pricing' && (
             <div>
               {/* Storage Charges */}
               <div style={CARD}>
@@ -2131,8 +2135,8 @@ export default function SettingsPage() {
           )}
 
           {/* Payment */}
-          {tab === 'Bookings' && <GroupLabel>Payment</GroupLabel>}
-          {tab === 'Bookings' && (
+          {section === 'payment' && <GroupLabel first>Payment</GroupLabel>}
+          {section === 'payment' && (
             <div>
               {/* EFT */}
               <div style={CARD}>
@@ -2230,8 +2234,8 @@ export default function SettingsPage() {
           )}
 
           {/* Integrations — Connected Systems */}
-          {tab === 'Integrations' && <GroupLabel first>Connected Systems</GroupLabel>}
-          {tab === 'Integrations' && (
+          {section === 'integrations' && <GroupLabel first>Connected Systems</GroupLabel>}
+          {section === 'integrations' && (
             <div>
               {/* CargoWise */}
               <div style={CARD}>
@@ -2324,8 +2328,8 @@ export default function SettingsPage() {
           )}
 
           {/* Document Requirements */}
-          {tab === 'Bookings' && <GroupLabel>Document Requirements</GroupLabel>}
-          {tab === 'Bookings' && (
+          {section === 'doc-requirements' && <GroupLabel first>Document Requirements</GroupLabel>}
+          {section === 'doc-requirements' && (
             <div style={CARD}>
               <SectionHead title="Document Requirements" desc="Configure which documents are required per service + cargo type combination." />
               {docLoading ? (
@@ -2438,7 +2442,7 @@ export default function SettingsPage() {
             </div>
           )}
           {/* User Management */}
-          {tab === 'Team' && (() => {
+          {section === 'user-management' && (() => {
             return (
               <div>
                 {/* Invite section — admins and super_admins only */}

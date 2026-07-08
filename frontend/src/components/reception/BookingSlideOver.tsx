@@ -42,9 +42,12 @@ interface Props {
   /** Hoisted from the parent page — this panel remounts (via `key`) on every row switch,
    *  so calling useStaffPermissions() in here would re-fetch tenant permissions on every click. */
   perms: StaffPermissions
+  /** Hide the "Complete" action — used on the Visitors page, where completing a job isn't
+   *  a visitor-management action (it still is on Bookings/Dashboard). */
+  hideCompleteAction?: boolean
 }
 
-export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked = false, perms }: Props) {
+export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked = false, perms, hideCompleteAction = false }: Props) {
   const [b, setB] = useState<Booking>(initial)
   const [loading, setLoading] = useState('')
   const [checkin, setCheckin] = useState<any>(null)
@@ -333,7 +336,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
               <Icon name={ICONS.userCheck} size={16} /> Mark as Checked In
             </ActionBtn>
           )}
-          {b.status === 'checked_in' && (
+          {b.status === 'checked_in' && !hideCompleteAction && (
             <ActionBtn color="orange" loading={loading === 'complete'} onClick={() => setConfirmModal(true)}>
               <Icon name={ICONS.checkSquare} size={16} /> Complete
             </ActionBtn>

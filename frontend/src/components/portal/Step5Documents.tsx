@@ -38,14 +38,15 @@ function isSlotDetailDone(cfg: any): boolean {
   const cn = (cfg.containerNumber ?? '').trim()
   const hbl = (cfg.hbl ?? '').trim()
   const cs = (cfg.containerSize ?? '').trim()
-  const en = (cfg.entryNumber ?? '').trim()
   const pu = (cfg.purpose ?? '').trim()
   const co = (cfg.consolidator ?? '').trim()
   const br = (cfg.bookingReference ?? '').trim()
   if (svc === 'pickup'  && lt === 'lcl')   return !!(cn && hbl)
   if (svc === 'pickup'  && lt === 'fcl')   return !!(cn && cs)
-  if (svc === 'dropoff' && lt === 'lcl')   return !!(br && co && en && pu)
-  if (svc === 'dropoff' && lt === 'fcl')   return !!(cn && cs && en && pu)
+  // Customs Entry # (en) is optional — matches deriveCanProceed, so the slot reads complete
+  // (green check / auto-advance) without it. Only booking/purpose fields gate completion.
+  if (svc === 'dropoff' && lt === 'lcl')   return !!(br && co && pu)
+  if (svc === 'dropoff' && lt === 'fcl')   return !!(cn && cs && pu)
   return false
 }
 
@@ -192,6 +193,13 @@ export function Step5Documents() {
       setCountdown(null)
     }
 
+    // Skip the wait and open the next slot right away (same end-state as the countdown finishing)
+    const goToNextSlot = () => {
+      clearCountdown()
+      alreadyAdvanced.current.add(activeSlot5)
+      setActiveSlot5(activeSlot5 + 1)
+    }
+
     useEffect(() => {
       const isDone  = activeCfg5 && isSlotDetailDone(activeCfg5)
       const hasNext = state.slotConfigs.some((_, i) => i > activeSlot5)
@@ -282,6 +290,9 @@ export function Step5Documents() {
             </div>
             <button type="button" onClick={clearCountdown} style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.20)', borderRadius: 'var(--r-full)', padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' }}>
               Stay
+            </button>
+            <button type="button" onClick={goToNextSlot} style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: 'var(--brand-color, #FC6514)', border: '1px solid transparent', borderRadius: 'var(--r-full)', padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' }}>
+              Next →
             </button>
           </div>,
           document.body

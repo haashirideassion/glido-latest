@@ -23,9 +23,21 @@ interface VisitorRecord {
   bookings?: {
     driver_name?: string
     service_type?: string
+    load_type?: string
+    status?: string
     completed_at?: string
   }
 }
+
+// Service × load-type combo filter (mirrors the Analytics / Bookings row). Walk-ins have no
+// linked booking, so they only match "All".
+const COMBOS = [
+  { key: 'all',          label: 'All',            service: null,      load: null  },
+  { key: 'fcl-pickup',   label: 'FCL — Pick Up',  service: 'pickup',  load: 'fcl' },
+  { key: 'fcl-dropoff',  label: 'FCL — Drop Off', service: 'dropoff', load: 'fcl' },
+  { key: 'lcl-pickup',   label: 'LCL — Pick Up',  service: 'pickup',  load: 'lcl' },
+  { key: 'lcl-dropoff',  label: 'LCL — Drop Off', service: 'dropoff', load: 'lcl' },
+] as const
 
 const fmtDateTime = (iso?: string) => iso ? _fmtDateTime(iso) : '—'
 const today = () => todaySydney()
@@ -98,7 +110,11 @@ export default function VisitorLogPage() {
   const [to, setTo]           = useState(today())
   const [status,    setStatus]    = useState('')
   const [visitType, setVisitType] = useState('')
+  const [combo,     setCombo]     = useState<string>('all')
   const [search,    setSearch]    = useState('')
+
+  const activeCombo = COMBOS.find(c => c.key === combo)
+  const matchesCombo = (b: any) => !activeCombo?.service || (b?.service_type === activeCombo.service && b?.load_type === activeCombo.load)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -132,7 +148,7 @@ export default function VisitorLogPage() {
         r.licence_address || '',
         r.licence_scan_method || 'Manual',
         r.licence_number || '',
-        fmtDate(r.licence_dob),
+        fmtDate(r.licence_dob ?? ''),
         r.walk_in_reason || b?.service_type?.toUpperCase() || '',
         r.visit_person_name || '',
         fmtDateTime(r.check_in_time),
@@ -153,8 +169,8 @@ export default function VisitorLogPage() {
     { label: 'All Time', from: '',          to: ''        },
   ]
 
-  const hasFilters = !!(status || visitType || search || from !== daysAgo(7) || to !== today())
-  const clearAll = () => { setStatus(''); setVisitType(''); setSearch(''); setFrom(daysAgo(7)); setTo(today()) }
+  const hasFilters = !!(status || visitType || combo !== 'all' || search || from !== daysAgo(7) || to !== today())
+  const clearAll = () => { setStatus(''); setVisitType(''); setCombo('all'); setSearch(''); setFrom(daysAgo(7)); setTo(today()) }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -235,6 +251,22 @@ export default function VisitorLogPage() {
         <input type="date" value={to} onChange={e => setTo(e.target.value)}
           style={{ height: 40, padding: '0 12px', fontSize: 14, color: to ? '#1C1917' : '#9CA3AF', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', outline: 'none', fontFamily: 'inherit' }} />
 
+        {/* Service × load-type combo filter (mirrors Analytics / Bookings) — merged into the
+            same wrapping row as the rest of the filters instead of a separate row, so the
+            whole bar packs into fewer lines. */}
+        {COMBOS.map(c => {
+          const active = combo === c.key
+          return (
+            <button key={c.key} type="button" onClick={() => setCombo(c.key)}
+              style={{ height: 40, padding: '0 16px', fontSize: 14, fontWeight: active ? 700 : 500, borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                background: active ? 'rgba(var(--brand-rgb),0.10)' : '#F7F6F5',
+                border: `1px solid ${active ? 'rgba(var(--brand-rgb),0.28)' : 'rgba(0,0,0,0.08)'}`,
+                color: active ? 'var(--brand-color)' : 'var(--text-secondary)' }}>
+              {c.label}
+            </button>
+          )
+        })}
+
         <div style={{ flex: 1 }} />
 
         {hasFilters && (
@@ -266,6 +298,7 @@ export default function VisitorLogPage() {
                 if (visitType === 'walk_in' && !(r as any).is_walk_in) return false
                 if (visitType === 'booking' && (r as any).is_walk_in)  return false
                 if (status && b?.status !== status) return false
+                if (!matchesCombo(b)) return false
                 return true
               })
               return b_filter.length
@@ -273,7 +306,7 @@ export default function VisitorLogPage() {
           </p>
         </div>
 
-        {/* Cards list */}
+        {/* Table — same structure as the Reports → Configure ABF Visitor Log preview */}
         {loading ? (
           <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 15 }}>Loading…</div>
         ) : (() => {
@@ -282,99 +315,62 @@ export default function VisitorLogPage() {
             if (visitType === 'walk_in' && !(r as any).is_walk_in) return false
             if (visitType === 'booking' && (r as any).is_walk_in)  return false
             if (status && b?.status !== status) return false
+            if (!matchesCombo(b)) return false
             return true
           })
           if (filtered.length === 0) return (
             <EmptyState compact variant="search" title="No visitor records found" subtitle="Try adjusting your filters or date range." />
           )
 
-          const STATUS_CFG: Record<string, { label: string; bg: string; color: string; border: string; icon: string }> = {
-            scheduled:  { label: 'Scheduled',  bg: '#EFF6FF', color: '#2563EB', border: '#BFDBFE', icon: 'M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
-            checked_in: { label: 'On-Site',    bg: '#F0FDF4', color: '#16A34A', border: '#BBF7D0', icon: 'M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
-            completed:  { label: 'Completed',  bg: '#F9FAFB', color: '#374151', border: '#E5E7EB', icon: 'M10.125 2.25h-4.5c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125v-9M10.125 2.25h.375a9 9 0 0 1 9 9v.375M10.125 2.25A3.375 3.375 0 0 1 13.5 5.625v1.5c0 .621.504 1.125 1.125 1.125h1.5a3.375 3.375 0 0 1 3.375 3.375M9 15l2.25 2.25L15 12' },
-            walk_in:    { label: 'Walk-in',    bg: '#FFFBEB', color: '#D97706', border: '#FDE68A', icon: 'M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z' },
-          }
-          const BAR_COLOR: Record<string, string> = {
-            checked_in: '#16A34A',
-            completed:  '#94A3B8',
-            scheduled:  '#2563EB',
-            walk_in:    '#F59E0B',
-          }
+          const TH: React.CSSProperties = { textAlign: 'left', padding: '14px 20px', color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', fontSize: 15 }
+          const TD: React.CSSProperties = { padding: '14px 20px' }
 
           return (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 10px' }}>
-              {filtered.map(r => {
-                const b      = r.bookings as any
-                const isWalkIn = (r as any).is_walk_in
-                const name   = r.licence_name || b?.driver_name || '—'
-                const reason = r.walk_in_reason || (b?.service_type ? (b.service_type === 'pickup' ? 'Pick Up' : 'Drop Off') : null) || '—'
-                const bStatus = isWalkIn && !b ? 'walk_in' : (b?.status ?? 'walk_in')
-                const cfg    = STATUS_CFG[bStatus] ?? STATUS_CFG.walk_in
-                const barColor = BAR_COLOR[bStatus] ?? '#E5E7EB'
-                const isSel  = selectedRecord?.id === r.id
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 15, whiteSpace: 'nowrap' }}>
+                <thead>
+                  <tr style={{ background: '#F7F6F5', borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
+                    <th style={TH}>Date</th>
+                    <th style={{ ...TH, position: 'sticky', left: 0, zIndex: 2, background: '#F7F6F5' }}>Full Name</th>
+                    <th style={TH}>Address</th>
+                    <th style={TH}>ID Type</th>
+                    <th style={{ ...TH, position: 'sticky', left: 160, zIndex: 2, background: '#F7F6F5' }}>ID Number</th>
+                    <th style={TH}>DOB</th>
+                    <th style={TH}>Reason</th>
+                    <th style={TH}>Person Visited</th>
+                    <th style={TH}>Entry Time</th>
+                    <th style={TH}>Exit Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(r => {
+                    const b = r.bookings as any
+                    const name   = r.licence_name || b?.driver_name || '—'
+                    const reason = r.walk_in_reason || (b?.service_type ? (b.service_type === 'pickup' ? 'Pick Up' : 'Drop Off') : null) || '—'
+                    const isSel  = selectedRecord?.id === r.id
+                    const rowBg  = isSel ? 'rgba(var(--brand-rgb),0.05)' : '#fff'
 
-                return (
-                  <div
-                    key={r.id}
-                    onClick={() => setSelectedRecord(r)}
-                    style={{ display: 'flex', cursor: 'pointer', border: `1px solid ${isSel ? 'rgba(var(--brand-rgb),0.35)' : 'rgba(0,0,0,0.08)'}`, borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden', background: isSel ? 'rgba(var(--brand-rgb),0.05)' : '#fff', transition: 'box-shadow 0.15s, background 0.12s, border-color 0.12s' }}
-                    onMouseOver={e => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.10)' }}
-                    onMouseOut={e  => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)' }}
-                  >
-                    {/* Left colour bar */}
-                    <div style={{ width: 5, flexShrink: 0, background: barColor }} />
-
-                    <div style={{ flex: 1, minWidth: 0, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {/* Top row: name + id type + date/time + status */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: '#1C1917' }}>{name}</span>
-
-                        {r.licence_scan_method && (
-                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)', padding: '1px 7px', borderRadius: 'var(--r-sm)' }}>
-                            {r.licence_scan_method}
-                          </span>
-                        )}
-
-                        <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
-                          {fmtDateTime(r.check_in_time)}
-                        </span>
-
-                        <div style={{ flex: 1 }} />
-
-                        {/* Status badge */}
-                        <span style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, borderRadius: 'var(--r-xl)', padding: '3px 9px 3px 7px', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                            <path d={cfg.icon} />
-                          </svg>
-                          {cfg.label}
-                        </span>
-                      </div>
-
-                      {/* Bottom row: ID number + reason + person visited */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                        {r.licence_number && (
-                          <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, fontWeight: 700, color: 'var(--brand-color)' }}>
-                            {r.licence_number}
-                          </span>
-                        )}
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151', background: 'rgba(0,0,0,0.04)', padding: '1px 8px', borderRadius: 'var(--r-sm)' }}>
-                          {reason}
-                        </span>
-                        {r.visit_person_name && (
-                          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                            → {r.visit_person_name}
-                          </span>
-                        )}
-                        {r.licence_address && (
-                          <span style={{ fontSize: 12, color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 260 }}>
-                            {r.licence_address}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
+                    return (
+                      <tr key={r.id} onClick={() => setSelectedRecord(r)}
+                        style={{ cursor: 'pointer', background: rowBg, borderBottom: '1px solid rgba(0,0,0,0.05)', transition: 'background 0.1s' }}
+                        onMouseOver={e => { if (!isSel) e.currentTarget.style.background = '#FAFAF9' }}
+                        onMouseOut={e  => { if (!isSel) e.currentTarget.style.background = rowBg }}
+                      >
+                        <td style={{ ...TD, color: '#1C1917', fontWeight: 500 }}>{fmtDate(r.check_in_time)}</td>
+                        <td style={{ ...TD, fontWeight: 700, color: '#1C1917', position: 'sticky', left: 0, zIndex: 1, background: rowBg }}>{name}</td>
+                        <td style={{ ...TD, color: 'var(--text-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.licence_address || '—'}</td>
+                        <td style={{ ...TD, color: 'var(--text-muted)' }}>{r.licence_scan_method || 'Manual'}</td>
+                        <td style={{ ...TD, fontFamily: 'ui-monospace,monospace', color: 'var(--brand-color)', fontWeight: 700, position: 'sticky', left: 160, zIndex: 1, background: rowBg }}>{r.licence_number || '—'}</td>
+                        <td style={{ ...TD, color: 'var(--text-muted)' }}>{fmtDate(r.licence_dob ?? '')}</td>
+                        <td style={TD}><span style={{ background: 'rgba(0,0,0,0.04)', padding: '4px 10px', borderRadius: 'var(--r-sm)', fontWeight: 600, color: '#374151' }}>{reason}</span></td>
+                        <td style={{ ...TD, color: '#1C1917', fontWeight: 600 }}>{r.visit_person_name || '—'}</td>
+                        <td style={{ ...TD, color: '#16A34A', fontWeight: 700 }}>{fmtDateTime(r.check_in_time)}</td>
+                        <td style={{ ...TD, color: 'var(--text-muted)' }}>{fmtDateTime(b?.completed_at)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           )
         })()}

@@ -29,7 +29,7 @@ export function WalkInScreen() {
   const [phoneError, setPhoneError] = useState('')
   const [agreed, setAgreed] = useState(false)
 
-  type WalkInField = 'walkInPurpose' | 'walkInName' | 'walkInPhone' | 'walkInVehicle' | 'walkInBLRef' | 'walkInPersonVisited' | 'walkInReason'
+  type WalkInField = 'walkInPurpose' | 'walkInName' | 'walkInPhone' | 'walkInCompany' | 'walkInVehicle' | 'walkInBLRef' | 'walkInPersonVisited' | 'walkInReason'
   const set = (field: WalkInField, value: string) =>
     dispatch({ type: 'SET_WALK_IN_FIELD', field: field as any, value })
 
@@ -83,31 +83,45 @@ export function WalkInScreen() {
             <label style={LABEL}>Your Name <span style={{ color: '#EF4444' }}>*</span></label>
             <input type="text" placeholder="Full name" className="wizard-field" style={FIELD} value={state.walkInName} onChange={e => set('walkInName', e.target.value)} />
           </div>
-          <div>
-            <label style={LABEL}>Phone Number <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 10 }}>(optional)</span></label>
-            <input
-              type="tel"
-              inputMode="numeric"
-              maxLength={10}
-              placeholder="04XX XXX XXX"
-              className="wizard-field"
-              style={FIELD}
-              value={state.walkInPhone}
-              onKeyDown={e => {
-                const allowed = ['Backspace','Delete','Tab','ArrowLeft','ArrowRight','Home','End']
-                if (!allowed.includes(e.key) && !/^\d$/.test(e.key)) {
-                  e.preventDefault()
-                }
-              }}
-              onChange={e => {
-                const numeric = e.target.value.replace(/\D/g, '')
-                set('walkInPhone', numeric)
-                if (phoneError) validatePhone(numeric)
-              }}
-              onBlur={e => validatePhone(e.target.value)}
-            />
-            {phoneError && <p style={{ color: '#EF4444', fontSize: 15, marginTop: 6, marginBottom: 0 }}>{phoneError}</p>}
-          </div>
+          {(isOffice || isYard) ? (
+            <div>
+              <label style={LABEL}>Company Name <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 10 }}>(optional)</span></label>
+              <input
+                type="text"
+                placeholder="e.g. Acme Freight Pty Ltd"
+                className="wizard-field"
+                style={FIELD}
+                value={state.walkInCompany}
+                onChange={e => set('walkInCompany', e.target.value)}
+              />
+            </div>
+          ) : (
+            <div>
+              <label style={LABEL}>Phone Number <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 10 }}>(optional)</span></label>
+              <input
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="04XX XXX XXX"
+                className="wizard-field"
+                style={FIELD}
+                value={state.walkInPhone}
+                onKeyDown={e => {
+                  const allowed = ['Backspace','Delete','Tab','ArrowLeft','ArrowRight','Home','End']
+                  if (!allowed.includes(e.key) && !/^\d$/.test(e.key)) {
+                    e.preventDefault()
+                  }
+                }}
+                onChange={e => {
+                  const numeric = e.target.value.replace(/\D/g, '')
+                  set('walkInPhone', numeric)
+                  if (phoneError) validatePhone(numeric)
+                }}
+                onBlur={e => validatePhone(e.target.value)}
+              />
+              {phoneError && <p style={{ color: '#EF4444', fontSize: 15, marginTop: 6, marginBottom: 0 }}>{phoneError}</p>}
+            </div>
+          )}
 
           {/* Cargo-specific fields */}
           {isCargo && (

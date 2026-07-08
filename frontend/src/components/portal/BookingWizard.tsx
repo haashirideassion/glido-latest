@@ -7,7 +7,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
 import { Icon, ICONS } from '@/lib/Icon'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { GlidoLogo } from '@/lib/GlidoLogo'
-import { WizardScene3D } from './WizardScene3D'
+import { WizardScene3D, timeOfDay } from './WizardScene3D'
 import { Step1ServiceType } from './Step1ServiceType'
 import { Step2SlotPicker } from './Step2SlotPicker'
 import { Step3HoldConfirm } from './Step3HoldConfirm'
@@ -101,11 +101,6 @@ export default function BookingWizard() {
 
   const next = () => { dispatch({ type: 'SET', field: 'step', value: state.step + 1 }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
   const back = () => {
-    // If going back from step 7, STOP_HOLD_TIMER was fired on mount (sets holdSeconds=-1).
-    // Re-dispatch SELECT_SLOT to restart the countdown so the pill reappears on steps 4-6.
-    if (state.step === 7 && state.holdSeconds <= 0 && state.selectedSlotId) {
-      dispatch({ type: 'SELECT_SLOT', slotId: state.selectedSlotId, label: state.selectedSlotLabel ?? '' })
-    }
     dispatch({ type: 'SET', field: 'step', value: state.step - 1 })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -129,8 +124,9 @@ export default function BookingWizard() {
 
   const continueLabel = 'Continue'
 
-  // One shared content width so the stepper, form, footer nav and footer text all line up
-  const bodyWide = state.slotCount > 1 && state.step >= 2 && state.step <= 6 && !state.bookingConfirmed
+  // One shared content width so the stepper, form, footer nav and footer text all line up.
+  // The slot summary card shows for every booking (including a single slot), not just multi-slot.
+  const bodyWide = state.step >= 2 && state.step <= 6 && !state.bookingConfirmed
   const WRAP = bodyWide ? 900 : 680
 
   // Whichever slot's tab is open on the current step — the 3D scene focuses on that truck and
@@ -138,9 +134,22 @@ export default function BookingWizard() {
   const focusSlotIndex = state.slotCount > 1
     ? [0, 0, state.step2ActiveSlot, state.step3ActiveSlot, state.step4ActiveSlot, state.step5ActiveSlot, state.step5ActiveSlot, 0][state.step] ?? 0
     : 0
-  const focusSlotLabel = state.slotCount > 1
-    ? (state.slotConfigs[focusSlotIndex]?.selectedSlotLabel || state.slotConfigs.find(c => c.selectedSlotLabel)?.selectedSlotLabel || '')
-    : state.selectedSlotLabel
+  // The Document step (6) shows every slot at once, so there's no single slot to key the
+  // scene's time-of-day off. If every slot shares the same time-of-day band (all morning /
+  // all day / all night) show that band; only when the slots are mixed do we fall back to
+  // neutral daytime — avoiding the arbitrary "borrow step 5's last-active slot" behaviour.
+  const sharedTimeLabel = (() => {
+    const labels = (state.slotCount > 1 ? state.slotConfigs.map(c => c.selectedSlotLabel) : [state.selectedSlotLabel])
+      .filter((l): l is string => !!l)
+    if (labels.length === 0) return ''
+    const band = timeOfDay(labels[0])
+    return labels.every(l => timeOfDay(l) === band) ? labels[0] : ''
+  })()
+  const focusSlotLabel = state.step === 6
+    ? sharedTimeLabel
+    : state.slotCount > 1
+      ? (state.slotConfigs[focusSlotIndex]?.selectedSlotLabel || state.slotConfigs.find(c => c.selectedSlotLabel)?.selectedSlotLabel || '')
+      : state.selectedSlotLabel
 
   return (
     <div style={{ background: '#fff', height: 'calc(100dvh - 60px)', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
@@ -420,8 +429,7 @@ export default function BookingWizard() {
 
         {/* ── Step body ── */}
         {state.step !== 8 && (() => {
-          const showPanel = state.slotCount > 1
-            && state.step >= 2
+          const showPanel = state.step >= 2
             && state.step <= 6
             && !state.bookingConfirmed
           // On the Documents step, slot summary moves to the left

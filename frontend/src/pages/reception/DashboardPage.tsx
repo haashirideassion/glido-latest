@@ -93,7 +93,20 @@ export default function DashboardPage() {
       slotsMap.forEach((v, k) => { slots[k] = v })
       setGroupSlots(slots)
       if (tenant) {
-        setCapacityByHour((tenant as any).slot_capacity_by_hour ?? {})
+        // This chart wants one "total capacity" number per hour — sum the matrix's 4 combo
+        // cells for each hour (matches how the backend derives an aggregate/no-combo view).
+        // Legacy slot_capacity_by_hour is a one-time fallback for tenants who haven't saved
+        // from the new Capacity by Hour & Booking Type table yet.
+        const matrix = (tenant as any).slot_capacity_matrix as Record<string, Record<string, number>> | null
+        if (matrix) {
+          const summed: Record<string, number> = {}
+          for (const [hour, combos] of Object.entries(matrix)) {
+            summed[hour] = Object.values(combos).reduce((a, b) => a + (b ?? 0), 0)
+          }
+          setCapacityByHour(summed)
+        } else {
+          setCapacityByHour((tenant as any).slot_capacity_by_hour ?? {})
+        }
         setDefaultCapacity(tenant.max_bookings_per_slot ?? 5)
       }
     } catch (err) {
@@ -131,7 +144,11 @@ export default function DashboardPage() {
 
       <BookingTable bookings={bookings} slotCounts={slotCounts} groupSlots={groupSlots} currentDate={today} loading={isLoading} onSelect={setSelected} selectedId={selected?.id} />
       <RecentVisitors stats={stats} loading={isLoading} onSelect={setSelected} selectedId={selected?.id} />
-      <DayChart bookings={bookings} loading={isLoading} capacityByHour={capacityByHour} defaultCapacity={defaultCapacity} />
+      {/* defaultCapacity ×4 — the fallback line should represent the total across all 4
+          combos (matching how a configured hour's total is itself a sum of 4 cells), for
+          any hour a tenant hasn't explicitly configured in the Capacity by Hour & Booking
+          Type table yet. */}
+      <DayChart bookings={bookings} loading={isLoading} capacityByHour={capacityByHour} defaultCapacity={defaultCapacity * 4} />
       </div>
 
       {/* Docked detail pane — split view (wide screens) */}

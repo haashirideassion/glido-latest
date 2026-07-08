@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/lib/usePageTitle'
-import { patchFetcher, postFetcher } from '@/lib/fetcher'
+import { fetcher, patchFetcher, postFetcher } from '@/lib/fetcher'
 import { Icon, ICONS } from '@/lib/Icon'
 import { validators, sanitize } from '@/lib/validation'
 
@@ -429,10 +429,28 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (!user) return
-    // Derive first/last name from JWT user.name (full name)
-    const parts = (user.name ?? '').split(' ')
-    setMeta({ first_name: parts[0] ?? '', last_name: parts.slice(1).join(' ') })
-    setMetaLoading(false)
+    // The JWT only carries id/email/name/role — phone and company_name are set after login,
+    // so fetch the full account record rather than deriving everything from the token.
+    let cancelled = false
+    fetcher('/api/auth/me').then(res => {
+      if (cancelled) return
+      const data = res?.data ?? {}
+      const parts = (data.name ?? user.name ?? '').split(' ')
+      setMeta({
+        first_name: parts[0] ?? '',
+        last_name: parts.slice(1).join(' '),
+        phone: data.phone ?? '',
+        company_name: data.company_name ?? '',
+      })
+      setMetaLoading(false)
+    }).catch(() => {
+      if (cancelled) return
+      // Fall back to whatever the JWT has so the page still renders
+      const parts = (user.name ?? '').split(' ')
+      setMeta({ first_name: parts[0] ?? '', last_name: parts.slice(1).join(' ') })
+      setMetaLoading(false)
+    })
+    return () => { cancelled = true }
   }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const showToast = (message: string) => {

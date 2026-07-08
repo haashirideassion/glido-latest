@@ -46,14 +46,49 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 })
 
-// GET /api/v2/auth/me
-router.get('/me', requireAuth, (req: Request, res: Response) => {
-  return res.json({ success: true, data: req.user })
+// GET /api/v2/auth/me — the JWT payload only carries id/email/name/role, so fetch the
+// full row for fields set after login (phone, company_name)
+router.get('/me', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, email, name, role, phone, company_name FROM app_users WHERE id = $1',
+      [req.user!.id]
+    )
+    if (!rows[0]) return res.status(404).json({ success: false, error: { message: 'Not found' } })
+    return res.json({ success: true, data: rows[0] })
+  } catch (err) {
+    console.error('[auth/me GET]', err)
+    return res.status(500).json({ success: false, error: { message: 'Server error' } })
+  }
+})
+
+// PATCH /api/v2/auth/me — self-service profile update (name, phone, company)
+router.patch('/me', requireAuth, async (req: Request, res: Response) => {
+  const { name, phone, company_name } = req.body
+  const sets: string[] = []
+  const params: unknown[] = []
+  let i = 1
+  if (name !== undefined)         { sets.push(`name = $${i++}`);         params.push(name) }
+  if (phone !== undefined)        { sets.push(`phone = $${i++}`);        params.push(phone) }
+  if (company_name !== undefined) { sets.push(`company_name = $${i++}`); params.push(company_name) }
+  if (!sets.length) return res.status(400).json({ success: false, error: { message: 'No fields to update' } })
+  sets.push(`updated_at = NOW()`)
+  params.push(req.user!.id)
+  try {
+    const { rows } = await pool.query(
+      `UPDATE app_users SET ${sets.join(', ')} WHERE id = $${i} RETURNING id, email, name, role, phone, company_name`,
+      params
+    )
+    return res.json({ success: true, data: rows[0] })
+  } catch (err) {
+    console.error('[auth/me PATCH]', err)
+    return res.status(500).json({ success: false, error: { message: 'Server error' } })
+  }
 })
 
 // POST /api/v2/auth/register — visitor self-registration
 router.post('/register', async (req: Request, res: Response) => {
-  const { firstName, lastName, email, password } = req.body
+  const { firstName, lastName, email, password, companyName } = req.body
   if (!firstName || !lastName || !email || !password) {
     return res.status(400).json({ success: false, error: { message: 'First name, last name, email and password are required' } })
   }
@@ -70,10 +105,10 @@ router.post('/register', async (req: Request, res: Response) => {
     const hash = await bcrypt.hash(password, 12)
     const name = `${firstName.trim()} ${lastName.trim()}`
     const result = await pool.query(
-      `INSERT INTO app_users (email, name, role, password_hash)
-       VALUES ($1, $2, 'visitor_registered', $3)
+      `INSERT INTO app_users (email, name, role, password_hash, company_name)
+       VALUES ($1, $2, 'visitor_registered', $3, $4)
        RETURNING id, email, name, role`,
-      [emailLower, name, hash]
+      [emailLower, name, hash, companyName?.trim() || null]
     )
     const user = result.rows[0]
     const token = jwt.sign(

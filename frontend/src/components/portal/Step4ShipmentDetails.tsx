@@ -46,87 +46,8 @@ const DEFAULT_PERIODS: PeriodConfig = {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function timeToMin(t: string): number {
-  const [h, m] = t.split(':').map(Number)
-  return h * 60 + m
-}
-
-function minToTime(m: number): string {
-  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
-}
-
-function getDayKey(isoDate: string): typeof DAY_KEYS[number] {
-  // Parse using Sydney local time
-  const d = new Date(isoDate + 'T00:00:00')
-  const dow = parseInt(d.toLocaleDateString('en-AU', { weekday: 'short', timeZone: TZ })
-    .slice(0, 2).toLowerCase() === 'su' ? '0' :
-    d.toLocaleDateString('en-AU', { weekday: 'narrow', timeZone: TZ }) === 'M' ? '1' :
-    d.toLocaleDateString('en-AU', { weekday: 'narrow', timeZone: TZ }) === 'T' &&
-    d.toLocaleDateString('en-AU', { weekday: 'short', timeZone: TZ }).startsWith('Tu') ? '2' :
-    d.toLocaleDateString('en-AU', { weekday: 'short', timeZone: TZ }).startsWith('W') ? '3' :
-    d.toLocaleDateString('en-AU', { weekday: 'short', timeZone: TZ }).startsWith('Th') ? '4' :
-    d.toLocaleDateString('en-AU', { weekday: 'short', timeZone: TZ }).startsWith('F') ? '5' :
-    d.toLocaleDateString('en-AU', { weekday: 'short', timeZone: TZ }).startsWith('Sa') ? '6' : '0')
-  // Simpler: use getDay on the date parsed in Sydney time
-  const sydneyDate = new Date(new Date(isoDate + 'T12:00:00').toLocaleString('en-US', TZ_OPT))
-  return DAY_KEYS[sydneyDate.getDay()]
-}
-
-function generateSlotsFromConfig(
-  date: string,
-  dayCfg: DayHours,
-  durationMin: number,
-  capacity: number,
-  dbSlots: TimeSlot[],
-  periods: PeriodConfig,
-  capacityByHour?: Record<string, number>,
-): TimeSlot[] {
-  // Only generate within enabled period ranges
-  const enabledRanges = Object.values(periods)
-    .filter(p => p.enabled)
-    .map(p => ({ start: timeToMin(p.start), end: timeToMin(p.end) }))
-
-  // Fallback to full open→close if no periods configured
-  if (enabledRanges.length === 0) {
-    enabledRanges.push({ start: timeToMin(dayCfg.open), end: timeToMin(dayCfg.close) })
-  }
-
-  const slots: TimeSlot[] = []
-
-  for (const range of enabledRanges) {
-    for (let start = range.start; start + durationMin <= range.end; start += durationMin) {
-      const startTime = minToTime(start)
-      const endTime   = minToTime(start + durationMin)
-      const id        = `gen-${date}-${startTime.replace(':', '')}`
-
-      // Merge with DB slot if one exists for this exact time
-      const dbSlot = dbSlots.find(s => s.startTime === startTime)
-
-      // Format slot start time as "HH:MM" to match the stored key
-      const slotKey      = `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(start % 60).padStart(2, '0')}`
-      const slotCapacity = capacityByHour?.[slotKey] ?? capacity
-
-      const confirmed = dbSlot?.confirmed ?? 0
-      const held      = dbSlot?.held      ?? 0
-      const busyness  = confirmed >= slotCapacity
-        ? 'full'
-        : confirmed / slotCapacity >= 0.6 ? 'busy' : 'available'
-
-      slots.push({
-        id:        dbSlot?.id ?? id,
-        date,
-        startTime,
-        endTime,
-        capacity:  slotCapacity,
-        confirmed,
-        held,
-        busyness:  busyness as TimeSlot['busyness'],
-      })
-    }
-  }
-  return slots
-}
+// (Slot generation/capacity/busyness now lives entirely server-side — see slotAvailability.ts
+// in the backend — so this file no longer needs its own day-key/bucket-generation helpers.)
 
 function groupSlotsByPeriods(slots: TimeSlot[], periods: PeriodConfig) {
   const groups: { period: PeriodDef; key: string; slots: TimeSlot[] }[] = []
@@ -209,66 +130,34 @@ export function Step4ShipmentDetails() {
 
   const multi = state.slotCount > 1
 
-  // ── Single-slot: existing state-driven slot loading ────────────────────────
+  // ── Single-slot: slot loading ────────────────────────────────────────────────
+  // The backend (GET /api/v2/slots) is now the single source of truth for availability —
+  // it applies Operating Hours ∩ Slot Periods ∩ Per-hour Capacity ∩ Capacity-by-Booking-Type
+  // itself, so this just fetches and displays rather than recomputing any of that client-side.
+  // (The old client-side recompute here had a real bug: it used a combo's capacity as the
+  // hour's capacity, then compared it against the hour's TOTAL confirmed count across every
+  // combo — so one combo's bookings could wrongly show a totally different combo as "full".)
   useEffect(() => {
     if (multi || !state.selectedDate || tenantLoading) return
     let cancelled = false
     dispatch({ type: 'SET_SLOTS', slots: [], loading: true })
-    const wh     = tenant?.working_hours as unknown as WorkingHoursConfig | null
-    const dayKey = getDayKey(state.selectedDate)
-    const dayCfg = wh?.[dayKey]
-    if (dayCfg && !dayCfg.enabled) {
-      if (!cancelled) dispatch({ type: 'SET_SLOTS', slots: [], loading: false })
-      return
-    }
-    const durationMin      = tenant?.slot_duration_min     ?? 60
-    const capacityByHour   = (tenant as any)?.slot_capacity_by_hour as Record<string, number> | undefined
-    const capacityByCombo  = (tenant as any)?.slot_capacity_by_combo as Record<string, number> | undefined
-    const comboKey         = `${state.serviceType ?? 'pickup'}-${state.loadType ?? 'lcl'}`
-    const capacity         = capacityByCombo?.[comboKey] ?? tenant?.max_bookings_per_slot ?? 10
-    getSlotsByDate(state.selectedDate)
-      .then(dbSlots => {
-        if (cancelled) return
-        const slots: TimeSlot[] = dayCfg?.enabled && dayCfg.open && dayCfg.close
-          ? generateSlotsFromConfig(state.selectedDate, dayCfg, durationMin, capacity, dbSlots, periods, capacityByHour)
-          : dbSlots.map(s => ({ ...s, capacity: s.capacity > 0 ? s.capacity : capacity }))
-        dispatch({ type: 'SET_SLOTS', slots, loading: false })
-      })
+    getSlotsByDate(state.selectedDate, { tenantId: DEFAULT_TENANT_ID, serviceType: state.serviceType ?? undefined, loadType: state.loadType ?? undefined })
+      .then(slots => { if (!cancelled) dispatch({ type: 'SET_SLOTS', slots, loading: false }) })
       .catch(() => { if (!cancelled) dispatch({ type: 'SET_SLOTS', slots: [], loading: false }) })
     return () => { cancelled = true }
-  }, [state.selectedDate, tenant, tenantLoading, multi]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.selectedDate, tenantLoading, multi, state.serviceType, state.loadType]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Silent polling: refresh slot availability every 10s while picker is open ─
+  // ── Silent polling: refresh slot availability every 5s while picker is open ─
   useEffect(() => {
-    if (multi || !state.selectedDate || tenantLoading || !tenant) return
+    if (multi || !state.selectedDate || tenantLoading) return
     const poll = () => {
-      const wh    = tenant?.working_hours as unknown as WorkingHoursConfig | null
-      const dayKey = getDayKey(state.selectedDate)
-      const dayCfg = wh?.[dayKey]
-      if (dayCfg && !dayCfg.enabled) return
-      const durationMin     = tenant?.slot_duration_min     ?? 60
-      const capacityByHour  = (tenant as any)?.slot_capacity_by_hour  as Record<string, number> | undefined
-      const capacityByCombo = (tenant as any)?.slot_capacity_by_combo as Record<string, number> | undefined
-      const comboKey        = `${state.serviceType ?? 'pickup'}-${state.loadType ?? 'lcl'}`
-      const capacity        = capacityByCombo?.[comboKey] ?? tenant?.max_bookings_per_slot ?? 10
-      const periodsCfg: PeriodConfig = {
-        morning:   { ...(wh?.periods?.morning   ?? DEFAULT_PERIODS.morning)   },
-        afternoon: { ...(wh?.periods?.afternoon ?? DEFAULT_PERIODS.afternoon) },
-        evening:   { ...(wh?.periods?.evening   ?? DEFAULT_PERIODS.evening)   },
-      }
-      getSlotsByDate(state.selectedDate)
-        .then(dbSlots => {
-          const slots: TimeSlot[] = dayCfg?.enabled && dayCfg.open && dayCfg.close
-            ? generateSlotsFromConfig(state.selectedDate, dayCfg, durationMin, capacity, dbSlots, periodsCfg, capacityByHour)
-            : dbSlots.map(s => ({ ...s, capacity: s.capacity > 0 ? s.capacity : capacity }))
-          // Silent update — no loading flash
-          dispatch({ type: 'SET_SLOTS', slots, loading: false })
-        })
+      getSlotsByDate(state.selectedDate, { tenantId: DEFAULT_TENANT_ID, serviceType: state.serviceType ?? undefined, loadType: state.loadType ?? undefined })
+        .then(slots => dispatch({ type: 'SET_SLOTS', slots, loading: false })) // silent — no loading flash
         .catch(() => { /* best-effort */ })
     }
     const id = setInterval(poll, 5_000)
     return () => clearInterval(id)
-  }, [state.selectedDate, tenant, tenantLoading, multi, state.serviceType, state.loadType]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.selectedDate, tenantLoading, multi, state.serviceType, state.loadType]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const wh       = tenant?.working_hours as unknown as WorkingHoursConfig | null
   const periods: PeriodConfig = {
@@ -536,7 +425,6 @@ export function Step4ShipmentDetails() {
         <div key={activeSlot} style={{ animation: 'slideInFromRight 0.22s ease forwards' }}>
         <SlotPickerForSlot
           slotIndex={activeCfg4.index}
-          tenant={tenant}
           tenantLoading={tenantLoading}
           dates={dates}
           wh={wh}
@@ -553,9 +441,8 @@ export function Step4ShipmentDetails() {
 }
 
 // ─── Per-slot date/time picker ─────────────────────────────────────────────────
-function SlotPickerForSlot({ slotIndex, tenant, tenantLoading, dates, wh, cutoff, isTodayPastCutoff, periods, onDateSelect, onSlotSelect }: {
+function SlotPickerForSlot({ slotIndex, tenantLoading, dates, wh, cutoff, isTodayPastCutoff, periods, onDateSelect, onSlotSelect }: {
   slotIndex:           number
-  tenant:              TenantRow | null
   tenantLoading:       boolean
   dates:               ReturnType<typeof calendarDays>
   wh:                  WorkingHoursConfig | null
@@ -573,31 +460,20 @@ function SlotPickerForSlot({ slotIndex, tenant, tenantLoading, dates, wh, cutoff
 
   const cancelRef = useRef<boolean>(false)
 
+  // Backend is the single source of truth for availability (see the single-slot effects
+  // above for why this no longer recomputes capacity/busyness client-side). Each slot tab
+  // fetches for its OWN service+load combo, since a multi-slot booking can mix combos.
   useEffect(() => {
     if (!cfg.selectedDate || tenantLoading) return
     cancelRef.current = false
     setLoading(true)
     setSlots([])
-    const dayKey = getDayKey(cfg.selectedDate)
-    const dayCfg = wh?.[dayKey]
-    const durationMin      = tenant?.slot_duration_min     ?? 60
-    const capacityByHour   = (tenant as any)?.slot_capacity_by_hour as Record<string, number> | undefined
-    const capacityByCombo  = (tenant as any)?.slot_capacity_by_combo as Record<string, number> | undefined
-    const comboKey         = `${cfg.serviceType ?? 'pickup'}-${cfg.loadType ?? 'lcl'}`
-    const capacity         = capacityByCombo?.[comboKey] ?? tenant?.max_bookings_per_slot ?? 10
-    if (dayCfg && !dayCfg.enabled) { setLoading(false); return }
-    getSlotsByDate(cfg.selectedDate)
-      .then(dbSlots => {
-        if (cancelRef.current) return
-        const generated: TimeSlot[] = dayCfg?.enabled && dayCfg.open && dayCfg.close
-          ? generateSlotsFromConfig(cfg.selectedDate, dayCfg, durationMin, capacity, dbSlots, periods, capacityByHour)
-          : dbSlots.map(s => ({ ...s, capacity: s.capacity > 0 ? s.capacity : capacity }))
-        setSlots(generated)
-      })
+    getSlotsByDate(cfg.selectedDate, { tenantId: DEFAULT_TENANT_ID, serviceType: cfg.serviceType ?? undefined, loadType: cfg.loadType ?? undefined })
+      .then(fetched => { if (!cancelRef.current) setSlots(fetched) })
       .catch(() => {})
       .finally(() => { if (!cancelRef.current) setLoading(false) })
     return () => { cancelRef.current = true }
-  }, [cfg.selectedDate, tenant, tenantLoading]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cfg.selectedDate, cfg.serviceType, cfg.loadType, tenantLoading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Adjust confirmed count for slots already chosen by other wizard tabs.
   // Each other tab that picked the same slot consumes 1 spot — don't mark full unless capacity is actually exhausted.

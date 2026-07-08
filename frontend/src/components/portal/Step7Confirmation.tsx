@@ -30,7 +30,9 @@ export function Step7Confirmation() {
   useEffect(() => {
     window.scrollTo(0, 0)
     document.documentElement.scrollTop = 0
-    dispatch({ type: 'STOP_HOLD_TIMER' })
+    // The hold countdown keeps running on this step too (previously frozen here, which read as
+    // the timer randomly pausing on Payment while still ticking everywhere else). It's stopped
+    // precisely at successful confirmation below, not on arrival at this step.
     // Auto-simulate ICS status for any slot that doesn't already have one
     const ICS_STATUSES = ['cleared', 'held', 'examination', 'pending', 'unavailable'] as const
     for (const cfg of state.slotConfigs) {
@@ -208,6 +210,10 @@ export function Step7Confirmation() {
         dispatch({ type: 'SET', field: 'bookingConfirmed', value: true })
         dispatch({ type: 'SET', field: 'submitting', value: false })
         dispatch({ type: 'SET', field: 'step', value: 8 })
+        // Stop the countdown now that the booking is confirmed — otherwise, if the hold
+        // happens to tick to zero shortly after, the expiry watcher would bounce a customer
+        // who already succeeded back to step 4 with an "expired" modal.
+        dispatch({ type: 'STOP_HOLD_TIMER' })
       })
       toast('Booking confirmed! Check your email for details.', 'success')
     } catch (err: any) {

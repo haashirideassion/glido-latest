@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import { createNotification } from '../lib/notifications'
 import { pool } from '../db'
 import { requireAuth } from '../middleware/auth'
+import { getTenantSlotSettings, computeDaySlots, getMatrixCapacity } from '../lib/slotAvailability'
 
 const router = Router()
 
@@ -75,76 +76,134 @@ router.post('/', async (req: Request, res: Response) => {
   const year = new Date().getFullYear()
   const seq = String(Math.floor(Math.random() * 90000) + 10000)
   const ref = b.reference_number ?? `GLD-${year}-${seq}`
+  const tenantId = b.tenant_id ?? b.tenantId
+  const vehicleReg = (b.vehicle_registration ?? b.vehicleRegistration ?? '').trim()
   try {
-    const result = await pool.query(
-      `INSERT INTO bookings (
-        reference_number, status, service_type, load_type, slot_date, slot_start_time, slot_end_time,
-        driver_name, driver_phone, guest_name, guest_email, guest_phone, company_name,
-        house_bill_number, container_number, weight_kg, volume_cbm, package_count, pallet_count, pallet_type,
-        storage_start_date, storage_days, storage_charge, shrink_wrap_charge, slot_fee,
-        subtotal, gst_amount, total_amount, payment_method, payment_status, ics_status, tenant_id, user_id,
-        container_size, entry_number, purpose, consolidator, booking_reference, vehicle_registration,
-        booking_group_id, slot_index, group_reference
-      ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
-        $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42
-      ) RETURNING *`,
-      [
-        ref, 'scheduled',
-        b.service_type    ?? b.serviceType,
-        b.load_type       ?? b.loadType,
-        b.slot_date       ?? b.slotDate,
-        b.slot_start_time ?? b.slotStartTime,
-        b.slot_end_time   ?? b.slotEndTime,
-        b.driver_name     ?? b.driverName,
-        b.driver_phone    ?? b.driverPhone    ?? null,
-        b.guest_name      ?? b.guestName      ?? null,
-        b.guest_email     ?? b.guestEmail     ?? null,
-        b.guest_phone     ?? b.guestPhone     ?? null,
-        b.company_name    ?? b.companyName    ?? null,
-        b.house_bill_number ?? b.houseBillNumber ?? null,
-        b.container_number  ?? b.containerNumber  ?? null,
-        b.weight_kg       ?? b.weightKg       ?? null,
-        b.volume_cbm      ?? b.volumeCbm      ?? null,
-        b.package_count   ?? b.packageCount   ?? null,
-        b.pallet_count    ?? b.palletCount    ?? null,
-        b.pallet_type     ?? b.palletType     ?? null,
-        b.storage_start_date ?? b.storageStartDate ?? null,
-        b.storage_days    ?? b.storageDays    ?? null,
-        b.storage_charge  ?? b.storageCharge  ?? null,
-        b.shrink_wrap_charge ?? b.shrinkWrapCharge ?? null,
-        b.slot_fee        ?? b.slotFee        ?? null,
-        b.subtotal        ?? null,
-        b.gst_amount      ?? b.gstAmount      ?? null,
-        b.total_amount    ?? b.totalAmount    ?? null,
-        b.payment_method  ?? b.paymentMethod  ?? null,
-        b.payment_status  ?? b.paymentStatus  ?? 'pending',
-        b.ics_status      ?? b.icsStatus      ?? null,
-        b.tenant_id       ?? b.tenantId,
-        b.user_id         ?? b.userId         ?? null,
-        b.container_size  ?? null,
-        b.entry_number    ?? null,
-        b.purpose         ?? null,
-        b.consolidator    ?? null,
-        b.booking_reference  ?? null,
-        b.vehicle_registration ?? null,
-        b.booking_group_id ?? null,
-        b.slot_index      ?? null,
-        b.group_reference ?? null,
-      ]
-    )
-    const bk = result.rows[0]
-
-    // Upsert the time_slot row so virtual (gen-) slots get persisted, then increment confirmed
-    if (bk.slot_date && bk.slot_start_time && bk.slot_end_time) {
-      await pool.query(
-        `INSERT INTO time_slots (date, start_time, end_time, capacity, confirmed, held, tenant_id)
-         VALUES ($1, $2, $3, 10, 1, 0, $4)
-         ON CONFLICT (date, start_time, tenant_id) DO UPDATE
-           SET confirmed = time_slots.confirmed + 1,
-               held      = GREATEST(time_slots.held - 1, 0)`,
-        [bk.slot_date, bk.slot_start_time, bk.slot_end_time, bk.tenant_id]
+    // Enforce driver blocks by VEHICLE REGISTRATION, not name — a name match alone is not a
+    // reliable identity signal (two different drivers can share a name; a blocked driver could
+    // trivially evade a name-only check by typing it slightly differently). Rego is what this
+    // depot actually uses to identify a driver/truck, and it's the saved_drivers table's real
+    // unique key (tenant_id, vehicle_registration). We deliberately do NOT fall back to a
+    // name-only match when rego is missing or differs — that would risk blocking an unrelated
+    // driver who happens to share a name with someone who was blocked under a different vehicle.
+    if (vehicleReg) {
+      const blocked = await pool.query(
+        `SELECT block_reason FROM saved_drivers
+         WHERE tenant_id = $1 AND vehicle_registration != '' AND lower(vehicle_registration) = lower($2) AND blocked = TRUE
+         LIMIT 1`,
+        [tenantId, vehicleReg]
       )
+      if (blocked.rows.length) {
+        return res.status(403).json({
+          success: false,
+          error: { message: `This vehicle has been blocked and cannot make bookings.${blocked.rows[0].block_reason ? ` Reason: ${blocked.rows[0].block_reason}` : ''}`, code: 'DRIVER_BLOCKED' },
+        })
+      }
+    }
+
+    const slotDate      = b.slot_date       ?? b.slotDate
+    const slotStartTime = ((b.slot_start_time ?? b.slotStartTime) as string | undefined)?.slice(0, 5)
+    const slotEndTime   = b.slot_end_time   ?? b.slotEndTime
+    const serviceType   = b.service_type    ?? b.serviceType
+    const loadType      = b.load_type       ?? b.loadType
+
+    const client = await pool.connect()
+    let bk: any
+    try {
+      await client.query('BEGIN')
+
+      // Capacity enforcement — the Settings page's Operating Hours / Slot Periods / Capacity
+      // Matrix previously only affected what the picker *displayed*; nothing stopped a
+      // booking past "full" (or outside operating hours entirely) from actually being
+      // created. There's a single capacity number per (hour, combo) now — no separate
+      // hour-total tier to also check — so this is one check, not two.
+      if (slotDate && slotStartTime && slotEndTime && serviceType && loadType) {
+        const settings = await getTenantSlotSettings(tenantId)
+        const buckets = computeDaySlots(slotDate, settings)
+        if (!buckets.some(bk2 => bk2.start_time === slotStartTime)) {
+          await client.query('ROLLBACK')
+          return res.status(409).json({ success: false, error: { message: 'This time slot is no longer available.', code: 'SLOT_UNAVAILABLE' } })
+        }
+
+        const capacity = getMatrixCapacity(settings, slotStartTime, serviceType, loadType)
+        // Transaction-scoped advisory lock — there's no single row to FOR UPDATE for an
+        // aggregate combo count, so serialize concurrent bookings for the same
+        // tenant+date+hour+combo explicitly. Auto-released on COMMIT/ROLLBACK.
+        await client.query(`SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, [`${tenantId}|${slotDate}|${slotStartTime}|${serviceType}-${loadType}`])
+        const { rows: comboRows } = await client.query(
+          `SELECT COUNT(*)::int AS n FROM bookings
+           WHERE tenant_id = $1 AND slot_date = $2 AND slot_start_time = $3
+             AND service_type = $4 AND load_type = $5 AND status != 'cancelled'`,
+          [tenantId, slotDate, slotStartTime, serviceType, loadType]
+        )
+        if (comboRows[0].n >= capacity) {
+          await client.query('ROLLBACK')
+          const label = `${serviceType === 'pickup' ? 'Pick Up' : 'Drop Off'} · ${String(loadType).toUpperCase()}`
+          return res.status(409).json({ success: false, error: { message: `This time slot is full for ${label} bookings. Please choose another time or load type.`, code: 'SLOT_FULL' } })
+        }
+      }
+
+      const result = await client.query(
+        `INSERT INTO bookings (
+          reference_number, status, service_type, load_type, slot_date, slot_start_time, slot_end_time,
+          driver_name, driver_phone, guest_name, guest_email, guest_phone, company_name,
+          house_bill_number, container_number, weight_kg, volume_cbm, package_count, pallet_count, pallet_type,
+          storage_start_date, storage_days, storage_charge, shrink_wrap_charge, slot_fee,
+          subtotal, gst_amount, total_amount, payment_method, payment_status, ics_status, tenant_id, user_id,
+          container_size, entry_number, purpose, consolidator, booking_reference, vehicle_registration,
+          booking_group_id, slot_index, group_reference
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
+          $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42
+        ) RETURNING *`,
+        [
+          ref, 'scheduled',
+          serviceType, loadType, slotDate, slotStartTime, slotEndTime,
+          b.driver_name     ?? b.driverName,
+          b.driver_phone    ?? b.driverPhone    ?? null,
+          b.guest_name      ?? b.guestName      ?? null,
+          b.guest_email     ?? b.guestEmail     ?? null,
+          b.guest_phone     ?? b.guestPhone     ?? null,
+          b.company_name    ?? b.companyName    ?? null,
+          b.house_bill_number ?? b.houseBillNumber ?? null,
+          b.container_number  ?? b.containerNumber  ?? null,
+          b.weight_kg       ?? b.weightKg       ?? null,
+          b.volume_cbm      ?? b.volumeCbm      ?? null,
+          b.package_count   ?? b.packageCount   ?? null,
+          b.pallet_count    ?? b.palletCount    ?? null,
+          b.pallet_type     ?? b.palletType     ?? null,
+          b.storage_start_date ?? b.storageStartDate ?? null,
+          b.storage_days    ?? b.storageDays    ?? null,
+          b.storage_charge  ?? b.storageCharge  ?? null,
+          b.shrink_wrap_charge ?? b.shrinkWrapCharge ?? null,
+          b.slot_fee        ?? b.slotFee        ?? null,
+          b.subtotal        ?? null,
+          b.gst_amount      ?? b.gstAmount      ?? null,
+          b.total_amount    ?? b.totalAmount    ?? null,
+          b.payment_method  ?? b.paymentMethod  ?? null,
+          b.payment_status  ?? b.paymentStatus  ?? 'pending',
+          b.ics_status      ?? b.icsStatus      ?? null,
+          tenantId,
+          b.user_id         ?? b.userId         ?? null,
+          b.container_size  ?? null,
+          b.entry_number    ?? null,
+          b.purpose         ?? null,
+          b.consolidator    ?? null,
+          b.booking_reference  ?? null,
+          b.vehicle_registration ?? null,
+          b.booking_group_id ?? null,
+          b.slot_index      ?? null,
+          b.group_reference ?? null,
+        ]
+      )
+      bk = result.rows[0]
+
+      await client.query('COMMIT')
+    } catch (err) {
+      await client.query('ROLLBACK')
+      throw err
+    } finally {
+      client.release()
     }
 
     const serviceLabel = bk.service_type === 'pickup' ? 'Pick Up' : 'Drop Off'

@@ -52,6 +52,7 @@ export interface KioskState {
   walkInPurpose: WalkInPurpose | null
   walkInName: string
   walkInPhone: string
+  walkInCompany: string
   walkInVehicle: string
   walkInBLRef: string
   walkInPersonVisited: string
@@ -67,7 +68,7 @@ type KioskAction =
   | { type: 'SET_ARRIVED_VISITOR'; name: string }
   | { type: 'SET_COUNTDOWN'; value: number }
   | { type: 'TICK_COUNTDOWN' }
-  | { type: 'SET_WALK_IN_FIELD'; field: keyof Pick<KioskState, 'walkInPurpose' | 'walkInName' | 'walkInPhone' | 'walkInVehicle' | 'walkInBLRef' | 'walkInPersonVisited' | 'walkInReason'>; value: string | WalkInPurpose }
+  | { type: 'SET_WALK_IN_FIELD'; field: keyof Pick<KioskState, 'walkInPurpose' | 'walkInName' | 'walkInPhone' | 'walkInCompany' | 'walkInVehicle' | 'walkInBLRef' | 'walkInPersonVisited' | 'walkInReason'>; value: string | WalkInPurpose }
   | { type: 'RESET_FLOW' }
 
 const INITIAL: KioskState = {
@@ -76,7 +77,7 @@ const INITIAL: KioskState = {
   slotPickerBookings: [],
   licenceData: null, licenceExpired: false,
   arrivedCountdown: 0, arrivedVisitorName: '',
-  walkInPurpose: null, walkInName: '', walkInPhone: '', walkInVehicle: '',
+  walkInPurpose: null, walkInName: '', walkInPhone: '', walkInCompany: '', walkInVehicle: '',
   walkInBLRef: '', walkInPersonVisited: '', walkInReason: '',
 }
 
@@ -290,7 +291,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
           tenantId: DEFAULT_TENANT_ID,
           purpose: 'visit_yard',
           visitorName,
-          contactNumber: state.walkInPhone.trim() || undefined,
+          companyName: state.walkInCompany.trim() || undefined,
           personBeingVisited: state.walkInPersonVisited.trim() || undefined,
           reason: [state.walkInReason, licenceNote].filter(Boolean).join(' | ') || undefined,
           licenceCaptured: !!ld,
@@ -315,7 +316,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       }).catch((err: any) => console.error('[kiosk] createCheckinRecord failed', err))
     }
     goTo('arrived')
-  }, [state.licenceData, state.lookupResult, state.walkInPurpose, state.walkInName, state.walkInPhone, state.walkInPersonVisited, state.walkInReason, state.licenceExpired, goTo])
+  }, [state.licenceData, state.lookupResult, state.walkInPurpose, state.walkInName, state.walkInCompany, state.walkInPersonVisited, state.walkInReason, state.licenceExpired, goTo])
 
   const submitWalkIn = useCallback(async () => {
     if (!state.walkInName.trim()) return
@@ -324,11 +325,14 @@ export function KioskProvider({ children }: { children: ReactNode }) {
     const licenceNote = state.walkInPurpose === 'visit_yard' && state.licenceData
       ? `Licence: ${state.licenceData.licenceNo} | DOB: ${state.licenceData.dob}`
       : ''
+    const isOfficeOrYard = state.walkInPurpose === 'visit_office' || state.walkInPurpose === 'visit_yard'
     createWalkIn({
       tenantId: DEFAULT_TENANT_ID,
       purpose: state.walkInPurpose ?? 'visit_person',
       visitorName: state.walkInName.trim(),
-      contactNumber: state.walkInPhone.trim() || undefined,
+      // Office/yard visitors give a company name instead of a phone number
+      contactNumber: isOfficeOrYard ? undefined : (state.walkInPhone.trim() || undefined),
+      companyName: isOfficeOrYard ? (state.walkInCompany.trim() || undefined) : undefined,
       personBeingVisited: state.walkInPersonVisited.trim() || undefined,
       reason: [state.walkInReason, state.walkInVehicle ? `Vehicle: ${state.walkInVehicle}` : '', state.walkInBLRef ? `B/L: ${state.walkInBLRef}` : '', licenceNote].filter(Boolean).join(' | ') || undefined,
       licenceCaptured: !!state.licenceData,

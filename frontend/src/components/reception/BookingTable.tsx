@@ -108,6 +108,15 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
             const slots     = groupSlots?.[groupKey] ?? []
             const statusCfg = STATUS_CONFIG[b.status] ?? STATUS_CONFIG.scheduled
 
+            // Show every identifying detail this booking actually has, clearly labelled —
+            // matches the /reception/bookings cards (see BookingsPage.tsx).
+            const details: { label: string; value: string }[] = []
+            if (b.vehicleRegistration) details.push({ label: 'Rego',        value: b.vehicleRegistration })
+            if (b.containerNumber)     details.push({ label: 'Container',   value: b.containerNumber })
+            if (b.houseBillNumber)     details.push({ label: 'HBL',         value: b.houseBillNumber })
+            if (b.bookingReference)    details.push({ label: 'Booking Ref', value: b.bookingReference })
+            if (b.entryNumber)         details.push({ label: 'Entry #',     value: b.entryNumber })
+
             return (
               <div
                 key={b.id}
@@ -204,18 +213,14 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
                   </div>
 
                   {/* Bottom row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#1C1917' }}>{b.driverName}</span>
-                    {b.vehicleRegistration && (
-                      <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)', padding: '1px 7px', borderRadius: 'var(--r-sm)' }}>
-                        {b.vehicleRegistration}
+                    {details.map(d => (
+                      <span key={d.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.04)', padding: '2px 8px 2px 7px', borderRadius: 'var(--r-sm)' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d.label}</span>
+                        <span style={{ fontSize: 12, color: '#374151' }}>{d.value}</span>
                       </span>
-                    )}
-                    {(b.houseBillNumber ?? b.containerNumber) && (
-                      <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: 'var(--text-tertiary)' }}>
-                        {b.houseBillNumber ?? b.containerNumber}
-                      </span>
-                    )}
+                    ))}
                   </div>
                 </div>
               </div>

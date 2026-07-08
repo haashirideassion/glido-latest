@@ -71,6 +71,11 @@ export interface TimeSlot {
   confirmed: number
   held: number
   busyness: SlotBusyness
+  // Present only when the slot list was fetched with a serviceType+loadType and that combo
+  // has a configured sub-quota (Settings → Capacity by Booking Type) — busyness already
+  // reflects whichever of the hour-total or combo cap is tighter.
+  comboCapacity?:  number
+  comboConfirmed?: number
 }
 
 export interface WalkIn {
@@ -79,6 +84,7 @@ export interface WalkIn {
   purpose: WalkInPurpose
   visitorName: string
   contactNumber?: string
+  companyName?: string
   personBeingVisited?: string
   reason?: string
   arrivedAt: string

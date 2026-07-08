@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useMemo } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { ContactShadows } from '@react-three/drei'
 import { useReducedMotion } from 'motion/react'
@@ -37,6 +37,7 @@ function useBrandColor() {
 }
 
 const BAY_COLORS = ['#2DD4BF', '#FBBF24', '#FB7185']
+const CONFETTI_PALETTE = ['#F43F5E', '#22C55E', '#FBBF24', '#2563EB', '#A855F7', '#2DD4BF', '#FB923C']
 
 function Container({ color }: { color: string }) {
   return (
@@ -115,11 +116,28 @@ function Rig({ phase, service, brand }: { phase: number; service: string | null;
   const tick = useRef<THREE.Group>(null!)
   const bayMats = useRef<THREE.MeshStandardMaterial[]>([])
   const keyL = useRef<THREE.DirectionalLight>(null!)
+  const confetti = useRef<THREE.Mesh[]>([])
 
   // Truck target x: waits just before the gate (x≈-1.5), rolls through to a bay on arrival
   const arrived = phase >= 4
   const targetX = arrived ? 8 : -1.6   // roll up to the assigned (middle) bay
-  const s = useRef({ x: -1.6, prevX: -1.6, boom: 0, scan: 0, tick: 0, bay: 0, clk: 0 })
+  const s = useRef({ x: -1.6, prevX: -1.6, boom: 0, scan: 0, tick: 0, bay: 0, clk: 0, conf: 0 })
+
+  // Confetti particle configs — a radial burst over the arriving truck. Generated once so the
+  // spread/colours/spin are stable across renders (each fires its parabolic arc off cur.conf).
+  const CONFETTI = useMemo(() => Array.from({ length: 54 }).map((_, i) => {
+    const a = (i / 54) * Math.PI * 2 + Math.random() * 0.4
+    const spread = 0.8 + Math.random() * 1.6
+    return {
+      ox: Math.cos(a) * 0.3, oz: Math.sin(a) * 0.3,
+      vx: Math.cos(a) * spread, vz: Math.sin(a) * spread,
+      vy: 3.8 + Math.random() * 3.2,
+      color: CONFETTI_PALETTE[i % CONFETTI_PALETTE.length],
+      spin: (Math.random() - 0.5) * 14,
+      w: 0.13 + Math.random() * 0.1,
+      delay: Math.random() * 0.18,
+    }
+  }), [])
 
   useFrame((st, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05)
@@ -153,6 +171,22 @@ function Rig({ phase, service, brand }: { phase: number; service: string | null;
     cur.bay = damp(cur.bay, arrived ? 1 : 0, L, dt)
     bayMats.current.forEach((m, i) => { if (m) m.emissiveIntensity = (i === 1 ? cur.bay * 1.8 : 0.2) })
 
+    // Confetti burst on successful check-in — a one-shot parabolic burst that arcs up over the
+    // truck and settles/fades. cur.conf is the seconds-since-arrival clock (0 while not arrived).
+    cur.conf = arrived ? cur.conf + dt : 0
+    const CONF_X = 8, CONF_Y = 3.0, GRAV = 4.8
+    CONFETTI.forEach((p, i) => {
+      const m = confetti.current[i]; if (!m) return
+      if (!arrived) { if (m.visible) m.visible = false; return }
+      m.visible = true
+      const t = Math.max(0, cur.conf - p.delay)
+      const py = CONF_Y + p.vy * t - GRAV * t * t
+      m.position.set(CONF_X + p.ox + p.vx * t, Math.max(0.06, py), p.oz + p.vz * t)
+      m.rotation.x += p.spin * dt
+      m.rotation.z += p.spin * 0.6 * dt
+      ;(m.material as THREE.MeshStandardMaterial).opacity = reduce ? 0 : (t < 2.2 ? 1 : Math.max(0, 1 - (t - 2.2) / 1.3))
+    })
+
     if (keyL.current && !reduce) keyL.current.position.x = 9 + Math.sin(cur.clk * 0.2) * 1.5
     st.camera.lookAt(0, 1, 0)
   })
@@ -163,9 +197,10 @@ function Rig({ phase, service, brand }: { phase: number; service: string | null;
       <directionalLight ref={keyL} position={[9, 13, 7]} intensity={1.65} color="#FFFFFF" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-left={-16} shadow-camera-right={16} shadow-camera-top={12} shadow-camera-bottom={-12} shadow-bias={-0.0004} />
       <directionalLight position={[-7, 5, -6]} intensity={0.45} color="#CFE3FF" />
 
-      {/* Ground + apron */}
-      <mesh position={[0, -0.5, 0]} receiveShadow><boxGeometry args={[30, 1, 14]} /><meshStandardMaterial color="#A9E1A2" flatShading roughness={0.95} /></mesh>
-      <mesh position={[0, -1.15, 0]}><boxGeometry args={[30, 0.5, 14]} /><meshStandardMaterial color="#C9AA7C" flatShading /></mesh>
+      {/* Ground + apron — extended rightward (centre x=1, width 32 → spans -15…17) so the yard
+          containers at x=15 sit fully on the floor instead of hanging off the edge. */}
+      <mesh position={[1, -0.5, 0]} receiveShadow><boxGeometry args={[32, 1, 14]} /><meshStandardMaterial color="#A9E1A2" flatShading roughness={0.95} /></mesh>
+      <mesh position={[1, -1.15, 0]}><boxGeometry args={[32, 0.5, 14]} /><meshStandardMaterial color="#C9AA7C" flatShading /></mesh>
       {/* paved apron / lane */}
       <mesh position={[0, 0.03, 0]} receiveShadow><boxGeometry args={[30, 0.06, 3.2]} /><meshStandardMaterial color="#4b5563" flatShading roughness={0.85} /></mesh>
       {Array.from({ length: 12 }).map((_, i) => (
@@ -232,6 +267,14 @@ function Rig({ phase, service, brand }: { phase: number; service: string | null;
       ))}
       <Cloud x={-8} y={7} z={-4} s={1.1} />
       <Cloud x={5} y={8} z={-6} s={1.3} />
+
+      {/* Confetti — burst on successful check-in (hidden until phase reaches arrived) */}
+      {CONFETTI.map((p, i) => (
+        <mesh key={i} ref={el => { if (el) confetti.current[i] = el }} visible={false} position={[8, 3, 0]}>
+          <boxGeometry args={[p.w, p.w * 0.5, 0.02]} />
+          <meshStandardMaterial color={p.color} emissive={p.color} emissiveIntensity={0.3} transparent opacity={0} side={THREE.DoubleSide} flatShading />
+        </mesh>
+      ))}
 
       <ContactShadows position={[0, 0.05, 0]} scale={34} blur={2.2} far={9} opacity={0.3} color="#334155" resolution={1024} />
     </group>

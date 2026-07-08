@@ -100,7 +100,7 @@ export default function VisitorLoginPage() {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firstName: suFirst, lastName: suLast, email: suEmail, password: suPass }),
+        body: JSON.stringify({ firstName: suFirst, lastName: suLast, email: suEmail, password: suPass, companyName: suCompany.trim() || undefined }),
       })
       const data = await res.json()
       if (!res.ok || !data.success) {

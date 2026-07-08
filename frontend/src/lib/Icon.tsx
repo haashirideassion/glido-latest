@@ -94,4 +94,5 @@ export const ICONS = {
   chartBar:       'solar:graph-new-bold-duotone',
   percent:        'solar:pie-chart-2-bold-duotone',
   walletMoney:    'solar:wallet-money-bold-duotone',
+  building:       'solar:buildings-2-bold-duotone',
 } as const

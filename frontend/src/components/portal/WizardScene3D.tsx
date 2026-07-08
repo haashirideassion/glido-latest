@@ -52,7 +52,7 @@ function useBrandColor() {
   return c
 }
 
-function timeOfDay(label: string): 'morning' | 'day' | 'evening' {
+export function timeOfDay(label: string): 'morning' | 'day' | 'evening' {
   const m = label?.match(/(\d{1,2}):/)
   if (!m) return 'day'
   const h = parseInt(m[1], 10)
@@ -69,6 +69,12 @@ const PRESETS: Record<string, Preset> = {
 }
 
 const CONTAINER_COLORS = ['#2DD4BF', '#FB7185', '#FBBF24', '#60A5FA']
+
+// Convoy spacing. A truck is ~4.5 units long (rear axle → front bumper), so the centre-to-centre
+// queue gap must clear that or parked trucks visually merge into one blob. The depot straight is
+// stretched per extra truck by a matching amount so the longer queue still fits on the land.
+const QUEUE_GAP = 6.0
+const DEPOT_STRETCH_PER_TRUCK = 7.4
 
 // ── Detailed shipping container (corrugation · doors · corner castings) ────────
 function Container({ color, w = 1.9, h = 1.05, d = 1.45 }: { color: string; w?: number; h?: number; d?: number }) {
@@ -247,12 +253,16 @@ function TruckModel({ brand, loadType, cargoColor, setCargo, setWheel, setHead }
 function useRoad(nTrucks: number) {
   return useMemo(() => {
     // More slots → longer depot straight so the convoy has room to queue without crowding
-    const extra = Math.max(0, nTrucks - 1) * 4.2
+    const extra = Math.max(0, nTrucks - 1) * DEPOT_STRETCH_PER_TRUCK
+    // The destination (right) half is kept nearly straight — the drop-off convoy queues along
+    // it, and a tight bend there makes adjacent trucks face different ways ("crashed" look). Only
+    // the depot (left) half keeps a gentle curve for character; the pickup queue sits on its long,
+    // near-straight approach so it stays aligned too.
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-16 - extra, 0, 3.2), new THREE.Vector3(-8 - extra * 0.5, 0, -1.4), new THREE.Vector3(-1, 0, 1.8),
-      new THREE.Vector3(6, 0, -1.6), new THREE.Vector3(16, 0, 2.6),
+      new THREE.Vector3(-16 - extra, 0, 3.2), new THREE.Vector3(-8 - extra * 0.5, 0, -1.4), new THREE.Vector3(-1, 0, 1.0),
+      new THREE.Vector3(7, 0, 0.5), new THREE.Vector3(16, 0, 0.9),
     ], false, 'catmullrom', 0.5)
-    const SEG = Math.min(200, 120 + Math.round(extra * 4)), HALF = 1.5
+    const SEG = Math.min(200, 120 + Math.round(extra * 4)), HALF = 2.4
     const pos: number[] = [], idx: number[] = [], uv: number[] = []
     const up = new THREE.Vector3(0, 1, 0), side = new THREE.Vector3()
     for (let i = 0; i <= SEG; i++) {
@@ -290,8 +300,10 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
   const cargos = useRef<(THREE.Group | null)[]>([])
   const wheels = useRef<THREE.Group[]>([])   // lead truck only
   const seal = useRef<THREE.Group>(null!)
-  const pin = useRef<THREE.Group>(null!)
-  const ring = useRef<THREE.Mesh>(null!)
+  const pin = useRef<THREE.Group>(null!)       // pickup delivery pin (city · red)
+  const pinDrop = useRef<THREE.Group>(null!)   // drop-off point pin (depot · blue)
+  const ring = useRef<THREE.Mesh>(null!)       // arrival ring at the pickup end (tHi · destination city)
+  const ringDrop = useRef<THREE.Mesh>(null!)   // arrival ring at the drop-off end (tLo · depot)
   const keyL = useRef<THREE.DirectionalLight>(null!)
   const fillL = useRef<THREE.DirectionalLight>(null!)
   const ambL = useRef<THREE.AmbientLight>(null!)
@@ -311,12 +323,15 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
   const dropoff = serviceType === 'dropoff'
   // How much the depot straight was stretched for this convoy size — ground, camera framing
   // and orbit target all key off this so nothing floats off the land as slotCount grows
-  const extra = Math.max(0, nTrucks - 1) * 4.2
+  const extra = Math.max(0, nTrucks - 1) * DEPOT_STRETCH_PER_TRUCK
   // Truck param t along the curve: load at the depot end (steps 1-3), then run
   const travelP = clamp01((step - 3) / 4)
-  const tLo = 0.14, tHi = 0.86
   const cargoOn = step >= 3 && !!loadType
-  const loadOf = (i: number): 'fcl' | 'lcl' | null => slots?.[i]?.loadType ?? loadType
+  // Each truck's cargo comes from ITS OWN slot's choice. When per-slot data is present (the
+  // multi-slot wizard always supplies it), a slot with no load type yet stays empty — we must
+  // NOT fall back to the global `loadType`, or picking one slot would put cargo on every truck.
+  // The global fallback only applies to the legacy single-slot case where no `slots` array exists.
+  const loadOf = (i: number): 'fcl' | 'lcl' | null => slots ? (slots[i]?.loadType ?? null) : loadType
   // Each truck in the convoy faces the direction its own slot's service implies
   const dropoffOf = (i: number): boolean => (slots?.[i]?.serviceType ?? serviceType) === 'dropoff'
   // Pickup and drop-off trucks queue on opposite sides of the road (like opposing lanes)
@@ -333,9 +348,31 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
   // Only split into two lanes when the convoy is genuinely mixed — a uniform convoy
   // (all pickup or all dropoff) still queues single-file, centred on the road as before.
   const isMixedConvoy = laneInfo.some(l => l.dOf) && laneInfo.some(l => !l.dOf)
-  const pinX = dropoff ? curve.getPointAt(tLo).x : curve.getPointAt(tHi).x
-  const pinZ = dropoff ? curve.getPointAt(tLo).z : curve.getPointAt(tHi).z
+
+  // Real-world spacing between queued trucks, as a fraction of the (variable-length) road
+  const queueGapT = QUEUE_GAP / len
+  const LANE_HALF = 1.35   // opposing lanes sit this far either side of the road centreline
+
+  // The depot (pickup) queue extends BACKWARD from tLo and the destination (dropoff) queue
+  // extends FORWARD from tHi. Push each anchor inward by that queue's own length so the whole
+  // convoy always lands on the road ribbon (t∈[0,1]) — and therefore on the ground — instead
+  // of extrapolating off the ends and floating past the land when many slots are selected.
+  // Small convoys keep the original 0.14 / 0.86 framing; the rear truck never sits below
+  // t≈0.06 nor beyond t≈0.94, regardless of how long the road grows for big convoys.
+  const nDrop = laneInfo.filter(l => l.dOf).length
+  const nPick = nTrucks - nDrop
+  const pickupSpanT = Math.max(0, nPick - 1) * queueGapT
+  const dropoffSpanT = Math.max(0, nDrop - 1) * queueGapT
+  let tLo = Math.max(0.14, 0.06 + pickupSpanT)
+  let tHi = Math.min(0.86, 0.94 - dropoffSpanT)
+  // Safety net: keep a minimum travel run if a huge mixed convoy squeezes both ends inward
+  if (tHi - tLo < 0.16) { const mid = (tLo + tHi) / 2; tLo = mid - 0.08; tHi = mid + 0.08 }
+
   const origin = dropoff ? curve.getPointAt(tHi) : curve.getPointAt(tLo)
+  // Where each service's convoy ends up on arrival: pickups drive to tHi (the city), drop-offs
+  // to tLo (the depot). A mixed convoy arrives at BOTH ends, so each end gets its own booked ring.
+  const pArrivePick = curve.getPointAt(clamp(tHi, 0.001, 0.999))
+  const pArriveDrop = curve.getPointAt(clamp(tLo, 0.001, 0.999))
 
   // Depot sits a fixed real-world distance off the road's start, offset to the side (perpendicular
   // to the road) — anchored by arc length rather than a hardcoded world position, so it never drifts
@@ -344,18 +381,16 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
   const depotAnchorP = curve.getPointAt(depotAnchorT)
   const depotAnchorTan = curve.getTangentAt(depotAnchorT)
   const depotSide = new THREE.Vector3(-depotAnchorTan.z, 0, depotAnchorTan.x).normalize()
-  const DEPOT_OFFSET = 4.4
+  // Sits back from the road edge by ~1.4 units (matching the destination city clearance). Bumped
+  // from 4.4 when the road was widened (HALF 1.5→2.4), which had pushed the road edge up against
+  // the depot's dock face.
+  const DEPOT_OFFSET = 5.7
   const depotPos: [number, number, number] = [
     depotAnchorP.x - depotSide.x * DEPOT_OFFSET, 0, depotAnchorP.z - depotSide.z * DEPOT_OFFSET,
   ]
   const yardPos: [number, number, number] = [depotPos[0] - 3.2, 0, depotPos[2] + 0.8]
 
   const s = useRef({ prog: 0, t: dropoff ? tHi : tLo, cargo: 0, cargoY: 1.4, seal: 0, ready: 0, glow: 0, clk: 0, prevT: dropoff ? tHi : tLo, din: 0, idDev: 0, badge: 0, camX: 0, focusPulse: 0 })
-
-  // Real-world distance between queued trucks — kept constant no matter how long the road is
-  const QUEUE_GAP = 3.4
-  const queueGapT = QUEUE_GAP / len
-  const LANE_HALF = 1.35   // opposing lanes sit this far either side of the road centreline
 
   // Sample the road at any t, extrapolating in a straight line (X only) past either end —
   // used both by the lead truck and by every queued truck in the convoy.
@@ -447,15 +482,26 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
       seal.current.rotation.y = Math.sin(cur.clk * 0.8) * 0.35
     }
 
-    // Booked
+    // Booked — a ring at each arrival end that actually has trucks (so a mixed pickup/drop-off
+    // convoy celebrates at BOTH ends, not just the one the global service type points at).
     cur.ready = damp(cur.ready, step >= 7 ? 1 : 0, L, dt)
+    const readyPick = nPick > 0 ? cur.ready : 0
+    const readyDrop = nDrop > 0 ? cur.ready : 0
     if (ring.current) {
-      ring.current.position.set(p.x, 1.1, p.z)
-      ring.current.scale.setScalar(0.001 + cur.ready * 1.25)
-      ring.current.rotation.z += dt * 0.7 * cur.ready
-      ;(ring.current.material as THREE.MeshStandardMaterial).opacity = cur.ready * 0.9
+      ring.current.position.set(pArrivePick.x, 1.1, pArrivePick.z)
+      ring.current.scale.setScalar(0.001 + readyPick * 1.25)
+      ring.current.rotation.z += dt * 0.7 * readyPick
+      ;(ring.current.material as THREE.MeshStandardMaterial).opacity = readyPick * 0.9
     }
-    if (pin.current) pin.current.position.y = 3.0 + (step >= 7 ? Math.abs(Math.sin(cur.clk * 3)) * 0.35 : Math.sin(cur.clk * 1.3) * 0.1)
+    if (ringDrop.current) {
+      ringDrop.current.position.set(pArriveDrop.x, 1.1, pArriveDrop.z)
+      ringDrop.current.scale.setScalar(0.001 + readyDrop * 1.25)
+      ringDrop.current.rotation.z += dt * 0.7 * readyDrop
+      ;(ringDrop.current.material as THREE.MeshStandardMaterial).opacity = readyDrop * 0.9
+    }
+    const pinBob = 3.0 + (step >= 7 ? Math.abs(Math.sin(cur.clk * 3)) * 0.35 : Math.sin(cur.clk * 1.3) * 0.1)
+    if (pin.current) pin.current.position.y = pinBob
+    if (pinDrop.current) pinDrop.current.position.y = pinBob
 
     // Drift clouds
     for (const c of clouds.current) if (c) { c.position.x += dt * 0.35; if (c.position.x > 20) c.position.x = -20 }
@@ -541,18 +587,28 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
       </group>
 
       {/* Destination city (right) */}
-      <group position={[13, 0, -2.4]}>
+      <group position={[13, 0, -4.3]}>
         <group position={[-1.6, 0, 0.3]}><Building w={1.5} h={2.6} d={1.5} color="#93C5FD" glowRef={m => { if (m) winMats.current[0] = m }} /></group>
         <group position={[0.4, 0, -0.5]}><Building w={1.7} h={4.0} d={1.6} color="#C4B5FD" glowRef={m => { if (m) winMats.current[1] = m }} /></group>
         <group position={[2.3, 0, 0.4]}><Building w={1.4} h={2.0} d={1.4} color="#FCA5A5" glowRef={m => { if (m) winMats.current[2] = m }} /></group>
       </group>
 
-      {/* Destination pin */}
-      <group ref={pin} position={[pinX, 3.0, pinZ]}>
-        <mesh position={[0, 0.22, 0]}><sphereGeometry args={[0.4, 18, 18]} /><meshStandardMaterial color="#F43F5E" flatShading emissive="#F43F5E" emissiveIntensity={0.2} /></mesh>
-        <mesh position={[0, -0.34, 0]} rotation={[Math.PI, 0, 0]}><coneGeometry args={[0.32, 0.66, 18]} /><meshStandardMaterial color="#F43F5E" flatShading /></mesh>
-        <mesh position={[0, 0.25, 0.33]}><sphereGeometry args={[0.15, 12, 12]} /><meshStandardMaterial color="#fff" /></mesh>
-      </group>
+      {/* Destination pins — red marks the pickup delivery point (city), blue the drop-off
+          point (depot). Each shows only when the convoy actually has that kind of trip. */}
+      {nPick > 0 && (
+        <group ref={pin} position={[pArrivePick.x, 3.0, pArrivePick.z]}>
+          <mesh position={[0, 0.22, 0]}><sphereGeometry args={[0.4, 18, 18]} /><meshStandardMaterial color="#F43F5E" flatShading emissive="#F43F5E" emissiveIntensity={0.2} /></mesh>
+          <mesh position={[0, -0.34, 0]} rotation={[Math.PI, 0, 0]}><coneGeometry args={[0.32, 0.66, 18]} /><meshStandardMaterial color="#F43F5E" flatShading /></mesh>
+          <mesh position={[0, 0.25, 0.33]}><sphereGeometry args={[0.15, 12, 12]} /><meshStandardMaterial color="#fff" /></mesh>
+        </group>
+      )}
+      {nDrop > 0 && (
+        <group ref={pinDrop} position={[pArriveDrop.x, 3.0, pArriveDrop.z]}>
+          <mesh position={[0, 0.22, 0]}><sphereGeometry args={[0.4, 18, 18]} /><meshStandardMaterial color="#2563EB" flatShading emissive="#2563EB" emissiveIntensity={0.2} /></mesh>
+          <mesh position={[0, -0.34, 0]} rotation={[Math.PI, 0, 0]}><coneGeometry args={[0.32, 0.66, 18]} /><meshStandardMaterial color="#2563EB" flatShading /></mesh>
+          <mesh position={[0, 0.25, 0.33]}><sphereGeometry args={[0.15, 12, 12]} /><meshStandardMaterial color="#fff" /></mesh>
+        </group>
+      )}
 
       {/* Streetlights along the road */}
       <StreetLight x={-6} z={1.9} glowRef={m => { if (m) lampMats.current[0] = m }} />
@@ -560,7 +616,7 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
       <StreetLight x={8} z={1.9} glowRef={m => { if (m) lampMats.current[2] = m }} />
 
       {/* Pines */}
-      {([[-8.5, -3, '#3FAE6A'], [5.5, 3, '#45B873'], [-2, 3.2, '#3FAE6A']] as Array<[number, number, string]>).map(([x, z, c], i) => (
+      {([[-8.5, -3, '#3FAE6A'], [5.5, 4.3, '#45B873'], [-2, 4.4, '#3FAE6A']] as Array<[number, number, string]>).map(([x, z, c], i) => (
         <group key={i} position={[x, 0, z]}>
           <mesh position={[0, 0.35, 0]}><cylinderGeometry args={[0.1, 0.14, 0.7, 6]} /><meshStandardMaterial color="#7c4a1e" flatShading /></mesh>
           <mesh castShadow position={[0, 1.0, 0]}><coneGeometry args={[0.6, 1.1, 7]} /><meshStandardMaterial color={c} flatShading roughness={0.85} /></mesh>
@@ -617,8 +673,11 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
         <mesh position={[0.2, -0.38, 0.06]}><cylinderGeometry args={[0.18, 0.18, 0.05, 18]} /><meshStandardMaterial color="#22C55E" emissive="#22C55E" emissiveIntensity={0.5} /></mesh>
       </group>
 
-      {/* Booked ring */}
+      {/* Booked rings — one per arrival end (pickup · drop-off) */}
       <mesh ref={ring} position={[0, 1.1, 0]} rotation={[Math.PI / 2, 0, 0]} scale={0.0001}>
+        <torusGeometry args={[2.3, 0.11, 8, 44]} /><meshStandardMaterial color={brand} emissive={brand} emissiveIntensity={1.5} transparent opacity={0} />
+      </mesh>
+      <mesh ref={ringDrop} position={[0, 1.1, 0]} rotation={[Math.PI / 2, 0, 0]} scale={0.0001}>
         <torusGeometry args={[2.3, 0.11, 8, 44]} /><meshStandardMaterial color={brand} emissive={brand} emissiveIntensity={1.5} transparent opacity={0} />
       </mesh>
 

@@ -110,7 +110,7 @@ export default function ReceptionLayout() {
   // Some routes use a shorter nav label but need a longer page heading
   const PAGE_TITLE_OVERRIDE: Record<string, string> = {
     '/reception/visitors': 'Visitor Management',
-    '/reception/carriers':  'Internal Carriers',
+    '/reception/carriers':  'External Carriers',
     '/reception/broadcast': 'Broadcast Center',
   }
   const title = PAGE_TITLE_OVERRIDE[pathname] ?? activeNav?.label ?? 'Dashboard'

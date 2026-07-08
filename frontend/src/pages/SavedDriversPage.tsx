@@ -3,7 +3,8 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { fetcher, deleteFetcher } from '@/lib/fetcher'
-import { blockDriver, unblockDriver } from '@/lib/useSavedDrivers'
+import { updateSavedDriver } from '@/lib/useSavedDrivers'
+import { validators, sanitize } from '@/lib/validation'
 import { Icon, ICONS } from '@/lib/Icon'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
@@ -36,47 +37,92 @@ function Toast({ message, type, onDone }: { message: string; type: 'success' | '
   )
 }
 
-function BlockConfirm({ driver, onClose, onConfirm, acting }: {
-  driver: SavedDriver; onClose: () => void; onConfirm: (reason: string) => void; acting: boolean
+function EditDriverModal({ driver, onClose, onSaved }: {
+  driver: SavedDriver; onClose: () => void; onSaved: (d: SavedDriver) => void
 }) {
-  const [reason, setReason] = useState('')
+  const [name, setName] = useState(driver.name)
+  const [phone, setPhone] = useState(driver.phone ?? '')
+  const [rego, setRego] = useState(driver.vehicle_registration)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
+
+  // Same field design as the booking wizard (/book, class .wizard-field) — recreated inline
+  // rather than via the className, since that CSS file isn't actually wired into this app's
+  // build (only the legacy pre-migration Hono layout referenced it).
+  const LABEL: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 6 }
+  const FIELD: React.CSSProperties = { width: '100%', padding: '11px 14px', borderRadius: 'var(--r-sm)', border: '1.5px solid #e5e7eb', background: '#fff', fontSize: 15, color: '#111827', fontFamily: 'inherit', outline: 'none', transition: 'border-color 0.15s ease', boxSizing: 'border-box' }
+  const focus = (e: React.FocusEvent<HTMLInputElement>) => { e.target.style.borderColor = 'var(--brand-color)' }
+  const blur  = (e: React.FocusEvent<HTMLInputElement>) => { e.target.style.borderColor = errors[e.target.name] ? '#EF4444' : '#e5e7eb' }
+
+  const validate = () => {
+    const e: Record<string, string> = {}
+    if (name.trim().length < 2) e.name = 'Name must be at least 2 characters'
+    if (!rego.trim()) e.rego = 'Vehicle registration is required'
+    if (phone.trim() && validators.phoneAU(phone.trim())) e.phone = validators.phoneAU(phone.trim())
+    return e
+  }
+
+  const handleSave = async () => {
+    const e = validate()
+    if (Object.keys(e).length) { setErrors(e); return }
+    setSaving(true)
+    try {
+      const saved = await updateSavedDriver(driver.id, { name: name.trim(), phone: phone.trim(), vehicle_registration: rego.trim().toUpperCase() })
+      onSaved(saved)
+    } catch (err: any) {
+      setErrors({ form: err?.message ?? 'Failed to save driver' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 1000, backdropFilter: 'blur(2px)' }} />
       <div style={{
         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        zIndex: 1001, width: 420, background: '#fff', borderRadius: 'var(--r-xl)',
+        zIndex: 1001, width: 420, maxWidth: 'calc(100vw - 32px)', background: '#fff', borderRadius: 'var(--r-xl)',
         boxShadow: '0 24px 64px rgba(0,0,0,0.18)', padding: '28px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 'var(--r-md)', background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Icon name={ICONS.close} size={20} style={{ color: '#EF4444' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 'var(--r-md)', background: 'rgba(var(--brand-rgb),0.09)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon name={ICONS.edit} size={18} style={{ color: 'var(--brand-color)' }} />
           </div>
-          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#1C1917', margin: 0 }}>Block driver?</h3>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#1C1917', margin: 0 }}>Edit driver</h3>
         </div>
-        <p style={{ fontSize: 15, color: 'var(--text-secondary)', marginBottom: 16, lineHeight: 1.5 }}>
-          <strong style={{ color: '#1C1917' }}>{driver.name}</strong> will be blocked and cannot make future bookings.
-        </p>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ ...LABEL, color: errors.name ? '#EF4444' : LABEL.color }}>Name</label>
+          <input name="name" value={name}
+            onChange={e => { setName(e.target.value); setErrors(er => ({ ...er, name: '' })) }}
+            style={{ ...FIELD, borderColor: errors.name ? '#EF4444' : FIELD.borderColor }} onFocus={focus} onBlur={blur} />
+          {errors.name && <p style={{ fontSize: 13, color: '#EF4444', marginTop: 4 }}>{errors.name}</p>}
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ ...LABEL, color: errors.rego ? '#EF4444' : LABEL.color }}>Vehicle Registration</label>
+          <input name="rego" value={rego}
+            onChange={e => { setRego(e.target.value.toUpperCase()); setErrors(er => ({ ...er, rego: '' })) }}
+            style={{ ...FIELD, textTransform: 'uppercase', letterSpacing: '0.05em', borderColor: errors.rego ? '#EF4444' : FIELD.borderColor }} onFocus={focus} onBlur={blur} />
+          {errors.rego && <p style={{ fontSize: 13, color: '#EF4444', marginTop: 4 }}>{errors.rego}</p>}
+        </div>
+
         <div style={{ marginBottom: 20 }}>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
-            Reason for blocking (optional)
-          </label>
-          <textarea
-            rows={3}
-            value={reason}
-            onChange={e => setReason(e.target.value)}
-            placeholder="e.g. Safety incident, repeated no-shows…"
-            style={{ width: '100%', padding: '10px 14px', fontSize: 15, color: '#1C1917', background: '#EBEBEA', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', outline: 'none', boxSizing: 'border-box', resize: 'none', fontFamily: 'inherit' }}
-            onFocus={e => { e.target.style.borderColor = 'rgba(239,68,68,0.40)' }}
-            onBlur={e  => { e.target.style.borderColor = 'rgba(0,0,0,0.10)' }}
-          />
+          <label style={{ ...LABEL, color: errors.phone ? '#EF4444' : LABEL.color }}>Phone Number <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: '#9CA3AF' }}>(optional)</span></label>
+          <input name="phone" type="tel" inputMode="numeric" maxLength={10} value={phone}
+            onChange={e => { setPhone(sanitize.digitsOnly(e.target.value)); setErrors(er => ({ ...er, phone: '' })) }}
+            placeholder="04XX XXX XXX" style={{ ...FIELD, borderColor: errors.phone ? '#EF4444' : FIELD.borderColor }} onFocus={focus} onBlur={blur} />
+          {errors.phone && <p style={{ fontSize: 13, color: '#EF4444', marginTop: 4 }}>{errors.phone}</p>}
         </div>
+
+        {errors.form && <p style={{ fontSize: 14, color: '#EF4444', marginBottom: 14 }}>{errors.form}</p>}
+
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 'var(--r-md)', border: '1px solid rgba(0,0,0,0.12)', background: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', color: '#374151' }}>
             Cancel
           </button>
-          <button onClick={() => onConfirm(reason)} disabled={acting} style={{ padding: '9px 20px', borderRadius: 'var(--r-md)', border: 'none', background: acting ? 'rgba(239,68,68,0.5)' : '#EF4444', color: '#fff', fontSize: 15, fontWeight: 700, cursor: acting ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-            {acting ? 'Blocking…' : 'Block Driver'}
+          <button onClick={handleSave} disabled={saving} style={{ padding: '9px 20px', borderRadius: 'var(--r-md)', border: 'none', background: saving ? 'rgba(0,0,0,0.2)' : 'var(--brand-color)', color: 'var(--brand-text)', fontSize: 15, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+            {saving ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
       </div>
@@ -125,8 +171,7 @@ export default function SavedDriversPage() {
   const [loading, setLoading]       = useState(true)
   const [deleteTarget, setDeleteTarget] = useState<SavedDriver | null>(null)
   const [deleting, setDeleting]     = useState(false)
-  const [blockTarget, setBlockTarget]   = useState<SavedDriver | null>(null)
-  const [blocking, setBlocking]         = useState(false)
+  const [editTarget, setEditTarget] = useState<SavedDriver | null>(null)
   const [toast, setToast]           = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   if (!isLoading && !user) return <Navigate to="/visitor-login?redirect=/drivers" replace />
@@ -153,34 +198,10 @@ export default function SavedDriversPage() {
     }
   }
 
-  const handleBlock = async (reason: string) => {
-    if (!blockTarget) return
-    setBlocking(true)
-    try {
-      await blockDriver(blockTarget.id, reason)
-      setDrivers(prev => prev.map(d => d.id === blockTarget.id ? { ...d, blocked: true, block_reason: reason } : d))
-      setToast({ message: `${blockTarget.name} has been blocked`, type: 'success' })
-      setBlockTarget(null)
-    } catch (err: any) {
-      // Optimistic fallback — update UI even if API not yet available
-      setDrivers(prev => prev.map(d => d.id === blockTarget.id ? { ...d, blocked: true, block_reason: reason } : d))
-      setToast({ message: `${blockTarget.name} blocked (saved locally)`, type: 'success' })
-      setBlockTarget(null)
-    } finally {
-      setBlocking(false)
-    }
-  }
-
-  const handleUnblock = async (driver: SavedDriver) => {
-    try {
-      await unblockDriver(driver.id)
-      setDrivers(prev => prev.map(d => d.id === driver.id ? { ...d, blocked: false, block_reason: '' } : d))
-      setToast({ message: `${driver.name} has been unblocked`, type: 'success' })
-    } catch {
-      // Optimistic fallback
-      setDrivers(prev => prev.map(d => d.id === driver.id ? { ...d, blocked: false, block_reason: '' } : d))
-      setToast({ message: `${driver.name} unblocked (saved locally)`, type: 'success' })
-    }
+  const handleEdited = (saved: SavedDriver) => {
+    setDrivers(prev => prev.map(d => d.id === saved.id ? saved : d))
+    setToast({ message: 'Driver updated', type: 'success' })
+    setEditTarget(null)
   }
 
   if (isLoading) return null
@@ -265,28 +286,16 @@ export default function SavedDriversPage() {
                       </div>
                     </div>
 
-                    {/* Block / Unblock */}
-                    {d.blocked ? (
-                      <button
-                        onClick={() => handleUnblock(d)}
-                        title="Unblock driver"
-                        style={{ height: 30, padding: '0 12px', borderRadius: 'var(--r-md)', border: '1px solid rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.06)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#16A34A', flexShrink: 0, transition: 'all 0.12s', fontFamily: 'inherit' }}
-                        onMouseOver={e => { e.currentTarget.style.background = 'rgba(34,197,94,0.14)' }}
-                        onMouseOut={e  => { e.currentTarget.style.background = 'rgba(34,197,94,0.06)' }}
-                      >
-                        Unblock
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setBlockTarget(d)}
-                        title="Block driver"
-                        style={{ height: 30, padding: '0 12px', borderRadius: 'var(--r-md)', border: '1px solid rgba(239,68,68,0.20)', background: 'rgba(239,68,68,0.04)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: '#DC2626', flexShrink: 0, transition: 'all 0.12s', fontFamily: 'inherit' }}
-                        onMouseOver={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)' }}
-                        onMouseOut={e  => { e.currentTarget.style.background = 'rgba(239,68,68,0.04)' }}
-                      >
-                        Block
-                      </button>
-                    )}
+                    {/* Manage — edit this driver's info */}
+                    <button
+                      onClick={() => setEditTarget(d)}
+                      title="Edit driver"
+                      style={{ height: 30, padding: '0 12px', borderRadius: 'var(--r-md)', border: '1px solid rgba(var(--brand-rgb),0.22)', background: 'rgba(var(--brand-rgb),0.05)', fontSize: 13, fontWeight: 600, cursor: 'pointer', color: 'var(--brand-color)', flexShrink: 0, transition: 'all 0.12s', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                      onMouseOver={e => { e.currentTarget.style.background = 'rgba(var(--brand-rgb),0.12)' }}
+                      onMouseOut={e  => { e.currentTarget.style.background = 'rgba(var(--brand-rgb),0.05)' }}
+                    >
+                      <Icon name={ICONS.settings} size={13} /> Edit Details
+                    </button>
 
                     {/* Delete */}
                     <button
@@ -312,12 +321,11 @@ export default function SavedDriversPage() {
 
       </div>
 
-      {blockTarget && (
-        <BlockConfirm
-          driver={blockTarget}
-          onClose={() => setBlockTarget(null)}
-          onConfirm={handleBlock}
-          acting={blocking}
+      {editTarget && (
+        <EditDriverModal
+          driver={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={handleEdited}
         />
       )}
 

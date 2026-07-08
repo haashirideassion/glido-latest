@@ -32,6 +32,7 @@ interface VisitorEntry {
   type:               'walkin' | 'booking'
   name:               string
   phone:              string | null
+  companyName:        string | null
   purpose:            string
   arrivedAt:          string
   licenceCaptured:    boolean
@@ -49,6 +50,7 @@ function walkInToEntry(w: WalkIn): VisitorEntry {
     type:               'walkin',
     name:               w.visitorName,
     phone:              w.contactNumber ?? null,
+    companyName:        w.companyName ?? null,
     purpose:            PURPOSE_LABEL[w.purpose] ?? w.purpose,
     arrivedAt:          w.arrivedAt,
     licenceCaptured:    w.licenceCaptured,
@@ -77,6 +79,16 @@ const daysAgo = (n: number) =>
   new Date(Date.now() - n * 86400000).toLocaleDateString('sv-SE', { timeZone: TZ })
 
 type Preset = 'today' | '7d' | '30d' | 'all'
+
+// Service × load-type combo filter (mirrors the Analytics / Bookings row). Walk-ins have no
+// cargo booking, so they only match "All".
+const COMBOS = [
+  { key: 'all',          label: 'All',            service: null,      load: null  },
+  { key: 'fcl-pickup',   label: 'FCL — Pick Up',  service: 'pickup',  load: 'fcl' },
+  { key: 'fcl-dropoff',  label: 'FCL — Drop Off', service: 'dropoff', load: 'fcl' },
+  { key: 'lcl-pickup',   label: 'LCL — Pick Up',  service: 'pickup',  load: 'lcl' },
+  { key: 'lcl-dropoff',  label: 'LCL — Drop Off', service: 'dropoff', load: 'lcl' },
+] as const
 
 function presetDates(p: Preset): { from: string; to: string } {
   const today = todaySydney()
@@ -137,6 +149,7 @@ export default function WalkInsPage() {
   const [dateFrom,    setDateFrom]    = useState(() => todaySydney())
   const [dateTo,      setDateTo]      = useState(() => todaySydney())
   const [typeFilter,  setTypeFilter]  = useState('')   // '' | 'walkin' | 'booking'
+  const [combo,       setCombo]       = useState<string>('all')
   const [search,      setSearch]      = useState('')
 
   const applyPreset = (p: Preset) => {
@@ -146,8 +159,9 @@ export default function WalkInsPage() {
     setDateTo(to)
   }
 
-  const hasFilters = !!(typeFilter || search || preset !== 'today')
-  const clearAll = () => { setTypeFilter(''); setSearch(''); applyPreset('today') }
+  const hasFilters = !!(typeFilter || combo !== 'all' || search || preset !== 'today')
+  const clearAll = () => { setTypeFilter(''); setCombo('all'); setSearch(''); applyPreset('today') }
+  const activeCombo = COMBOS.find(c => c.key === combo)
 
   // ── Data fetching ─────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -163,6 +177,7 @@ export default function WalkInsPage() {
         type:               'booking' as const,
         name:               b.driverName,
         phone:              b.driverPhone ?? null,
+        companyName:        null,
         purpose:            b.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off',
         arrivedAt:          b.checkedInAt || b.createdAt || '',
         licenceCaptured:    true,
@@ -194,6 +209,8 @@ export default function WalkInsPage() {
     if (typeFilter === 'walkin'  && v.type !== 'walkin')  return false
     if (typeFilter === 'booking' && v.type !== 'booking') return false
 
+    if (activeCombo?.service && (v.serviceType !== activeCombo.service || v.loadType !== activeCombo.load)) return false
+
     if (dateFrom || dateTo) {
       const d = v.arrivedAt
         ? new Date(v.arrivedAt).toLocaleDateString('en-CA', { timeZone: TZ })
@@ -207,6 +224,7 @@ export default function WalkInsPage() {
       if (
         !v.name.toLowerCase().includes(s) &&
         !(v.phone ?? '').toLowerCase().includes(s) &&
+        !(v.companyName ?? '').toLowerCase().includes(s) &&
         !(v.bookingRef ?? '').toLowerCase().includes(s)
       ) return false
     }
@@ -222,11 +240,12 @@ export default function WalkInsPage() {
 
   // ── CSV export ────────────────────────────────────────────────────────────────
   const exportCsv = () => {
-    const header = ['Type', 'Name', 'Phone', 'Purpose', 'Arrived', 'Licence', 'Reference']
+    const header = ['Type', 'Name', 'Phone', 'Company', 'Purpose', 'Arrived', 'Licence', 'Reference']
     const rows = filtered.map(v => [
       v.type === 'booking' ? 'Booking' : 'Walk-in',
       v.name,
       v.phone ?? '',
+      v.companyName ?? '',
       v.purpose,
       fmtTime(v.arrivedAt),
       v.licenceCaptured ? 'Captured' : 'Not captured',
@@ -306,8 +325,9 @@ export default function WalkInsPage() {
         )}
       </div>
 
-      {/* Filter bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* Filter bar — spacing to the combo row below comes from the parent column's gap (16),
+          so no marginBottom here (else it would double up and look too loose). */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <CustomSelect placeholder="All Types" value={typeFilter} onChange={setTypeFilter} width={160}
           options={[{ value: 'walkin', label: 'Walk-in Only' }, { value: 'booking', label: 'Booking Only' }]} />
 
@@ -338,6 +358,22 @@ export default function WalkInsPage() {
             Clear
           </button>
         )}
+      </div>
+
+      {/* ── Service × load-type combo filter (mirrors Analytics / Bookings) ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {COMBOS.map(c => {
+          const active = combo === c.key
+          return (
+            <button key={c.key} type="button" onClick={() => setCombo(c.key)}
+              style={{ height: 40, padding: '0 16px', fontSize: 14, fontWeight: active ? 700 : 500, borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                background: active ? 'rgba(var(--brand-rgb),0.10)' : '#F7F6F5',
+                border: `1px solid ${active ? 'rgba(var(--brand-rgb),0.28)' : 'rgba(0,0,0,0.08)'}`,
+                color: active ? 'var(--brand-color)' : 'var(--text-secondary)' }}>
+              {c.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Split view: list (left) + docked detail pane (right) */}
@@ -378,9 +414,10 @@ export default function WalkInsPage() {
               const ics      = v.icsStatus ?? 'unavailable'
               const isWalkin = v.type === 'walkin'
               const isSel    = !!(selected && selected.id === v.id && selected.type === v.type)
-              const barColor = isWalkin
-                ? 'rgba(109,40,217,0.5)'
-                : (ICS_BAR_COLOR[ics] ?? ICS_BAR_COLOR.unavailable)
+              // Bar colour always maps to the ICS legend (Cleared/Held/Examination/Pending/N/A)
+              // — walk-ins have no ICS status, so they fall through to "unavailable" (N/A),
+              // same as the legend, instead of an unrelated purple that wasn't in it at all.
+              const barColor = ICS_BAR_COLOR[ics] ?? ICS_BAR_COLOR.unavailable
 
               return (
                 <div
@@ -445,10 +482,12 @@ export default function WalkInsPage() {
 
                     {/* Bottom row */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                      {v.phone ? (
+                      {v.companyName ? (
+                        <span style={{ fontSize: 13, color: '#1C1917', fontWeight: 500 }}>{v.companyName}</span>
+                      ) : v.phone ? (
                         <span style={{ fontSize: 13, color: '#1C1917', fontWeight: 500 }}>{v.phone}</span>
                       ) : (
-                        <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>No phone</span>
+                        <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>{v.purpose === 'Visiting Office' || v.purpose === 'Visiting Yard' ? 'No company' : 'No phone'}</span>
                       )}
                       {v.personBeingVisited && (
                         <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>→ {v.personBeingVisited}</span>
@@ -468,7 +507,7 @@ export default function WalkInsPage() {
           {selected.type === 'booking' ? (
             (bookingLoading || !selectedBooking)
               ? <PaneShell onClose={() => setSelected(null)}><div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 14 }}>Loading booking…</div></PaneShell>
-              : <BookingSlideOver key={selectedBooking.id} docked booking={selectedBooking} perms={perms} onClose={() => setSelected(null)} onUpdated={() => load()} />
+              : <BookingSlideOver key={selectedBooking.id} docked booking={selectedBooking} perms={perms} onClose={() => setSelected(null)} onUpdated={() => load()} hideCompleteAction />
           ) : (
             <WalkInPane entry={selected} onClose={() => setSelected(null)} onOpenFull={() => navigate(`/reception/visitors/${selected.id}`)} />
           )}
@@ -508,9 +547,12 @@ function WalkInPane({ entry, onClose, onOpenFull }: { entry: VisitorEntry; onClo
   const PANEL: React.CSSProperties = { background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-sm)', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }
   const RL: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-secondary)' }
   const RV: React.CSSProperties = { fontSize: 14, fontWeight: 600, color: '#1C1917' }
+  const isOfficeOrYard = entry.purpose === 'Visiting Office' || entry.purpose === 'Visiting Yard'
   const rows: { label: string; value: string; icon?: string }[] = [
     { label: 'Visitor',  value: entry.name,                 icon: ICONS.user },
-    { label: 'Phone',    value: entry.phone || '—',         icon: ICONS.phone },
+    isOfficeOrYard
+      ? { label: 'Company', value: entry.companyName || '—', icon: ICONS.building }
+      : { label: 'Phone',   value: entry.phone       || '—', icon: ICONS.phone },
     { label: 'Purpose',  value: entry.purpose },
     { label: 'Arrived',  value: entry.arrivedAt ? fmtTime(entry.arrivedAt) : '—', icon: ICONS.clock },
   ]

@@ -119,6 +119,7 @@ export default function VisitorDetailPage() {
           id:                   wi.id,
           visitor_name:         wi.visitor_name         ?? wi.visitorName,
           contact_number:       wi.contact_number       ?? wi.contactNumber,
+          company_name:         wi.company_name         ?? wi.companyName,
           purpose:              wi.purpose,
           person_being_visited: wi.person_being_visited ?? wi.personBeingVisited,
           reason:               wi.reason,
@@ -175,7 +176,9 @@ export default function VisitorDetailPage() {
   const phone = isBooking
     ? (booking.driver_phone || booking.guest_phone || null)
     : (walkIn.contact_number || null)
-  const company = isBooking ? (booking.company_name || null) : null
+  const company = isBooking
+    ? (booking.company_name || null)
+    : (walkIn.company_name || null)
   const purpose = isBooking
     ? (booking.service_type === 'pickup' ? 'Pick Up' : 'Drop Off')
     : walkIn.purpose === 'walk_in_pickup'  ? 'Pick Up'

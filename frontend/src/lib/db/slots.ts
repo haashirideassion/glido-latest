@@ -8,25 +8,29 @@ function trimTime(t: string): string {
 }
 
 function rowToSlot(row: any): TimeSlot {
-  const capacity  = row.capacity  ?? 10
-  const confirmed = row.confirmed ?? 0
-  let busyness: SlotBusyness = 'available'
-  if (confirmed >= capacity)            busyness = 'full'
-  else if (confirmed / capacity >= 0.6) busyness = 'busy'
+  // busyness now comes pre-computed from the server (the single source of truth for Operating
+  // Hours / Slot Periods / Per-hour Capacity / Capacity-by-Booking-Type) — no need to
+  // recompute it here, and doing so client-side was the source of a real bug where a
+  // combo-specific cap got compared against the hour's total confirmed count.
   return {
     id:        row.id,
     date:      row.date,
     startTime: trimTime(row.start_time),
     endTime:   trimTime(row.end_time),
-    capacity,
-    confirmed,
+    capacity:  row.capacity  ?? 10,
+    confirmed: row.confirmed ?? 0,
     held:      row.held ?? 0,
-    busyness,
+    busyness:  (row.busyness ?? 'available') as SlotBusyness,
+    ...(row.comboCapacity !== undefined ? { comboCapacity: row.comboCapacity, comboConfirmed: row.comboConfirmed } : {}),
   }
 }
 
-export async function getSlotsByDate(date: string): Promise<TimeSlot[]> {
-  const res = await fetcher(`${BASE}?date=${date}`)
+export async function getSlotsByDate(date: string, opts?: { tenantId?: string; serviceType?: string; loadType?: string }): Promise<TimeSlot[]> {
+  const qs = new URLSearchParams({ date })
+  if (opts?.tenantId)    qs.set('tenantId', opts.tenantId)
+  if (opts?.serviceType) qs.set('serviceType', opts.serviceType)
+  if (opts?.loadType)    qs.set('loadType', opts.loadType)
+  const res = await fetcher(`${BASE}?${qs.toString()}`)
   return (res?.data ?? []).map(rowToSlot)
 }
 

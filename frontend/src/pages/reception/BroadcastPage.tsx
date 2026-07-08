@@ -335,29 +335,20 @@ function ComposeTab({
 
   return (
     <div>
-      {/* Template row + recipients notice */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
-        <div>
-          <label style={LABEL}>Use Template</label>
-          <CustomSelect
-            value={templateId}
-            onChange={setTemplateId}
-            placeholder="No template"
-            options={templates.map(t => ({ value: t.id, label: t.name }))}
-          />
-        </div>
-        <div>
-          <label style={LABEL}>Recipients</label>
-          <div style={{ ...INPUT, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)', cursor: 'default' }}>
-            <Icon name={ICONS.users} size={15} style={{ flexShrink: 0, opacity: 0.6 }} />
-            All carriers (including blocked)
-          </div>
-        </div>
+      {/* Template row */}
+      <div style={{ marginBottom: 18 }}>
+        <label style={LABEL}>Template Name</label>
+        <CustomSelect
+          value={templateId}
+          onChange={setTemplateId}
+          placeholder="No template"
+          options={templates.map(t => ({ value: t.id, label: t.name }))}
+        />
       </div>
 
       {/* Subject */}
       <div style={{ marginBottom: 16 }}>
-        <label style={LABEL}>Subject</label>
+        <label style={LABEL}>Template Subject</label>
         <input
           type="text"
           placeholder="Enter message subject…"
@@ -369,7 +360,7 @@ function ComposeTab({
 
       {/* Message */}
       <div style={{ marginBottom: 16 }}>
-        <label style={LABEL}>Message</label>
+        <label style={LABEL}>Template Message</label>
         <div style={{ position: 'relative', borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.12)', background: '#FFFFFF', overflow: 'hidden' }}>
           {/* Highlight backdrop */}
           <div

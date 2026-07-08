@@ -294,6 +294,15 @@ const PRESETS: { id: Preset; label: string }[] = [
   { id: 'all',  label: 'All Time' },
 ]
 
+// Service × load-type combo filter (mirrors the Analytics page row)
+const COMBOS = [
+  { key: 'all',          label: 'All',            service: null,      load: null  },
+  { key: 'fcl-pickup',   label: 'FCL — Pick Up',  service: 'pickup',  load: 'fcl' },
+  { key: 'fcl-dropoff',  label: 'FCL — Drop Off', service: 'dropoff', load: 'fcl' },
+  { key: 'lcl-pickup',   label: 'LCL — Pick Up',  service: 'pickup',  load: 'lcl' },
+  { key: 'lcl-dropoff',  label: 'LCL — Drop Off', service: 'dropoff', load: 'lcl' },
+] as const
+
 function presetDates(p: Preset): { from: string; to: string } {
   const today = todaySydney()
   if (p === 'today') return { from: today, to: today }
@@ -316,6 +325,7 @@ export default function BookingsPage() {
   const [search,       setSearch]       = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [serviceFilter,setServiceFilter]= useState('')
+  const [comboFilter,  setComboFilter]  = useState<string>('all')
   const [dateFrom,     setDateFrom]     = useState(() => _initialPreset === 'today' ? todaySydney() : daysAgo(30))
   const [dateTo,       setDateTo]       = useState(() => todaySydney())
   const [liveColor,    setLiveColor]    = useState('#22C55E')
@@ -429,7 +439,7 @@ export default function BookingsPage() {
   // Reload on mount AND every time the user navigates back to this page
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [load, location.key])
-  useEffect(() => { setPage(1) }, [statusFilter, serviceFilter, search, dateFrom, dateTo])
+  useEffect(() => { setPage(1) }, [statusFilter, serviceFilter, comboFilter, search, dateFrom, dateTo])
   // Background refresh — silent so it doesn't flash the whole table/KPIs back to
   // skeletons every 15s (staff perceived that as the page randomly "reloading")
   useEffect(() => {
@@ -437,9 +447,11 @@ export default function BookingsPage() {
     return () => clearInterval(id)
   }, [load])
 
+  const activeCombo = COMBOS.find(c => c.key === comboFilter)
   const filtered = bookings.filter(b => {
     if (statusFilter && b.status !== statusFilter) return false
     if (serviceFilter && b.serviceType !== serviceFilter) return false
+    if (activeCombo?.service && (b.serviceType !== activeCombo.service || b.loadType !== activeCombo.load)) return false
     if (search) {
       const s = search.toLowerCase()
       if (!b.referenceNumber.toLowerCase().includes(s) && !b.driverName.toLowerCase().includes(s) && !(b.houseBillNumber ?? '').toLowerCase().includes(s)) return false
@@ -510,7 +522,7 @@ export default function BookingsPage() {
     applyPreset('30d')
   }
 
-  const hasFilters = !!(statusFilter || serviceFilter || search || preset !== '30d')
+  const hasFilters = !!(statusFilter || serviceFilter || comboFilter !== 'all' || search || preset !== '30d')
 
 
   return (
@@ -591,11 +603,27 @@ export default function BookingsPage() {
         <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPreset('all') }}
           style={{ height: 40, padding: '0 10px', fontSize: 14, color: '#1C1917', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', outline: 'none', fontFamily: 'inherit' }} />
         {hasFilters && (
-          <button onClick={() => { setStatusFilter(''); setServiceFilter(''); setDateFrom(daysAgo(30)); setDateTo(todaySydney()); setPreset('30d') }}
+          <button onClick={() => { setStatusFilter(''); setServiceFilter(''); setComboFilter('all'); setDateFrom(daysAgo(30)); setDateTo(todaySydney()); setPreset('30d') }}
             style={{ height: 40, padding: '0 14px', fontSize: 14, fontWeight: 600, color: 'var(--text-tertiary)', background: 'none', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
             Clear
           </button>
         )}
+      </div>
+
+      {/* ── Service × load-type combo filter (mirrors Analytics) ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {COMBOS.map(c => {
+          const active = comboFilter === c.key
+          return (
+            <button key={c.key} type="button" onClick={() => setComboFilter(c.key)}
+              style={{ height: 40, padding: '0 14px', fontSize: 14, fontWeight: active ? 700 : 500, borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                background: active ? 'rgba(var(--brand-rgb),0.10)' : '#F7F6F5',
+                border: `1px solid ${active ? 'rgba(var(--brand-rgb),0.28)' : 'rgba(0,0,0,0.08)'}`,
+                color: active ? 'var(--brand-color)' : 'var(--text-secondary)' }}>
+              {c.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* ── Floating bulk action bar — fixed bottom centre ── */}
@@ -714,7 +742,15 @@ export default function BookingsPage() {
                 const ics        = b.icsStatus ?? 'unavailable'
                 const cfg        = STATUS_CONFIG[b.status] ?? STATUS_CONFIG.scheduled
                 const isBusy     = !!actionLoading[b.id]
-                const hbl        = b.houseBillNumber ?? b.containerNumber ?? null
+                // Show every identifying detail this booking actually has, each clearly labelled —
+                // collapsing HBL/container into one unlabelled field made FCL and LCL bookings
+                // look identical and hid whichever value lost the fallback.
+                const details: { label: string; value: string }[] = []
+                if (b.vehicleRegistration) details.push({ label: 'Rego',        value: b.vehicleRegistration })
+                if (b.containerNumber)     details.push({ label: 'Container',   value: b.containerNumber })
+                if (b.houseBillNumber)     details.push({ label: 'HBL',         value: b.houseBillNumber })
+                if (b.bookingReference)    details.push({ label: 'Booking Ref', value: b.bookingReference })
+                if (b.entryNumber)         details.push({ label: 'Entry #',     value: b.entryNumber })
                 const isSel      = selected?.id === b.id
                 const displayRef = b.groupReference ?? b.referenceNumber
 
@@ -788,16 +824,12 @@ export default function BookingsPage() {
                       {/* Bottom row */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#1C1917' }}>{b.driverName}</span>
-                        {b.vehicleRegistration && (
-                          <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)', padding: '1px 7px', borderRadius: 'var(--r-sm)' }}>
-                            {b.vehicleRegistration}
+                        {details.map(d => (
+                          <span key={d.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.04)', padding: '2px 8px 2px 7px', borderRadius: 'var(--r-sm)' }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d.label}</span>
+                            <span style={{ fontSize: 12, color: '#374151' }}>{d.value}</span>
                           </span>
-                        )}
-                        {hbl && (
-                          <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: 'var(--text-tertiary)' }}>
-                            {hbl}
-                          </span>
-                        )}
+                        ))}
                         <div style={{ flex: 1 }} />
                         {/* Quick action */}
                         {b.status === 'scheduled' && perms.can_mark_complete ? (

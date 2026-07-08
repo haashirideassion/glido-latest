@@ -35,13 +35,14 @@ router.post('/', async (req: Request, res: Response) => {
   const b = req.body
   try {
     const { rows } = await pool.query(
-      `INSERT INTO walk_ins (tenant_id, purpose, visitor_name, contact_number, person_being_visited, reason, licence_captured)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      `INSERT INTO walk_ins (tenant_id, purpose, visitor_name, contact_number, company_name, person_being_visited, reason, licence_captured)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [
         b.tenant_id   ?? b.tenantId,
         b.purpose,
         b.visitor_name ?? b.visitorName,
         b.contact_number       ?? b.contactNumber       ?? null,
+        b.company_name         ?? b.companyName         ?? null,
         b.person_being_visited ?? b.personBeingVisited  ?? null,
         b.reason ?? null,
         b.licence_captured     ?? b.licenceCaptured     ?? false,
@@ -100,6 +101,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
       licenceCaptured: 'licence_captured',
       visitorName: 'visitor_name',
       contactNumber: 'contact_number',
+      companyName: 'company_name',
       personBeingVisited: 'person_being_visited',
       reason: 'reason',
     }

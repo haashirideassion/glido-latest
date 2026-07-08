@@ -10,6 +10,7 @@ function rowToWalkIn(row: any): WalkIn {
     purpose:             row.purpose              as WalkInPurpose,
     visitorName:         row.visitor_name,
     contactNumber:       row.contact_number       ?? undefined,
+    companyName:         row.company_name         ?? undefined,
     personBeingVisited:  row.person_being_visited  ?? undefined,
     reason:              row.reason               ?? undefined,
     arrivedAt:           row.arrived_at,
@@ -34,6 +35,7 @@ export interface CreateWalkInInput {
   purpose:             WalkInPurpose
   visitorName:         string
   contactNumber?:      string
+  companyName?:        string
   personBeingVisited?: string
   reason?:             string
   licenceCaptured?:    boolean
@@ -45,6 +47,7 @@ export async function createWalkIn(input: CreateWalkInInput): Promise<WalkIn> {
     purpose:              input.purpose,
     visitor_name:         input.visitorName,
     contact_number:       input.contactNumber      ?? null,
+    company_name:         input.companyName        ?? null,
     person_being_visited: input.personBeingVisited  ?? null,
     reason:               input.reason             ?? null,
     licence_captured:     input.licenceCaptured    ?? false,
