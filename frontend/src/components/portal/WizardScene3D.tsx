@@ -693,14 +693,14 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
 
 export function WizardScene3D(props: Props) {
   const brand = useBrandColor()
-  const orbit = useRef({ az: 0.88, el: 0.28, taz: 0.88, tel: 0.28, dragging: false, lx: 0, ly: 0 })
+  const orbit = useRef({ az: 1.48, el: 0.28, taz: 1.48, tel: 0.28, dragging: false, lx: 0, ly: 0 })
   const [grabbing, setGrabbing] = useState(false)
 
   const onDown = (e: React.PointerEvent) => { const o = orbit.current; o.dragging = true; o.lx = e.clientX; o.ly = e.clientY; setGrabbing(true); (e.target as Element).setPointerCapture?.(e.pointerId) }
   const onMove = (e: React.PointerEvent) => {
     const o = orbit.current; if (!o.dragging) return
     const dx = e.clientX - o.lx, dy = e.clientY - o.ly; o.lx = e.clientX; o.ly = e.clientY
-    o.taz = clamp(o.taz - dx * 0.006, 0.45, 1.45)
+    o.taz = clamp(o.taz - dx * 0.006, 0.6, 2.1)
     o.tel = clamp(o.tel + dy * 0.005, 0.18, 0.72)
   }
   const onUp = () => { orbit.current.dragging = false; setGrabbing(false) }
