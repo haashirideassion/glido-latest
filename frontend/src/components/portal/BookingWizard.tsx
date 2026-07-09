@@ -485,8 +485,8 @@ export default function BookingWizard() {
             <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}>
               <div style={{ height: 'clamp(160px, 25vh, 230px)', flexShrink: 0 }} />
               <div style={{ maxWidth: WRAP, width: '100%', margin: '0 auto', flex: 1, minHeight: 0, padding: '0 24px 24px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
-                <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0, width: '100%' }}>
-                  
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 24, flex: 1, minHeight: 0, width: '100%' }}>
+
                   {/* Frosted glass panel — brings the form into focus over the blurred world */}
                   <div className="wiz-glass" style={{ flex: 1, maxWidth: 900, minWidth: 0, background: 'rgba(255,255,255,0.68)', backdropFilter: 'blur(18px) saturate(1.25)', WebkitBackdropFilter: 'blur(18px) saturate(1.25)', border: '1px solid rgba(255,255,255,0.7)', borderRadius: 26, boxShadow: '0 10px 44px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.6)', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
                     
