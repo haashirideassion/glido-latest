@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
+import { useAuth } from '@/contexts/AuthContext'
 
 function GridSvg({ side }: { side: 'left' | 'right' }) {
   return (
@@ -49,11 +50,22 @@ const MODULES = [
     iconBg:      'rgba(34,197,94,0.09)',
     iconFg:      '#16A34A',
   },
+  {
+    label:       'Super Admin',
+    route:       '/superadmin',
+    description: 'CFS depot setup and system integrations',
+    icon:        ICONS.shield,
+    iconBg:      'rgba(124,58,237,0.09)',
+    iconFg:      '#7C3AED',
+  },
 ]
 
 export default function ModulesPage() {
   usePageTitle('Glido | Modules')
   const navigate = useNavigate()
+  const { user } = useAuth()
+
+  const modules = MODULES
 
   return (
     <>
@@ -96,7 +108,7 @@ export default function ModulesPage() {
             margin: '0 auto',
           }}
         >
-          {MODULES.map(m => (
+          {modules.map(m => (
             <div
               key={m.route}
               className="module-card"

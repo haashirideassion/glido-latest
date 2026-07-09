@@ -75,6 +75,11 @@ const CONTAINER_COLORS = ['#2DD4BF', '#FB7185', '#FBBF24', '#60A5FA']
 // stretched per extra truck by a matching amount so the longer queue still fits on the land.
 const QUEUE_GAP = 6.0
 const DEPOT_STRETCH_PER_TRUCK = 7.4
+// The depot/container yard sits far to the left (~x-18) while the destination city sits around
+// x+13..16 — so the true midpoint of the scene content is left of world origin, not at 0. Shift
+// the ground plane + camera framing by this much so both sides get even margins (previously the
+// left container overflowed the land edge while the right had a big empty green strip).
+const SCENE_CENTER_X = -2
 
 // ── Detailed shipping container (corrugation · doors · corner castings) ────────
 function Container({ color, w = 1.9, h = 1.05, d = 1.45 }: { color: string; w?: number; h?: number; d?: number }) {
@@ -531,7 +536,7 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
     o.el = damp(o.el, o.tel, 7, dt)
     const R = 42, hz = Math.cos(o.el) * R
     // Re-centre on the midpoint of the depot queue and the destination city (ground/road grow the same way)
-    cur.camX = damp(cur.camX, -extra / 2, 7, dt)
+    cur.camX = damp(cur.camX, SCENE_CENTER_X - extra / 2, 7, dt)
     st.camera.position.set(cur.camX + Math.cos(o.az) * hz, Math.sin(o.el) * R + 1, Math.sin(o.az) * hz)
     st.camera.lookAt(cur.camX, 1.1, 0)
     const oc = st.camera as THREE.OrthographicCamera
@@ -557,8 +562,8 @@ function Rig(props: Props & { brand: string; orbit: React.MutableRefObject<any> 
       <pointLight ref={warmL} position={[0, 3, 3]} distance={28} color="#FFB870" intensity={0} />
 
       {/* Ground + soil — widens leftward to stay under the depot queue as slotCount grows */}
-      <mesh position={[-extra / 2, -0.5, 0]} receiveShadow><boxGeometry args={[40 + extra, 1, 13]} /><meshStandardMaterial ref={groundMat} color="#A9E1A2" flatShading roughness={0.95} /></mesh>
-      <mesh position={[-extra / 2, -1.18, 0]}><boxGeometry args={[40 + extra, 0.55, 13]} /><meshStandardMaterial color="#C9AA7C" flatShading /></mesh>
+      <mesh position={[SCENE_CENTER_X - extra / 2, -0.5, 0]} receiveShadow><boxGeometry args={[40 + extra, 1, 13]} /><meshStandardMaterial ref={groundMat} color="#A9E1A2" flatShading roughness={0.95} /></mesh>
+      <mesh position={[SCENE_CENTER_X - extra / 2, -1.18, 0]}><boxGeometry args={[40 + extra, 0.55, 13]} /><meshStandardMaterial color="#C9AA7C" flatShading /></mesh>
 
       {/* Curved road + dashes */}
       <mesh geometry={geo} receiveShadow><meshStandardMaterial color="#3f4753" flatShading roughness={0.85} side={THREE.DoubleSide} /></mesh>

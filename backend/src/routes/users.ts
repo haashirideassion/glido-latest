@@ -6,6 +6,8 @@ import jwt from 'jsonwebtoken'
 const router = Router()
 router.use(requireAuth)
 
+const ALLOWED_ROLES = ['reception_admin', 'reception_staff', 'visitor_registered', 'super_admin']
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function splitName(fullName: string | null) {
@@ -46,6 +48,9 @@ router.post('/invite', async (req: Request, res: Response) => {
   const { email, role, firstName, lastName } = req.body
   if (!email?.trim()) {
     return res.status(400).json({ success: false, error: { message: 'Email is required' } })
+  }
+  if (role !== undefined && !ALLOWED_ROLES.includes(role)) {
+    return res.status(400).json({ success: false, error: { message: 'Invalid role' } })
   }
   const name = [firstName, lastName].filter(Boolean).join(' ') || email.split('@')[0]
   try {
@@ -128,6 +133,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
 // PATCH /api/v2/users/:id — update role, is_active, name
 router.patch('/:id', async (req: Request, res: Response) => {
   const { role, is_active, name, first_name, last_name } = req.body
+  if (role !== undefined && !ALLOWED_ROLES.includes(role)) {
+    return res.status(400).json({ success: false, error: { message: 'Invalid role' } })
+  }
   const setClauses: string[] = []
   const params: any[] = [req.params.id]
   let i = 2

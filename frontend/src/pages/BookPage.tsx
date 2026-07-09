@@ -9,6 +9,7 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { loadLogoDataUrl, glidoLogoPng } from '@/lib/pdfBranding'
 import { postFetcher } from '@/lib/fetcher'
 import { toast } from '@/lib/toast'
+import { Confetti } from '@/components/Confetti'
 
 // ── ICS generator ──────────────────────────────────────────────────────────────
 function buildIcs(events: Array<{ ref: string; date: string; slotLabel: string; summary: string }>) {
@@ -288,6 +289,7 @@ function ConfirmedScreen() {
 
   return (
     <div style={{ minHeight: 'calc(100vh - 60px)', background: 'var(--surface-tint)', padding: '40px 24px 64px' }}>
+      <Confetti />
       <div style={{ maxWidth: 1000, margin: '0 auto' }}>
 
         {/* Success banner */}

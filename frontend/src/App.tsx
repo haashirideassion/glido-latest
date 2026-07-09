@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import PublicLayout    from './layouts/PublicLayout'
 import ReceptionLayout from './layouts/ReceptionLayout'
 import LandingPage     from './pages/LandingPage'
@@ -26,6 +26,10 @@ import KioskPage       from './pages/KioskPage'
 import ModulesPage     from './pages/ModulesPage'
 import NotFound        from './pages/NotFound'
 import ReceptionGuard  from './components/ReceptionGuard'
+import SuperAdminGuard  from './components/SuperAdminGuard'
+import SuperAdminLayout from './layouts/SuperAdminLayout'
+import AdminIntegrationsPage from './pages/admin/AdminIntegrationsPage'
+import AdminAccessPage         from './pages/admin/AdminAccessPage'
 
 export const router = createBrowserRouter([
   {
@@ -67,6 +71,22 @@ export const router = createBrowserRouter([
           { path: 'settings',                              element: <SettingsPage /> },
           { path: 'carriers',                              element: <CarriersPage /> },
           { path: 'broadcast',                             element: <BroadcastPage /> },
+        ],
+      },
+    ],
+  },
+  {
+    /* Super Admin — independent module, own layout, gated to super_admin */
+    path: '/superadmin',
+    element: <SuperAdminGuard />,
+    children: [
+      {
+        element: <SuperAdminLayout />,
+        children: [
+          { index: true,           element: <Navigate to="/superadmin/settings#general" replace /> },
+          { path: 'settings',      element: <SettingsPage /> },
+          { path: 'access',        element: <AdminAccessPage /> },
+          { path: 'integrations',  element: <AdminIntegrationsPage /> },
         ],
       },
     ],

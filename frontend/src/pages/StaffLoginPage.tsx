@@ -46,12 +46,12 @@ export default function StaffLoginPage() {
     }
     setIsSubmitting(true)
     try {
-      const { success, error } = await login(email, password)
+      const { success, error, role } = await login(email, password)
       if (!success) {
         toast(error ?? 'Sign in failed. Please try again.', 'error')
         return
       }
-      navigate('/reception')
+      navigate(role === 'super_admin' ? '/superadmin' : '/reception')
     } catch (err: any) {
       toast(err?.message ?? 'Sign in failed. Please try again.', 'error')
     } finally {

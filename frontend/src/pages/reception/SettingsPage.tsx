@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useBlocker, useLocation } from 'react-router-dom'
+import { useBlocker, useLocation, useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { getTenant, updateTenant } from '@/lib/db/tenants'
 import { fetcher, postFetcher, patchFetcher, deleteFetcher, rawFetcher } from '@/lib/fetcher'
@@ -11,6 +11,7 @@ import { CustomSelect } from '@/components/ui/CustomSelect'
 import { Icon, ICONS } from '@/lib/Icon'
 import { fmtDateTime } from '@/lib/time'
 import { useReceptionAuth } from '@/contexts/ReceptionAuthContext'
+import { useCfsAdminSections } from '@/lib/useCfsAdminSections'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -38,9 +39,18 @@ interface PricingState {
 }
 
 interface ClientPricingException {
-  carrier_id:        string
-  carrier_name:      string
-  slot_fee_override: number
+  carrier_id:     string
+  carrier_name:   string
+  service_types:  string[]           // subset of COMBOS; empty = applies to all service types
+  override_type:  'flat' | 'percent'
+  override_value: number             // dollar amount if 'flat', discount % if 'percent'
+}
+
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  'pickup-lcl':   'Pickup LCL',
+  'pickup-fcl':   'Pickup FCL',
+  'dropoff-lcl':  'Drop Off LCL',
+  'dropoff-fcl':  'Drop Off FCL',
 }
 
 interface KioskDevice {
@@ -114,30 +124,6 @@ function bucketLabel(start: string, durationMin: number): string {
   return `${start} – ${eh}:${em}`
 }
 
-interface CargowiseState {
-  apiUrl:          string
-  apiKey:          string
-  tenantCode:      string
-  refreshInterval: string
-}
-
-const DEFAULT_CARGOWISE: CargowiseState = {
-  apiUrl: '', apiKey: '', tenantCode: '', refreshInterval: '30',
-}
-
-interface SmtpState {
-  host:        string
-  port:        string
-  username:    string
-  password:    string
-  fromAddress: string
-  fromName:    string
-}
-
-const DEFAULT_SMTP: SmtpState = {
-  host: '', port: '587', username: '', password: '', fromAddress: '', fromName: '',
-}
-
 interface DocRequirement {
   id:        string
   name:      string
@@ -192,7 +178,6 @@ const DEFAULT_DOC_REQUIREMENTS: DocRequirement[] = COMBO_DEFAULTS
 const GROUPS = [
   { id: 'General',      label: 'General',      sections: ['General', 'Working Hours'] },
   { id: 'Bookings',     label: 'Bookings',     sections: ['Slot Config', 'Pricing', 'Payment', 'Document Requirements'] },
-  { id: 'Integrations', label: 'Integrations', sections: ['Integrations'] },
   { id: 'Team',         label: 'Team',         sections: ['User Management'] },
 ] as const
 type GroupId = typeof GROUPS[number]['id']
@@ -201,7 +186,6 @@ type GroupId = typeof GROUPS[number]['id']
 const RAIL_SECTIONS: Record<string, string[]> = {
   General:      ['Business Profile', 'Working Hours', 'Kiosk Agreement', 'Kiosk Devices'],
   Bookings:     ['Slot Config', 'Pricing', 'Payment', 'Document Requirements'],
-  Integrations: ['Connected Systems'],
   Team:         ['User Management'],
 }
 
@@ -429,7 +413,8 @@ function Skeleton() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
-  usePageTitle('Glido | Settings')
+  const isSuperAdminRoute = useLocation().pathname.startsWith('/superadmin')
+  usePageTitle(isSuperAdminRoute ? 'Glido | Super Admin' : 'Glido | Settings')
   const { isAdmin, isSuperAdmin, userId: currentUserId } = useReceptionAuth()
 
   // ── Visible groups — hide Team (User Management) from reception_staff ─────
@@ -439,12 +424,12 @@ export default function SettingsPage() {
   const HASH_TO_GROUP: Record<string, GroupId> = {
     '#general': 'General', '#working-hours': 'General',
     '#slot-config': 'Bookings', '#pricing': 'Bookings', '#payment': 'Bookings',
-    '#integrations': 'Integrations', '#doc-requirements': 'Bookings',
+    '#doc-requirements': 'Bookings',
     '#user-management': 'Team',
   }
   const GROUP_TO_HASH: Record<GroupId, string> = {
     General: '#general', Bookings: '#slot-config',
-    Integrations: '#integrations', Team: '#user-management',
+    Team: '#user-management',
   }
   const tabFromHash = (): GroupId => HASH_TO_GROUP[window.location.hash] ?? 'General'
 
@@ -454,7 +439,7 @@ export default function SettingsPage() {
   const HASH_TO_SECTION: Record<string, string> = {
     '#general': 'general', '#working-hours': 'working-hours',
     '#slot-config': 'slot-config', '#pricing': 'pricing', '#payment': 'payment',
-    '#doc-requirements': 'doc-requirements', '#integrations': 'integrations',
+    '#doc-requirements': 'doc-requirements',
     '#user-management': 'user-management',
   }
   const sectionFromHash = (): string => HASH_TO_SECTION[window.location.hash] ?? 'general'
@@ -469,6 +454,23 @@ export default function SettingsPage() {
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Super-Admin-controlled section access (CFS Admin only) ────────────────
+  // Super Admin (and the /superadmin view) bypass the gate. A CFS Admin who lands on a
+  // disallowed section — e.g. by typing the URL — is bounced to the first allowed one.
+  const navigate = useNavigate()
+  const { access: cfsSections, loading: cfsAccessLoading } = useCfsAdminSections()
+  const gateActive = !isSuperAdminRoute && !isSuperAdmin
+  useEffect(() => {
+    if (!gateActive || cfsAccessLoading) return
+    if (cfsSections[section] !== false) return
+    const firstAllowed = Object.entries(HASH_TO_SECTION).find(([, s]) => cfsSections[s] !== false)
+    if (firstAllowed) {
+      window.location.hash = firstAllowed[0]
+    } else {
+      navigate('/reception', { replace: true })
+    }
+  }, [gateActive, cfsAccessLoading, cfsSections, section]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // General state
   const [general,         setGeneral]         = useState({ name: '', address: '', logoUrl: '', primaryColor: 'var(--brand-color)', timezone: 'Australia/Sydney', contactEmail: '', contactPhone: '' })
@@ -500,20 +502,13 @@ export default function SettingsPage() {
   const [showAddException,    setShowAddException]    = useState(false)
   const [newExcCarrierId,     setNewExcCarrierId]     = useState('')
   const [newExcFee,           setNewExcFee]           = useState('')
+  const [newExcServiceTypes,  setNewExcServiceTypes]  = useState<string[]>([...COMBOS])
+  const [newExcOverrideType,  setNewExcOverrideType]  = useState<'flat' | 'percent'>('flat')
 
   // Slot Config state
   const [slotConfig,        setSlotConfig]        = useState<SlotConfigState>(DEFAULT_SLOT_CONFIG)
   const [slotConfigLoading, setSlotConfigLoading] = useState(true)
   const [slotConfigSaving,  setSlotConfigSaving]  = useState(false)
-
-  // Integrations state
-  const [cargowise,            setCargowise]            = useState<CargowiseState>(DEFAULT_CARGOWISE)
-  const [smtp,                 setSmtp]                 = useState<SmtpState>(DEFAULT_SMTP)
-  const [integrationsLoading,  setIntegrationsLoading]  = useState(true)
-  const [cargowiseSaving,      setCargowiseSaving]      = useState(false)
-  const [smtpSaving,           setSmtpSaving]           = useState(false)
-  const [showCwApiKey,         setShowCwApiKey]         = useState(false)
-  const [showSmtpPassword,     setShowSmtpPassword]     = useState(false)
 
   // Document Requirements state
   const [docRequirements, setDocRequirements] = useState<DocRequirement[]>(DEFAULT_DOC_REQUIREMENTS)
@@ -569,8 +564,6 @@ export default function SettingsPage() {
   const [eftDirty,         setEftDirty]         = useState(false)
   const [stripeDirty,      setStripeDirty]      = useState(false)
   const [compayDirty,      setCompayDirty]      = useState(false)
-  const [cargowiseDirty,   setCargowiseDirty]   = useState(false)
-  const [smtpDirty,        setSmtpDirty]        = useState(false)
   const [docDirty,         setDocDirty]         = useState(false)
 
   // Load general settings on mount
@@ -789,9 +782,16 @@ export default function SettingsPage() {
           lclFreeDays:       String(pr.lcl_free_days ?? DEFAULT_PRICING.lclFreeDays),
         }
         setPricing(p)
-        // Load client pricing exceptions
+        // Load client pricing exceptions — normalize legacy shape (flat $ only, no service types)
         const exc = (tenant.working_hours as any)?.client_pricing_exceptions ?? []
-        setExceptions(Array.isArray(exc) ? exc : [])
+        const normalized: ClientPricingException[] = (Array.isArray(exc) ? exc : []).map((e: any) => ({
+          carrier_id:     e.carrier_id,
+          carrier_name:   e.carrier_name,
+          service_types:  Array.isArray(e.service_types) ? e.service_types : [],
+          override_type:  e.override_type === 'percent' ? 'percent' : 'flat',
+          override_value: e.override_value ?? e.slot_fee_override ?? 0,
+        }))
+        setExceptions(normalized)
       })
       .catch(() => { /* use defaults */ })
       .finally(() => setPricingLoading(false))
@@ -995,71 +995,6 @@ export default function SettingsPage() {
       toast(err?.message ?? 'Failed to save slot configuration', 'error')
     } finally {
       setSlotConfigSaving(false)
-    }
-  }
-
-  // Load integrations on mount
-  useEffect(() => {
-    getTenant(DEFAULT_TENANT_ID)
-      .then(tenant => {
-        if (!tenant) return
-        const t = tenant as any
-        setCargowise({
-          apiUrl:          t.cargowise_api_url          ?? DEFAULT_CARGOWISE.apiUrl,
-          apiKey:          t.cargowise_api_key          ?? DEFAULT_CARGOWISE.apiKey,
-          tenantCode:      t.cargowise_tenant_code      ?? DEFAULT_CARGOWISE.tenantCode,
-          refreshInterval: String(t.cargowise_refresh_interval ?? DEFAULT_CARGOWISE.refreshInterval),
-        })
-        setSmtp({
-          host:        t.smtp_host         ?? DEFAULT_SMTP.host,
-          port:        String(t.smtp_port  ?? DEFAULT_SMTP.port),
-          username:    t.smtp_username     ?? DEFAULT_SMTP.username,
-          password:    t.smtp_password     ?? DEFAULT_SMTP.password,
-          fromAddress: t.smtp_from_address ?? DEFAULT_SMTP.fromAddress,
-          fromName:    t.smtp_from_name    ?? DEFAULT_SMTP.fromName,
-        })
-      })
-      .catch(() => { /* use defaults */ })
-      .finally(() => setIntegrationsLoading(false))
-  }, [])
-
-  // CargoWise save handler
-  const saveCargowise = async () => {
-    setCargowiseSaving(true)
-    try {
-      await updateTenant(DEFAULT_TENANT_ID, {
-        cargowise_api_url:          cargowise.apiUrl          || null,
-        cargowise_api_key:          cargowise.apiKey          || null,
-        cargowise_tenant_code:      cargowise.tenantCode      || null,
-        cargowise_refresh_interval: cargowise.refreshInterval ? Number(cargowise.refreshInterval) : null,
-      } as any)
-      toast('CargoWise settings saved', 'success')
-      setCargowiseDirty(false)
-    } catch (err: any) {
-      toast(err?.message ?? 'Failed to save CargoWise settings', 'error')
-    } finally {
-      setCargowiseSaving(false)
-    }
-  }
-
-  // SMTP save handler
-  const saveSmtp = async () => {
-    setSmtpSaving(true)
-    try {
-      await updateTenant(DEFAULT_TENANT_ID, {
-        smtp_host:         smtp.host         || null,
-        smtp_port:         smtp.port         ? Number(smtp.port) : null,
-        smtp_username:     smtp.username     || null,
-        smtp_password:     smtp.password     || null,
-        smtp_from_address: smtp.fromAddress  || null,
-        smtp_from_name:    smtp.fromName     || null,
-      } as any)
-      toast('Email settings saved', 'success')
-      setSmtpDirty(false)
-    } catch (err: any) {
-      toast(err?.message ?? 'Failed to save email settings', 'error')
-    } finally {
-      setSmtpSaving(false)
     }
   }
 
@@ -1310,9 +1245,6 @@ export default function SettingsPage() {
       if (stripeDirty) await saveStripe()
       if (compayDirty) await saveCompay()
       if (docDirty) await saveDocRequirements()
-    } else if (tab === 'Integrations') {
-      if (cargowiseDirty) await saveCargowise()
-      if (smtpDirty) await saveSmtp()
     } else if (tab === 'Team' && staffPermsDirty) {
       setStaffPermsSaving(true)
       try {
@@ -1333,7 +1265,6 @@ export default function SettingsPage() {
   const anyDirty = (
     (generalDirty || whDirty || kioskTermsDirty) ||
     (slotConfigDirty || pricingDirty || eftDirty || stripeDirty || compayDirty || docDirty) ||
-    (cargowiseDirty || smtpDirty) ||
     staffPermsDirty
   )
 
@@ -1344,13 +1275,11 @@ export default function SettingsPage() {
   const tabDirty = (
     (tab === 'General'      && (generalDirty || whDirty || kioskTermsDirty)) ||
     (tab === 'Bookings'     && (slotConfigDirty || pricingDirty || eftDirty || stripeDirty || compayDirty || docDirty)) ||
-    (tab === 'Integrations' && (cargowiseDirty || smtpDirty)) ||
     (tab === 'Team'         && staffPermsDirty)
   )
   const tabSaving = (
     (tab === 'General'      && (generalSaving || whSaving || kioskTermsSaving)) ||
     (tab === 'Bookings'     && (slotConfigSaving || pricingSaving || eftSaving || stripeSaving || compaySaving || docSaving)) ||
-    (tab === 'Integrations' && (cargowiseSaving || smtpSaving)) ||
     (tab === 'Team'         && staffPermsSaving)
   )
 
@@ -2000,41 +1929,42 @@ export default function SettingsPage() {
               <div style={CARD}>
                 <SectionHead
                   title="Client Exception Pricing"
-                  desc="Override slot fees for specific carriers. Leave empty to use the global rate."
+                  desc="Let specific clients book a slot free of charge or at a discounted rate. Leave empty to use the global rate."
                 />
 
                 {/* Exception rows */}
                 {exceptions.length > 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 0, border: '1px solid rgba(0,0,0,0.09)', borderRadius: 'var(--r-md)', overflow: 'hidden', marginBottom: 16 }}>
                     {/* Header */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 160px 40px', gap: 12, alignItems: 'center', padding: '8px 14px', background: '#F7F6F5', borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Carrier</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Slot Fee Override ($)</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 140px 40px', gap: 12, alignItems: 'center', padding: '8px 14px', background: '#F7F6F5', borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Client / Carrier</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service Types</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Override</span>
                       <span />
                     </div>
                     {exceptions.map((exc, idx) => (
                       <div
                         key={exc.carrier_id}
                         style={{
-                          display: 'grid', gridTemplateColumns: '1fr 160px 40px', gap: 12, alignItems: 'center',
+                          display: 'grid', gridTemplateColumns: '1fr 1.4fr 140px 40px', gap: 12, alignItems: 'center',
                           padding: '10px 14px',
                           background: idx % 2 === 0 ? '#fff' : '#FAFAF9',
                           borderBottom: idx < exceptions.length - 1 ? '1px solid rgba(0,0,0,0.06)' : 'none',
                         }}
                       >
                         <span style={{ fontSize: 15, fontWeight: 500, color: '#1C1917' }}>{exc.carrier_name}</span>
-                        <FocusInput
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={String(exc.slot_fee_override)}
-                          onChange={e => {
-                            const val = parseFloat(e.target.value) || 0
-                            setExceptions(prev => prev.map((ex, i) => i === idx ? { ...ex, slot_fee_override: val } : ex))
-                            setPricingDirty(true)
-                          }}
-                          style={{ textAlign: 'right' }}
-                        />
+                        <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                          {exc.service_types.length === 0 || exc.service_types.length === COMBOS.length
+                            ? 'All service types'
+                            : exc.service_types.map(st => SERVICE_TYPE_LABELS[st] ?? st).join(', ')}
+                        </span>
+                        <span style={{ fontSize: 15, fontWeight: 600, color: exc.override_value === 0 ? '#16A34A' : '#1C1917', textAlign: 'right' }}>
+                          {exc.override_value === 0
+                            ? 'Free'
+                            : exc.override_type === 'percent'
+                              ? `${exc.override_value}% off`
+                              : `$${exc.override_value.toFixed(2)}`}
+                        </span>
                         <button
                           type="button"
                           onClick={() => {
@@ -2054,54 +1984,103 @@ export default function SettingsPage() {
                 )}
 
                 {exceptions.length === 0 && !showAddException && (
-                  <p style={{ fontSize: 14, color: 'var(--text-tertiary)', marginBottom: 14 }}>No exceptions configured. All carriers use the global slot fee rates above.</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-tertiary)', marginBottom: 14 }}>No exceptions configured. All clients use the global slot fee rates above.</p>
                 )}
 
                 {/* Inline add form */}
                 {showAddException ? (
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', padding: '14px 16px', background: 'rgba(var(--brand-rgb),0.03)', border: '1px solid rgba(var(--brand-rgb),0.15)', borderRadius: 'var(--r-md)' }}>
-                    <div style={{ flex: '1 1 200px', minWidth: 180 }}>
-                      <label style={LABEL}>Carrier</label>
-                      {carriersForExcLoading ? (
-                        <div style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />
-                      ) : (
-                        <FocusSelect
-                          value={newExcCarrierId}
-                          onChange={e => setNewExcCarrierId(e.target.value)}
-                        >
-                          <option value="">Select carrier…</option>
-                          {carriersForExc
-                            .filter(c => !exceptions.some(ex => ex.carrier_id === c.id))
-                            .map(c => <option key={c.id} value={c.id}>{c.name}</option>)
-                          }
-                        </FocusSelect>
-                      )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '14px 16px', background: 'rgba(var(--brand-rgb),0.03)', border: '1px solid rgba(var(--brand-rgb),0.15)', borderRadius: 'var(--r-md)' }}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <div style={{ flex: '1 1 200px', minWidth: 180 }}>
+                        <label style={LABEL}>Client / Carrier</label>
+                        {carriersForExcLoading ? (
+                          <div style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />
+                        ) : (
+                          <CustomSelect
+                            neutral
+                            placeholder="Select client…"
+                            value={newExcCarrierId}
+                            onChange={v => setNewExcCarrierId(v)}
+                            options={carriersForExc
+                              .filter(c => !exceptions.some(ex => ex.carrier_id === c.id))
+                              .map(c => ({ value: c.id, label: c.name }))
+                            }
+                          />
+                        )}
+                      </div>
+                      <div style={{ flex: '0 0 160px' }}>
+                        <label style={LABEL}>Override Type</label>
+                        <CustomSelect
+                          neutral
+                          value={newExcOverrideType}
+                          onChange={v => setNewExcOverrideType(v as 'flat' | 'percent')}
+                          options={[
+                            { value: 'flat',    label: 'Flat $ Rate' },
+                            { value: 'percent', label: '% Discount' },
+                          ]}
+                        />
+                      </div>
+                      <div style={{ flex: '0 0 160px' }}>
+                        <label style={LABEL}>{newExcOverrideType === 'percent' ? 'Discount (%)' : 'Slot Fee ($)'}</label>
+                        <FocusInput
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max={newExcOverrideType === 'percent' ? 100 : undefined}
+                          placeholder={newExcOverrideType === 'percent' ? 'e.g. 50' : 'e.g. 0.00 for free'}
+                          value={newExcFee}
+                          onChange={e => setNewExcFee(e.target.value)}
+                        />
+                      </div>
                     </div>
-                    <div style={{ flex: '0 0 160px' }}>
-                      <label style={LABEL}>Slot Fee Override ($)</label>
-                      <FocusInput
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="e.g. 8.50"
-                        value={newExcFee}
-                        onChange={e => setNewExcFee(e.target.value)}
-                      />
+
+                    <div>
+                      <label style={LABEL}>Applicable Service Types</label>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {COMBOS.map(combo => {
+                          const checked = newExcServiceTypes.includes(combo)
+                          return (
+                            <button
+                              key={combo}
+                              type="button"
+                              onClick={() => setNewExcServiceTypes(prev => checked ? prev.filter(c => c !== combo) : [...prev, combo])}
+                              style={{
+                                padding: '7px 14px', borderRadius: 'var(--r-full)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                                border: `1px solid ${checked ? 'rgba(var(--brand-rgb),0.35)' : 'rgba(0,0,0,0.12)'}`,
+                                background: checked ? 'rgba(var(--brand-rgb),0.10)' : '#fff',
+                                color: checked ? 'var(--brand-color)' : '#374151',
+                              }}
+                            >
+                              {SERVICE_TYPE_LABELS[combo]}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <p style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 6 }}>Leave all selected to apply to every service type.</p>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, paddingBottom: 1 }}>
+
+                    <div style={{ display: 'flex', gap: 8 }}>
                       <button
                         type="button"
                         onClick={() => {
-                          if (!newExcCarrierId) { toast('Please select a carrier', 'error'); return }
+                          if (!newExcCarrierId) { toast('Please select a client', 'error'); return }
                           const carrier = carriersForExc.find(c => c.id === newExcCarrierId)
                           if (!carrier) return
                           setExceptions(prev => [
                             ...prev,
-                            { carrier_id: carrier.id, carrier_name: carrier.name, slot_fee_override: parseFloat(newExcFee) || 0 },
+                            {
+                              carrier_id:     carrier.id,
+                              carrier_name:   carrier.name,
+                              service_types:  newExcServiceTypes.length === COMBOS.length ? [] : newExcServiceTypes,
+                              override_type:  newExcOverrideType,
+                              override_value: parseFloat(newExcFee) || 0,
+                            },
                           ])
                           setPricingDirty(true)
                           setNewExcCarrierId('')
                           setNewExcFee('')
+                          setNewExcServiceTypes([...COMBOS])
+                          setNewExcOverrideType('flat')
                           setShowAddException(false)
                         }}
                         style={{ height: 44, padding: '0 18px', borderRadius: 'var(--r-md)', border: 'none', background: 'var(--brand-color)', color: 'var(--brand-text)', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
@@ -2110,7 +2089,7 @@ export default function SettingsPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => { setShowAddException(false); setNewExcCarrierId(''); setNewExcFee('') }}
+                        onClick={() => { setShowAddException(false); setNewExcCarrierId(''); setNewExcFee(''); setNewExcServiceTypes([...COMBOS]); setNewExcOverrideType('flat') }}
                         style={{ height: 44, padding: '0 16px', borderRadius: 'var(--r-md)', border: '1px solid rgba(0,0,0,0.12)', background: '#fff', color: '#374151', fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
                       >
                         Cancel
@@ -2228,100 +2207,6 @@ export default function SettingsPage() {
                       boxShadow: '0 1px 3px rgba(0,0,0,0.20)',
                     }} />
                   </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Integrations — Connected Systems */}
-          {section === 'integrations' && <GroupLabel first>Connected Systems</GroupLabel>}
-          {section === 'integrations' && (
-            <div>
-              {/* CargoWise */}
-              <div style={CARD}>
-                <SectionHead title="ICS API" desc="Enables automatic customs clearance status checks." />
-                {integrationsLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                    {[0,1,2,3].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                    <Field label="API Endpoint">
-                      <FocusInput type="url" value={cargowise.apiUrl} placeholder="https://cw1.cargowise.com/api/…"
-                        onChange={e => { setCargowise(v => ({ ...v, apiUrl: e.target.value })); setCargowiseDirty(true) }} />
-                    </Field>
-                    <Field label="API Key">
-                      <div style={{ position: 'relative' }}>
-                        <FocusInput
-                          type={showCwApiKey ? 'text' : 'password'}
-                          value={cargowise.apiKey}
-                          placeholder="Your CargoWise API key"
-                          onChange={e => { setCargowise(v => ({ ...v, apiKey: e.target.value })); setCargowiseDirty(true) }}
-                          style={{ paddingRight: 44 }}
-                        />
-                        <button type="button" onClick={() => setShowCwApiKey(v => !v)}
-                          style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500, fontFamily: 'inherit' }}>
-                          {showCwApiKey ? 'Hide' : 'Show'}
-                        </button>
-                      </div>
-                    </Field>
-                    <Field label="Tenant Code">
-                      <FocusInput type="text" value={cargowise.tenantCode} placeholder="SYDCFS"
-                        onChange={e => { setCargowise(v => ({ ...v, tenantCode: e.target.value })); setCargowiseDirty(true) }} />
-                    </Field>
-                    <Field label="Refresh Interval (min)">
-                      <FocusInput type="number" value={cargowise.refreshInterval} min="5" max="1440"
-                        onChange={e => { setCargowise(v => ({ ...v, refreshInterval: e.target.value })); setCargowiseDirty(true) }} />
-                    </Field>
-                  </div>
-                )}
-              </div>
-
-              {/* SMTP */}
-              <div style={CARD}>
-                <SectionHead title="Email (SMTP)" desc="Used for booking confirmations and notifications." />
-                {integrationsLoading ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                    {[0,1,2,3,4,5].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
-                  </div>
-                ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                    <Field label="SMTP Host">
-                      <FocusInput type="text" value={smtp.host} placeholder="smtp.mailgun.org"
-                        onChange={e => { setSmtp(v => ({ ...v, host: e.target.value })); setSmtpDirty(true) }} />
-                    </Field>
-                    <Field label="SMTP Port">
-                      <FocusInput type="number" value={smtp.port} min="1" max="65535"
-                        onChange={e => { setSmtp(v => ({ ...v, port: e.target.value })); setSmtpDirty(true) }} />
-                    </Field>
-                    <Field label="Username">
-                      <FocusInput type="text" value={smtp.username} placeholder="postmaster@mg.cfs.com.au"
-                        onChange={e => { setSmtp(v => ({ ...v, username: e.target.value })); setSmtpDirty(true) }} />
-                    </Field>
-                    <Field label="Password">
-                      <div style={{ position: 'relative' }}>
-                        <FocusInput
-                          type={showSmtpPassword ? 'text' : 'password'}
-                          value={smtp.password}
-                          placeholder="•••••••••"
-                          onChange={e => { setSmtp(v => ({ ...v, password: e.target.value })); setSmtpDirty(true) }}
-                          style={{ paddingRight: 44 }}
-                        />
-                        <button type="button" onClick={() => setShowSmtpPassword(v => !v)}
-                          style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500, fontFamily: 'inherit' }}>
-                          {showSmtpPassword ? 'Hide' : 'Show'}
-                        </button>
-                      </div>
-                    </Field>
-                    <Field label="From Address">
-                      <FocusInput type="email" value={smtp.fromAddress} placeholder="bookings@cfs.com.au"
-                        onChange={e => { setSmtp(v => ({ ...v, fromAddress: e.target.value })); setSmtpDirty(true) }} />
-                    </Field>
-                    <Field label="From Name">
-                      <FocusInput type="text" value={smtp.fromName} placeholder="Sydney CFS"
-                        onChange={e => { setSmtp(v => ({ ...v, fromName: e.target.value })); setSmtpDirty(true) }} />
-                    </Field>
-                  </div>
                 )}
               </div>
             </div>

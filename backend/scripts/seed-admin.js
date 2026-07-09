@@ -30,6 +30,25 @@ async function seed() {
   `, [email, name, role, hash])
 
   console.log(`✓ Upserted user: ${email} / ${password} (role: ${role})`)
+
+  const saEmail    = 'superadmin@glido.com'
+  const saPassword = 'admin123'
+  const saName     = 'Super Admin'
+  const saRole     = 'super_admin'
+  const saHash     = await bcrypt.hash(saPassword, 12)
+
+  await pool.query(`
+    INSERT INTO app_users (email, name, role, password_hash)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (email) DO UPDATE
+      SET password_hash = EXCLUDED.password_hash,
+          name          = EXCLUDED.name,
+          role          = EXCLUDED.role,
+          updated_at    = NOW()
+  `, [saEmail, saName, saRole, saHash])
+
+  console.log(`✓ Upserted user: ${saEmail} / ${saPassword} (role: ${saRole})`)
+
   await pool.end()
 }
 

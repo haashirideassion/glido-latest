@@ -10,6 +10,7 @@ import { fetcher, patchFetcher } from '@/lib/fetcher'
 import { useSignedUrl } from '@/lib/useSignedUrl'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
+import { useCfsAdminSections } from '@/lib/useCfsAdminSections'
 
 const NAV = [
   { to: '/reception',           label: 'Dashboard', icon: ICONS.home,     badge: false },
@@ -29,7 +30,6 @@ const NAV = [
     { to: '/reception/settings#pricing',          label: 'Pricing',        icon: ICONS.percent },
     { to: '/reception/settings#payment',          label: 'Payment',        icon: ICONS.walletMoney },
     { to: '/reception/settings#doc-requirements', label: 'Documents',      icon: ICONS.document },
-    { to: '/reception/settings#integrations',     label: 'Integrations',   icon: ICONS.transshipment },
     { to: '/reception/settings#user-management',  label: 'Team',           icon: ICONS.users },
   ]},
 ] as const
@@ -41,8 +41,21 @@ export default function ReceptionLayout() {
   const { pathname } = routerLocation
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const { isStaff, role: staffRole } = useReceptionAuth()
+  const { isStaff, isSuperAdmin } = useReceptionAuth()
   const perms = useStaffPermissions()
+  const { access: cfsSections } = useCfsAdminSections()
+
+  // Super Admin controls which Settings sections CFS Admins may see. Filter the Settings
+  // sub-nav accordingly (Super Admin themselves bypass the gate). If nothing is allowed,
+  // the Settings parent is dropped entirely.
+  const navItems = NAV.map(item => {
+    if (item.to !== '/reception/settings' || !('children' in item)) return item
+    const kids = (item.children as readonly { to: string }[]).filter(c => {
+      const key = c.to.slice(c.to.indexOf('#') + 1)
+      return isSuperAdmin || cfsSections[key] !== false
+    })
+    return { ...item, children: kids }
+  }).filter(item => !(item.to === '/reception/settings' && 'children' in item && (item as any).children.length === 0))
 
   // Block reception_staff from accessing Settings — redirect with toast
   useEffect(() => {
@@ -299,7 +312,7 @@ export default function ReceptionLayout() {
 
           {/* Centered nav */}
           <nav style={{ width: '100%', maxWidth: 360, padding: '0 22px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {NAV.filter(item => !(item.to === '/reception/settings' && isStaff)).map(item => {
+            {navItems.filter(item => !(item.to === "/reception/settings" && isStaff)).map(item => {
               const isActive = item.to === '/reception'
                 ? pathname === '/reception'
                 : pathname.startsWith(item.to) && pathname !== '/reception/bookings/new'
@@ -364,7 +377,7 @@ export default function ReceptionLayout() {
 
         {/* Nav pill */}
         <nav className="nav-pill">
-          {NAV.filter(item => !(item.to === '/reception/settings' && isStaff)).map(item => {
+          {navItems.filter(item => !(item.to === "/reception/settings" && isStaff)).map(item => {
             const isActive = item.to === '/reception'
               ? pathname === '/reception'
               : pathname.startsWith(item.to) && pathname !== '/reception/bookings/new'
@@ -406,6 +419,7 @@ export default function ReceptionLayout() {
                         <NavLink
                           key={sub.to}
                           to={sub.to}
+                          end={!subHash && sub.to === item.to}
                           className={({ isActive: a }) => ((subActive ?? a) ? 'nav-subitem active' : 'nav-subitem')}
                         >
                           {sub.icon && <span className="nav-subitem-icon"><Icon name={sub.icon} size={15} /></span>}

@@ -7,7 +7,7 @@ import { clearAllClientState } from '@/lib/state-cleanup'
  * Bearer-only — no cookies anywhere.
  */
 
-export type UserRole = 'reception_admin' | 'reception_staff' | 'visitor_registered'
+export type UserRole = 'reception_admin' | 'reception_staff' | 'visitor_registered' | 'super_admin'
 
 interface User {
   id: string
@@ -21,7 +21,7 @@ interface AuthContextType {
   isAuthenticated: boolean
   isAdmin: boolean
   isLoading: boolean
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>
   logout: () => void
 }
 
@@ -104,7 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (
     email: string,
     password: string,
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; role?: UserRole }> => {
     try {
       const response = await apiClient<{
         success: boolean
@@ -116,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (response.success) {
         setToken(response.data.token)
         setUser(response.data.user)
-        return { success: true }
+        return { success: true, role: response.data.user.role }
       }
       return { success: false, error: 'Login failed' }
     } catch (err: any) {
