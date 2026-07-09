@@ -32,7 +32,7 @@ export default function SuperAdminGuard() {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login?role=super_admin" replace />
   }
 
   return (

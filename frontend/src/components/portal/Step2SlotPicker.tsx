@@ -78,7 +78,7 @@ export function Step2SlotPicker() {
 
       {/* Tab bar — only when multi and not applyAll */}
       {multi && !applyAll && (
-        <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
+        <div className="no-scrollbar" style={{ display: 'inline-flex', maxWidth: '100%', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
           {state.slotConfigs.map((cfg, i) => {
             const done = !!cfg.serviceType
             const active = activeSlot === i
@@ -121,7 +121,11 @@ export function Step2SlotPicker() {
 
 
       {/* Cards — single slot view when multi, or all-at-once when applyAll */}
-      <style>{`@keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`}</style>
+      <style>{`
+        @keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
       <div key={activeSlot} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28, animation: 'slideInFromRight 0.22s ease forwards' }}>
         <OptionCard
           selected={(applyAll ? state.slotConfigs[0]?.serviceType : activeCfg?.serviceType) === 'pickup'}

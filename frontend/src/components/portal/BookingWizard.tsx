@@ -79,6 +79,44 @@ export default function BookingWizard() {
 
   const { holdActive, holdLabel, expiring } = useHoldTimer(handleHoldExpire)
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [showTopFade, setShowTopFade] = useState(false)
+  const [showBottomFade, setShowBottomFade] = useState(false)
+
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    setShowTopFade(el.scrollTop > 2)
+    const isBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 2
+    setShowBottomFade(!isBottom && el.scrollHeight > el.clientHeight)
+  }
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) {
+      el.scrollTop = 0
+      const timer = setTimeout(handleScroll, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [state.step])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const observer = new ResizeObserver(() => {
+      handleScroll()
+    })
+    observer.observe(el)
+
+    const firstChild = el.firstElementChild
+    if (firstChild) {
+      observer.observe(firstChild)
+    }
+
+    return () => observer.disconnect()
+  }, [])
+
   // ── Leave-page protection ───────────────────────────────────────────────────
   const shouldBlock = state.step > 1 && !state.bookingConfirmed
 
@@ -99,10 +137,13 @@ export default function BookingWizard() {
   const brandColor = tenant?.primaryColor ?? '#FC6514'
   const brandRgb   = hexToRgb(brandColor)
 
-  const next = () => { dispatch({ type: 'SET', field: 'step', value: state.step + 1 }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const next = () => {
+    dispatch({ type: 'SET', field: 'step', value: state.step + 1 })
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   const back = () => {
     dispatch({ type: 'SET', field: 'step', value: state.step - 1 })
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const [savingLink, setSavingLink] = useState(false)
@@ -126,8 +167,8 @@ export default function BookingWizard() {
 
   // One shared content width so the stepper, form, footer nav and footer text all line up.
   // The slot summary card shows for every booking (including a single slot), not just multi-slot.
-  const bodyWide = state.step >= 2 && state.step <= 6 && !state.bookingConfirmed
-  const WRAP = bodyWide ? 900 : 680
+  const showPanel = state.step >= 2 && state.step <= 6 && !state.bookingConfirmed
+  const WRAP = showPanel ? 1164 : 900
 
   // Whichever slot's tab is open on the current step — the 3D scene focuses on that truck and
   // borrows its time-of-day, so a mixed pickup/dropoff or morning/evening convoy never looks ambiguous
@@ -360,7 +401,7 @@ export default function BookingWizard() {
             </div>
 
             {/* Stepper */}
-            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', maxWidth: WRAP, margin: '0 auto' }}>
+            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', maxWidth: WRAP, margin: '0 auto', padding: '0 24px', boxSizing: 'border-box' }}>
               {STEP_CTX.flatMap((ctx, i) => {
                 const n = i + 1
                 const done             = n < state.step
@@ -429,9 +470,6 @@ export default function BookingWizard() {
 
         {/* ── Step body ── */}
         {state.step !== 8 && (() => {
-          const showPanel = state.step >= 2
-            && state.step <= 6
-            && !state.bookingConfirmed
           // On the Documents step, slot summary moves to the left
           const panelLeft = showPanel && state.step === 6
           const stepEl = {
@@ -444,30 +482,76 @@ export default function BookingWizard() {
             7: <Step7Confirmation />,
           }[state.step]
           return (
-            <div className="wiz-scroll" style={{ background: 'transparent', flex: 1, overflowY: 'auto', minHeight: 0, display: 'flex', flexDirection: 'column', paddingBottom: 132, pointerEvents: 'none' }}>
-              <div className="wiz-body" style={{ maxWidth: WRAP, width: '100%', margin: '0 auto', paddingTop: 'clamp(150px, 25vh, 300px)' }}>
-                {/* Frosted glass panel — brings the form into focus over the blurred world */}
-                <div className="wiz-glass" style={{ background: 'rgba(255,255,255,0.68)', backdropFilter: 'blur(18px) saturate(1.25)', WebkitBackdropFilter: 'blur(18px) saturate(1.25)', border: '1px solid rgba(255,255,255,0.7)', borderRadius: 26, boxShadow: '0 10px 44px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.6)', padding: '24px 26px', pointerEvents: 'auto' }}>
-                  <div style={{ display: showPanel ? 'grid' : 'block', gridTemplateColumns: showPanel ? (panelLeft ? '240px 1fr' : '1fr 240px') : undefined, gap: showPanel ? 24 : undefined, alignItems: 'flex-start' }}>
-                    <div style={{ minWidth: 0, order: panelLeft ? 2 : undefined, perspective: 1400 }}>
-                      <AnimatePresence mode="wait" initial={false} custom={dirRef.current}>
-                        <motion.div
-                          key={state.step}
-                          custom={dirRef.current}
-                          variants={reduce ? fadeVariants : parallaxVariants}
-                          initial="enter" animate="center" exit="exit"
-                          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                        >
-                          {stepEl}
-                        </motion.div>
-                      </AnimatePresence>
-                    </div>
-                    {showPanel && (
-                      <div style={{ position: 'sticky', top: 24, order: panelLeft ? 1 : undefined }}>
-                        <SlotSummaryPanel slots={state.slotConfigs} inline />
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}>
+              <div style={{ height: 'clamp(160px, 25vh, 230px)', flexShrink: 0 }} />
+              <div style={{ maxWidth: WRAP, width: '100%', margin: '0 auto', flex: 1, minHeight: 0, padding: '0 24px 24px', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+                <div style={{ display: 'flex', gap: 24, flex: 1, minHeight: 0, width: '100%' }}>
+                  
+                  {/* Frosted glass panel — brings the form into focus over the blurred world */}
+                  <div className="wiz-glass" style={{ flex: 1, maxWidth: 900, minWidth: 0, background: 'rgba(255,255,255,0.68)', backdropFilter: 'blur(18px) saturate(1.25)', WebkitBackdropFilter: 'blur(18px) saturate(1.25)', border: '1px solid rgba(255,255,255,0.7)', borderRadius: 26, boxShadow: '0 10px 44px rgba(15,23,42,0.13), inset 0 1px 0 rgba(255,255,255,0.6)', pointerEvents: 'auto', display: 'flex', flexDirection: 'column', maxHeight: '100%', minHeight: 0, overflow: 'hidden', position: 'relative' }}>
+                    
+                    {/* Top fade overlay */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: 38,
+                      background: 'linear-gradient(to bottom, rgba(245, 244, 242, 1) 0%, rgba(245, 244, 242, 0.7) 50%, rgba(245, 244, 242, 0) 100%)',
+                      pointerEvents: 'none',
+                      zIndex: 10,
+                      opacity: showTopFade ? 1 : 0,
+                      transition: 'opacity 150ms ease',
+                      borderTopLeftRadius: 26,
+                      borderTopRightRadius: 26,
+                    }} />
+
+                    {/* Bottom fade overlay */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: 38,
+                      background: 'linear-gradient(to top, rgba(245, 244, 242, 1) 0%, rgba(245, 244, 242, 0.7) 50%, rgba(245, 244, 242, 0) 100%)',
+                      pointerEvents: 'none',
+                      zIndex: 10,
+                      opacity: showBottomFade ? 1 : 0,
+                      transition: 'opacity 150ms ease',
+                      borderBottomLeftRadius: 26,
+                      borderBottomRightRadius: 26,
+                    }} />
+
+                    {/* Scrollable Container */}
+                    <div
+                      ref={scrollRef}
+                      onScroll={handleScroll}
+                      className="wiz-scroll"
+                      style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '24px 26px', position: 'relative', WebkitOverflowScrolling: 'touch' }}
+                    >
+                      <div style={{ minWidth: 0, perspective: 1400 }}>
+                        <AnimatePresence mode="wait" initial={false} custom={dirRef.current}>
+                          <motion.div
+                            key={state.step}
+                            custom={dirRef.current}
+                            variants={reduce ? fadeVariants : parallaxVariants}
+                            initial="enter" animate="center" exit="exit"
+                            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                          >
+                            {stepEl}
+                          </motion.div>
+                        </AnimatePresence>
                       </div>
-                    )}
+                    </div>
                   </div>
+
+                  {/* Slot Summary Panel (outside glass card, positioned dynamically) */}
+                  {showPanel && (
+                    <div style={{ width: 240, flexShrink: 0, pointerEvents: 'auto', order: panelLeft ? -1 : undefined }}>
+                      <SlotSummaryPanel slots={state.slotConfigs} inline />
+                    </div>
+                  )}
+
                 </div>
               </div>
             </div>
@@ -475,75 +559,74 @@ export default function BookingWizard() {
         })()}
       </div>
 
-      {/* ── Fixed footer ── */}
-      {state.step !== 8 && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20, background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+        {/* Pinned Footer (inside flex flow, no longer position: fixed) */}
+        {state.step !== 8 && (
+          <div style={{ background: 'rgba(255,255,255,0.97)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderTop: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', flexShrink: 0, pointerEvents: 'auto', zIndex: 20 }}>
 
+            {/* Nav row */}
+            <div style={{ position: 'relative', height: 74, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              <div className="wiz-footer-inner" style={{ width: '100%', maxWidth: WRAP, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxSizing: 'border-box' }}>
 
-          {/* Nav row */}
-          <div style={{ position: 'relative', height: 74, display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-            <div className="wiz-footer-inner" style={{ width: '100%', maxWidth: WRAP, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, boxSizing: 'border-box' }}>
-
-              {/* Back */}
-              <motion.button
-                type="button"
-                className="wiz-btn-back btn-ghost"
-                onClick={back}
-                whileHover={state.step === 1 ? undefined : { x: -2 }}
-                whileTap={state.step === 1 ? undefined : { scale: 0.96 }}
-                style={{ opacity: state.step === 1 ? 0 : 1, pointerEvents: state.step === 1 ? 'none' : 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 20px 9px 14px', fontSize: 15 }}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-                  <path d="M8.5 2.5L4.5 7l4 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Back
-              </motion.button>
-
-              {/* Step counter */}
-              <div className="wiz-step-counter" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-                <span style={{ fontSize: 16, fontWeight: 600, color: '#57534E', letterSpacing: '-0.01em' }}>
-                  {STEP_CTX[state.step - 1]?.label}
-                </span>
-                <span style={{ fontSize: 13, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>{state.step} of 7</span>
-              </div>
-
-              {/* Continue — hidden on the final step (step 7 has its own pay/submit action) */}
-              {state.step !== 7 ? (
+                {/* Back */}
                 <motion.button
                   type="button"
-                  className="btn-primary wiz-btn-next"
-                  onClick={next}
-                  whileHover={canProceed ? { y: -1, scale: 1.02 } : undefined}
-                  whileTap={canProceed ? { scale: 0.96 } : undefined}
-                  style={{ padding: '10px 24px', fontSize: 15, minWidth: 130, justifyContent: 'center', flexShrink: 0, height: 44, filter: !canProceed ? 'grayscale(1) opacity(0.28)' : 'none', cursor: !canProceed ? 'not-allowed' : 'pointer', pointerEvents: !canProceed ? 'none' : 'auto' }}
+                  className="wiz-btn-back btn-ghost"
+                  onClick={back}
+                  whileHover={state.step === 1 ? undefined : { x: -2 }}
+                  whileTap={state.step === 1 ? undefined : { scale: 0.96 }}
+                  style={{ opacity: state.step === 1 ? 0 : 1, pointerEvents: state.step === 1 ? 'none' : 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 20px 9px 14px', fontSize: 15 }}
                 >
-                  {continueLabel}
-                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
-                    <path d="M4.5 2l4 4-4 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+                    <path d="M8.5 2.5L4.5 7l4 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
+                  Back
                 </motion.button>
-              ) : (
-                <div style={{ minWidth: 130, flexShrink: 0 }} />
-              )}
-            </div>
-          </div>
 
-          {/* Mini footer */}
-          <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', flexShrink: 0, pointerEvents: 'auto' }} className="wiz-site-footer-row">
-            <div style={{ width: '100%', maxWidth: WRAP, margin: '0 auto', padding: '9px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxSizing: 'border-box' }}>
-              <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>© 2026 {tenant?.name || 'Glido CFS'} · Sydney Container Freight Station</span>
-              <div style={{ display: 'flex', gap: 18 }}>
-                {['Privacy', 'Terms', 'Contact'].map(l => (
-                  <a key={l} href="#" style={{ fontSize: 13, color: 'var(--text-tertiary)', textDecoration: 'none', transition: 'color 0.15s ease' }}
-                    onMouseOver={e => (e.currentTarget.style.color = '#57534E')}
-                    onMouseOut={e  => (e.currentTarget.style.color = '#A8A29E')}
-                  >{l}</a>
-                ))}
+                {/* Step counter */}
+                <div className="wiz-step-counter" style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: '#57534E', letterSpacing: '-0.01em' }}>
+                    {STEP_CTX[state.step - 1]?.label}
+                  </span>
+                  <span style={{ fontSize: 13, color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>{state.step} of 7</span>
+                </div>
+
+                {/* Continue — hidden on the final step (step 7 has its own pay/submit action) */}
+                {state.step !== 7 ? (
+                  <motion.button
+                    type="button"
+                    className="btn-primary wiz-btn-next"
+                    onClick={next}
+                    whileHover={canProceed ? { y: -1, scale: 1.02 } : undefined}
+                    whileTap={canProceed ? { scale: 0.96 } : undefined}
+                    style={{ padding: '10px 24px', fontSize: 15, minWidth: 130, justifyContent: 'center', flexShrink: 0, height: 44, filter: !canProceed ? 'grayscale(1) opacity(0.28)' : 'none', cursor: !canProceed ? 'not-allowed' : 'pointer', pointerEvents: !canProceed ? 'none' : 'auto' }}
+                  >
+                    {continueLabel}
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+                      <path d="M4.5 2l4 4-4 4" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </motion.button>
+                ) : (
+                  <div style={{ minWidth: 130, flexShrink: 0 }} />
+                )}
+              </div>
+            </div>
+
+            {/* Mini footer */}
+            <div style={{ borderTop: '1px solid rgba(0,0,0,0.05)', flexShrink: 0, pointerEvents: 'auto' }} className="wiz-site-footer-row">
+              <div style={{ width: '100%', maxWidth: WRAP, margin: '0 auto', padding: '9px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxSizing: 'border-box' }}>
+                <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>© 2026 {tenant?.name || 'Glido CFS'} · Sydney Container Freight Station</span>
+                <div style={{ display: 'flex', gap: 18 }}>
+                  {['Privacy', 'Terms', 'Contact'].map(l => (
+                    <a key={l} href="#" style={{ fontSize: 13, color: 'var(--text-tertiary)', textDecoration: 'none', transition: 'color 0.15s ease' }}
+                      onMouseOver={e => (e.currentTarget.style.color = '#57534E')}
+                      onMouseOut={e  => (e.currentTarget.style.color = '#A8A29E')}
+                    >{l}</a>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Footer floating pills — all portaled to escape motion.div CSS transform stacking context */}
       {state.step === 1 && state.slotCount > 1 && createPortal(

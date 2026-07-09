@@ -237,7 +237,7 @@ export function Step5Documents() {
         </div>
 
         {/* Tab bar */}
-        <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
+        <div className="no-scrollbar" style={{ display: 'inline-flex', maxWidth: '100%', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
           {state.slotConfigs.map((cfg, i) => {
             const done   = isSlotDetailDone(cfg)
             const active = activeSlot5 === i
@@ -317,7 +317,11 @@ export function Step5Documents() {
         )}
 
         {/* Active slot panel */}
-        <style>{`@keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`}</style>
+        <style>{`
+          @keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+          .no-scrollbar::-webkit-scrollbar { display: none; }
+          .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        `}</style>
         {activeCfg5 && (
           <div key={activeSlot5} style={{ animation: 'slideInFromRight 0.22s ease forwards' }}>
           <div style={{ padding: 20, background: '#F9F9F8', border: '1.5px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', marginBottom: 24 }}>

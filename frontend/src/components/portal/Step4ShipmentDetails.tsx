@@ -379,7 +379,7 @@ export function Step4ShipmentDetails() {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
+      <div className="no-scrollbar" style={{ display: 'inline-flex', maxWidth: '100%', gap: 4, marginBottom: 24, background: 'linear-gradient(180deg, #ECEBEA 0%, #F5F4F3 100%)', borderRadius: 'var(--r-md)', padding: 5, boxShadow: 'inset 0 1.5px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(255,255,255,0.7)', overflowX: 'auto' }}>
         {state.slotConfigs.map((cfg, i) => {
           const done   = !!cfg.selectedSlotId
           const active = activeSlot === i
@@ -420,7 +420,11 @@ export function Step4ShipmentDetails() {
       </div>
 
       {/* Active slot picker */}
-      <style>{`@keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}`}</style>
+      <style>{`
+        @keyframes slideInFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
       {activeCfg4 && (
         <div key={activeSlot} style={{ animation: 'slideInFromRight 0.22s ease forwards' }}>
         <SlotPickerForSlot
