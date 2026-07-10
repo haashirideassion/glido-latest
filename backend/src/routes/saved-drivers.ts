@@ -1,20 +1,29 @@
 import { Router, Request, Response } from 'express'
 import { pool } from '../db'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth, isVisitorRole } from '../middleware/auth'
 
 const router = Router()
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
-// Public — called from guest booking portal to autofill returning drivers
 
 // GET /api/v2/saved-drivers?tenantId=
-router.get('/', async (req: Request, res: Response) => {
+// Ownership-scoped: a visitor sees only the drivers they saved; reception/kiosk staff see all
+// tenant drivers (they manage everyone); an unauthenticated guest sees none.
+router.get('/', optionalAuth, async (req: Request, res: Response) => {
   const { tenantId } = req.query
   if (!tenantId) return res.status(400).json({ success: false, error: { message: 'tenantId is required' } })
+
+  // Guests get no saved drivers — never leak other accounts' drivers to anonymous callers.
+  if (!req.user) return res.json({ success: true, data: [] })
+
+  const scopeToOwner = isVisitorRole(req.user.role)
   try {
     const { rows } = await pool.query(
-      `SELECT id, name, phone, vehicle_registration, blocked, block_reason FROM saved_drivers
-       WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 100`,
-      [tenantId]
+      scopeToOwner
+        ? `SELECT id, name, phone, vehicle_registration, blocked, block_reason FROM saved_drivers
+           WHERE tenant_id = $1 AND app_user_id = $2 ORDER BY updated_at DESC LIMIT 100`
+        : `SELECT id, name, phone, vehicle_registration, blocked, block_reason FROM saved_drivers
+           WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 100`,
+      scopeToOwner ? [tenantId, req.user.id] : [tenantId]
     )
     return res.json({ success: true, data: rows })
   } catch (err: any) {
@@ -24,20 +33,25 @@ router.get('/', async (req: Request, res: Response) => {
   }
 })
 
-// POST /api/v2/saved-drivers — upsert by name + vehicle_registration
-router.post('/', async (req: Request, res: Response) => {
+// POST /api/v2/saved-drivers — upsert by tenant + vehicle_registration.
+// A visitor's save is tagged with their account (app_user_id) so it stays private to them;
+// reception/guest saves leave the owner NULL (tenant-wide). On conflict the original owner is
+// preserved (COALESCE) so one visitor can't silently reassign another's driver.
+router.post('/', optionalAuth, async (req: Request, res: Response) => {
   const { tenant_id, name, phone, vehicle_registration } = req.body
   if (!tenant_id || !name || !vehicle_registration) {
     return res.status(400).json({ success: false, error: { message: 'tenant_id, name, vehicle_registration are required' } })
   }
+  const ownerId = req.user && isVisitorRole(req.user.role) ? req.user.id : null
   try {
     const { rows } = await pool.query(
-      `INSERT INTO saved_drivers (tenant_id, name, phone, vehicle_registration)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO saved_drivers (tenant_id, name, phone, vehicle_registration, app_user_id)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (tenant_id, vehicle_registration)
-       DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone, updated_at = NOW()
+       DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone,
+         app_user_id = COALESCE(saved_drivers.app_user_id, EXCLUDED.app_user_id), updated_at = NOW()
        RETURNING id, name, phone, vehicle_registration, blocked, block_reason`,
-      [tenant_id, name, phone ?? null, vehicle_registration]
+      [tenant_id, name, phone ?? null, vehicle_registration, ownerId]
     )
     return res.status(201).json({ success: true, data: rows[0] })
   } catch (err: any) {
@@ -47,13 +61,17 @@ router.post('/', async (req: Request, res: Response) => {
   }
 })
 
-// DELETE /api/v2/saved-drivers/:id — auth-protected, visitor portal
+// DELETE /api/v2/saved-drivers/:id — auth-protected. A visitor may only delete their own
+// driver; reception/staff may delete any driver in the tenant.
 router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params
+  const ownerOnly = isVisitorRole(req.user!.role)
   try {
     const result = await pool.query(
-      `DELETE FROM saved_drivers WHERE id = $1 AND tenant_id = $2`,
-      [id, DEFAULT_TENANT_ID]
+      ownerOnly
+        ? `DELETE FROM saved_drivers WHERE id = $1 AND tenant_id = $2 AND app_user_id = $3`
+        : `DELETE FROM saved_drivers WHERE id = $1 AND tenant_id = $2`,
+      ownerOnly ? [id, DEFAULT_TENANT_ID, req.user!.id] : [id, DEFAULT_TENANT_ID]
     )
     if (result.rowCount === 0) {
       return res.status(404).json({ success: false, error: { message: 'Driver not found' } })
@@ -84,10 +102,15 @@ router.patch('/:id', requireAuth, async (req: Request, res: Response) => {
   if (vehicle_registration !== undefined) { sets.push(`vehicle_registration = $${i++}`); params.push(vehicle_registration.trim()) }
   if (!sets.length) return res.status(400).json({ success: false, error: { message: 'No fields to update' } })
   sets.push(`updated_at = NOW()`)
+  // A visitor may only edit their own driver; reception/staff may edit any in the tenant.
+  const ownerOnly = isVisitorRole(req.user!.role)
   params.push(id, DEFAULT_TENANT_ID)
+  const idParam = i++, tenantParam = i++
+  let ownerClause = ''
+  if (ownerOnly) { params.push(req.user!.id); ownerClause = ` AND app_user_id = $${i++}` }
   try {
     const { rows } = await pool.query(
-      `UPDATE saved_drivers SET ${sets.join(', ')} WHERE id = $${i++} AND tenant_id = $${i}
+      `UPDATE saved_drivers SET ${sets.join(', ')} WHERE id = $${idParam} AND tenant_id = $${tenantParam}${ownerClause}
        RETURNING id, name, phone, vehicle_registration, blocked, block_reason`,
       params
     )

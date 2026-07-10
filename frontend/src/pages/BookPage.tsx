@@ -555,7 +555,7 @@ function ConfirmedScreen() {
                   { label: 'Service Type', value: state.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off' },
                   { label: 'Load Type',    value: (state.loadType ?? '').toUpperCase() },
                   { label: 'Date',         value: state.selectedDate },
-                  { label: 'Time',         value: state.selectedSlotLabel || (slot ? `${slot.start_time} – ${slot.end_time}` : '—') },
+                  { label: 'Time',         value: state.selectedSlotLabel || (slot ? `${slot.startTime} – ${slot.endTime}` : '—') },
                   ...(state.hbl             ? [{ label: 'HBL',       value: state.hbl }]             : []),
                   ...(state.containerNumber ? [{ label: 'Container', value: state.containerNumber }] : []),
                 ].map(row => (

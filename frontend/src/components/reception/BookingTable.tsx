@@ -1,9 +1,15 @@
 import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { EmptyState } from '@/components/reception/EmptyState'
+import { Icon, ICONS } from '@/lib/Icon'
+import { motion } from '@/lib/motion'
 import { todaySydney } from '@/lib/time'
 import { toast } from '@/lib/toast'
+import { checkInBooking, completeBooking } from '@/lib/db/bookings'
+import { useTenantInfo } from '@/lib/useTenantInfo'
+import { generateBookingPdf } from '@/lib/bookingPdf'
 import type { Booking } from '@/data/types'
+import type { StaffPermissions } from '@/lib/useStaffPermissions'
 
 const ICS_BAR_COLOR: Record<string, string> = {
   cleared:     '#16A34A',
@@ -37,9 +43,41 @@ interface Props {
   /** When provided, row clicks open a split-view pane instead of navigating away. */
   onSelect?: (b: Booking) => void
   selectedId?: string
+  /** Staff permissions — gates the row check-in/complete quick action. */
+  perms?: StaffPermissions
+  /** Refresh the parent's booking data after a row status change. */
+  onRefresh?: () => void
 }
 
-export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, loading, onSelect, selectedId }: Props) {
+export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, loading, onSelect, selectedId, perms, onRefresh }: Props) {
+  const tenant = useTenantInfo()
+  const [printingId, setPrintingId] = useState('')
+  const [actionId, setActionId] = useState('')
+
+  const handlePrint = async (b: Booking, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setPrintingId(b.id)
+    try {
+      await generateBookingPdf(b, tenant ? { name: tenant.name, logoUrl: tenant.logoUrl } : undefined)
+    } catch { toast('Could not generate PDF', 'error') }
+    finally { setPrintingId('') }
+  }
+
+  const handleCheckIn = async (b: Booking, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setActionId(b.id)
+    try { await checkInBooking(b.id); toast(`✓ ${b.driverName} checked in`, 'success'); onRefresh?.() }
+    catch { toast('Failed to update status', 'error') }
+    finally { setActionId('') }
+  }
+
+  const handleComplete = async (b: Booking, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setActionId(b.id)
+    try { await completeBooking(b.id); toast(`✓ ${b.driverName}'s visit completed`, 'success'); onRefresh?.() }
+    catch { toast('Failed to update status', 'error') }
+    finally { setActionId('') }
+  }
   const today = todaySydney()
   const displayDate = currentDate ?? today
   const navigate = useNavigate()
@@ -110,12 +148,12 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
 
             // Show every identifying detail this booking actually has, clearly labelled —
             // matches the /reception/bookings cards (see BookingsPage.tsx).
-            const details: { label: string; value: string }[] = []
-            if (b.vehicleRegistration) details.push({ label: 'Rego',        value: b.vehicleRegistration })
-            if (b.containerNumber)     details.push({ label: 'Container',   value: b.containerNumber })
-            if (b.houseBillNumber)     details.push({ label: 'HBL',         value: b.houseBillNumber })
-            if (b.bookingReference)    details.push({ label: 'Booking Ref', value: b.bookingReference })
-            if (b.entryNumber)         details.push({ label: 'Entry #',     value: b.entryNumber })
+            const details: { label: string; value: string; icon: string }[] = []
+            if (b.vehicleRegistration) details.push({ label: 'Rego',        value: b.vehicleRegistration, icon: ICONS.truck })
+            if (b.containerNumber)     details.push({ label: 'Container',   value: b.containerNumber,     icon: ICONS.container })
+            if (b.houseBillNumber)     details.push({ label: 'HBL',         value: b.houseBillNumber,     icon: ICONS.document })
+            if (b.bookingReference)    details.push({ label: 'Booking Ref', value: b.bookingReference,    icon: ICONS.bookings })
+            if (b.entryNumber)         details.push({ label: 'Entry #',     value: b.entryNumber,         icon: ICONS.qrCode })
 
             return (
               <div
@@ -213,14 +251,47 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
                   </div>
 
                   {/* Bottom row */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: '#1C1917' }}>{b.driverName}</span>
                     {details.map(d => (
                       <span key={d.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.04)', padding: '2px 8px 2px 7px', borderRadius: 'var(--r-sm)' }}>
+                        <Icon name={d.icon} size={18} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
                         <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d.label}</span>
                         <span style={{ fontSize: 12, color: '#374151' }}>{d.value}</span>
                       </span>
                     ))}
+                    <div style={{ flex: 1 }} />
+                    {/* Print booking PDF */}
+                    <motion.button
+                      onClick={e => handlePrint(b, e)}
+                      disabled={printingId === b.id}
+                      whileTap={printingId === b.id ? undefined : { scale: 0.94 }}
+                      title="Print booking PDF"
+                      style={{ height: 28, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: printingId === b.id ? 'wait' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                    >
+                      <Icon name={ICONS.download} size={13} />
+                      {printingId === b.id ? 'Preparing…' : 'Print'}
+                    </motion.button>
+                    {/* Quick action */}
+                    {b.status === 'scheduled' && perms?.can_mark_complete ? (
+                      <motion.button
+                        onClick={e => handleCheckIn(b, e)}
+                        disabled={actionId === b.id}
+                        whileTap={actionId === b.id ? undefined : { scale: 0.94 }}
+                        style={{ height: 28, padding: '0 12px', fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: actionId === b.id ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: actionId === b.id ? 0.6 : 1 }}
+                      >
+                        {actionId === b.id ? 'Updating…' : 'Mark as Checked In'}
+                      </motion.button>
+                    ) : b.status === 'checked_in' && perms?.can_mark_complete ? (
+                      <motion.button
+                        onClick={e => handleComplete(b, e)}
+                        disabled={actionId === b.id}
+                        whileTap={actionId === b.id ? undefined : { scale: 0.94 }}
+                        style={{ height: 28, padding: '0 12px', fontSize: 12.5, fontWeight: 700, color: '#fff', background: actionId === b.id ? '#6B7280' : '#1C1917', border: 'none', borderRadius: 'var(--r-full)', cursor: actionId === b.id ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                      >
+                        {actionId === b.id ? 'Updating…' : 'Mark as Complete'}
+                      </motion.button>
+                    ) : null}
                   </div>
                 </div>
               </div>

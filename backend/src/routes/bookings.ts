@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { createNotification } from '../lib/notifications'
 import { pool } from '../db'
-import { requireAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth } from '../middleware/auth'
 import { getTenantSlotSettings, computeDaySlots, getMatrixCapacity } from '../lib/slotAvailability'
 
 const router = Router()
@@ -71,13 +71,24 @@ router.get('/:id', async (req: Request, res: Response) => {
 })
 
 // POST /api/v2/bookings
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', optionalAuth, async (req: Request, res: Response) => {
   const b = req.body
   const year = new Date().getFullYear()
   const seq = String(Math.floor(Math.random() * 90000) + 10000)
   const ref = b.reference_number ?? `GLD-${year}-${seq}`
   const tenantId = b.tenant_id ?? b.tenantId
   const vehicleReg = (b.vehicle_registration ?? b.vehicleRegistration ?? '').trim()
+
+  // A guest booking (no authenticated account and no linked user_id) MUST supply a valid email —
+  // it's the only channel to send the confirmation/QR. Reception-created and logged-in visitor
+  // bookings are exempt (reception books on-site; a visitor account already has a verified email).
+  const isGuestBooking = !req.user && !(b.user_id ?? b.userId)
+  if (isGuestBooking) {
+    const email = String(b.guest_email ?? b.guestEmail ?? '').trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, error: { message: 'A valid email address is required to confirm a guest booking.' } })
+    }
+  }
   try {
     // Enforce driver blocks by VEHICLE REGISTRATION, not name — a name match alone is not a
     // reliable identity signal (two different drivers can share a name; a blocked driver could

@@ -142,7 +142,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <BookingTable bookings={bookings} slotCounts={slotCounts} groupSlots={groupSlots} currentDate={today} loading={isLoading} onSelect={setSelected} selectedId={selected?.id} />
+      <BookingTable bookings={bookings} slotCounts={slotCounts} groupSlots={groupSlots} currentDate={today} loading={isLoading} onSelect={setSelected} selectedId={selected?.id} perms={perms} onRefresh={refresh} />
       <RecentVisitors stats={stats} loading={isLoading} onSelect={setSelected} selectedId={selected?.id} />
       {/* defaultCapacity ×4 — the fallback line should represent the total across all 4
           combos (matching how a configured hour's total is itself a sum of 4 cells), for

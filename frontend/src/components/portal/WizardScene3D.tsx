@@ -711,7 +711,7 @@ export function WizardScene3D(props: Props) {
       <div
         className="wiz-scene3d-layer"
         style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: '58vh', zIndex: 0, pointerEvents: 'none',
+          position: 'absolute', top: 0, left: 0, right: 0, height: '58%', zIndex: 0, pointerEvents: 'none',
           WebkitMaskImage: 'radial-gradient(140% 100% at 50% 34%, #000 58%, rgba(0,0,0,0.28) 84%, transparent 100%)',
           maskImage: 'radial-gradient(140% 100% at 50% 34%, #000 58%, rgba(0,0,0,0.28) 84%, transparent 100%)',
         }}
@@ -733,7 +733,7 @@ export function WizardScene3D(props: Props) {
         className="wiz-orbit-pad"
         onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
         onWheel={e => { const sc = document.querySelector('.wiz-scroll'); if (sc) sc.scrollTop += e.deltaY }}
-        style={{ position: 'absolute', top: 128, left: 0, right: 0, height: 'calc(44vh - 128px)', zIndex: 1, cursor: grabbing ? 'grabbing' : 'grab', touchAction: 'none' }}
+        style={{ position: 'absolute', top: 128, left: 0, right: 0, height: 'calc(44% - 128px)', zIndex: 1, cursor: grabbing ? 'grabbing' : 'grab', touchAction: 'none' }}
       />
     </>
   )

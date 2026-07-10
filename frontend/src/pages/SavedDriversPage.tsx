@@ -50,9 +50,9 @@ function EditDriverModal({ driver, onClose, onSaved }: {
   // rather than via the className, since that CSS file isn't actually wired into this app's
   // build (only the legacy pre-migration Hono layout referenced it).
   const LABEL: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 6 }
-  const FIELD: React.CSSProperties = { width: '100%', padding: '11px 14px', borderRadius: 'var(--r-sm)', border: '1.5px solid #e5e7eb', background: '#fff', fontSize: 15, color: '#111827', fontFamily: 'inherit', outline: 'none', transition: 'border-color 0.15s ease', boxSizing: 'border-box' }
-  const focus = (e: React.FocusEvent<HTMLInputElement>) => { e.target.style.borderColor = 'var(--brand-color)' }
-  const blur  = (e: React.FocusEvent<HTMLInputElement>) => { e.target.style.borderColor = errors[e.target.name] ? '#EF4444' : '#e5e7eb' }
+  const FIELD: React.CSSProperties = { width: '100%', padding: '9px 12px', borderRadius: 'var(--r-sm)', border: '1px solid #E2E0DD', background: '#fff', fontSize: 15, color: '#1C1917', fontFamily: 'inherit', outline: 'none', transition: 'border-color 0.15s ease, box-shadow 0.15s ease', boxSizing: 'border-box' }
+  const focus = (e: React.FocusEvent<HTMLInputElement>) => { e.target.style.borderColor = 'rgba(var(--brand-rgb),0.50)'; e.target.style.boxShadow = '0 0 0 3px rgba(var(--brand-rgb),0.12)' }
+  const blur  = (e: React.FocusEvent<HTMLInputElement>) => { e.target.style.borderColor = errors[e.target.name] ? '#EF4444' : 'rgba(0,0,0,0.10)'; e.target.style.boxShadow = 'none' }
 
   const validate = () => {
     const e: Record<string, string> = {}

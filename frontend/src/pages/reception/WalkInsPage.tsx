@@ -7,6 +7,8 @@ import { fmtTime } from '@/lib/time'
 import { getActiveWalkIns } from '@/lib/db/walk-ins'
 import { getBookings, getBookingById } from '@/lib/db/bookings'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
+import { useTenantInfo } from '@/lib/useTenantInfo'
+import { generateBookingPdf } from '@/lib/bookingPdf'
 import { BookingSlideOver } from '@/components/reception/BookingSlideOver'
 import { AnimatedNumber, motion } from '@/lib/motion'
 import { toast } from '@/lib/toast'
@@ -143,6 +145,22 @@ export default function WalkInsPage() {
   }, [visitors, selectParam]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openEntry = (v: VisitorEntry) => { if (isWide) setSelected(v); else navigate(`/reception/visitors/${v.id}`) }
+
+  const tenant = useTenantInfo()
+  const [printingId, setPrintingId] = useState('')
+  const handlePrint = async (v: VisitorEntry, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setPrintingId(v.id)
+    try {
+      const booking = await getBookingById(v.id)
+      if (!booking) { toast('Booking not found', 'error'); return }
+      await generateBookingPdf(booking, tenant ? { name: tenant.name, logoUrl: tenant.logoUrl } : undefined)
+    } catch {
+      toast('Could not generate PDF', 'error')
+    } finally {
+      setPrintingId('')
+    }
+  }
 
   // ── Filter state ─────────────────────────────────────────────────────────────
   const [preset,      setPreset]      = useState<Preset>('today')
@@ -491,6 +509,21 @@ export default function WalkInsPage() {
                       )}
                       {v.personBeingVisited && (
                         <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>→ {v.personBeingVisited}</span>
+                      )}
+                      {v.type === 'booking' && (
+                        <>
+                          <div style={{ flex: 1 }} />
+                          <motion.button
+                            onClick={e => handlePrint(v, e)}
+                            disabled={printingId === v.id}
+                            whileTap={printingId === v.id ? undefined : { scale: 0.94 }}
+                            title="Print booking PDF"
+                            style={{ height: 28, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: printingId === v.id ? 'wait' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                          >
+                            <Icon name={ICONS.download} size={13} />
+                            {printingId === v.id ? 'Preparing…' : 'Print'}
+                          </motion.button>
+                        </>
                       )}
                     </div>
                   </div>

@@ -4,12 +4,41 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { fmtDateTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
 import { fetcher } from '@/lib/fetcher'
+import { openSignedUrl } from '@/lib/useSignedUrl'
 import {
   checkInBooking, completeBooking, cancelBooking,
   rescheduleBooking, refreshIcsStatus,
 } from '@/lib/db/bookings'
 import type { Booking } from '@/data/types'
 import type { StaffPermissions } from '@/lib/useStaffPermissions'
+
+interface BookingDocument {
+  id: string
+  document_type: string
+  filename: string
+  file_size_bytes: number | null
+  storage_path: string
+}
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  cartage_advice:       'Cartage Advice',
+  delivery_order:       'Delivery Order',
+  packing_list:         'Packing List',
+  commercial_invoice:   'Commercial Invoice',
+  bill_of_lading:       'Bill of Lading',
+  customs_declaration:  'Customs Declaration',
+  biosecurity:          'Biosecurity Direction',
+  general:              'Document',
+}
+function fmtDocType(t: string): string {
+  return DOC_TYPE_LABELS[t] ?? t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+function fmtFileSize(bytes: number | null): string {
+  if (!bytes || bytes <= 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const ICS_BADGE: Record<string, string> = {
   cleared:     'background:rgba(34,197,94,0.10);color:#16A34A;border:1px solid rgba(34,197,94,0.22);',
@@ -51,6 +80,8 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
   const [b, setB] = useState<Booking>(initial)
   const [loading, setLoading] = useState('')
   const [checkin, setCheckin] = useState<any>(null)
+  const [documents, setDocuments] = useState<BookingDocument[]>([])
+  const [viewingDoc, setViewingDoc] = useState('')
 
   // Fetch identity check record when booking is checked-in or completed
   useEffect(() => {
@@ -59,6 +90,26 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
       .then((res: any) => setCheckin((res?.data ?? [])[0] ?? null))
       .catch(() => {})
   }, [b.id, b.status])
+
+  // Fetch documents uploaded during the booking (cartage advice, packing list, etc.)
+  useEffect(() => {
+    let cancelled = false
+    fetcher(`/api/booking-documents?bookingId=${encodeURIComponent(b.id)}`)
+      .then((res: any) => { if (!cancelled) setDocuments(Array.isArray(res?.data) ? res.data : []) })
+      .catch(() => { if (!cancelled) setDocuments([]) })
+    return () => { cancelled = true }
+  }, [b.id])
+
+  const viewDoc = async (doc: BookingDocument) => {
+    setViewingDoc(doc.id)
+    try {
+      await openSignedUrl(doc.storage_path)
+    } catch {
+      toast('Could not open document', 'error')
+    } finally {
+      setViewingDoc('')
+    }
+  }
 
   // Modal state
   const [confirmModal,    setConfirmModal]    = useState(false)
@@ -72,7 +123,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
 
   const act = async (
     label: string,
-    fn: () => Promise<Booking | undefined>,
+    fn: () => Promise<Booking | void | undefined>,
     successMsg?: string,
     toastType: 'success' | 'info' | 'error' = 'success',
   ) => {
@@ -154,13 +205,17 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
             <p style={SL}>Driver / Visitor</p>
             <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
-                { label: 'Driver', value: b.driverName,             icon: ICONS.user  },
-                { label: 'Phone',  value: b.driverPhone || '—',     icon: ICONS.phone },
-                { label: 'Guest',  value: b.guestName || b.driverName, icon: ICONS.users },
-              ].map(row => (
-                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                { label: 'Driver',       value: b.driverName,          icon: ICONS.user,   show: true, mono: false },
+                { label: 'Driver Phone', value: b.driverPhone,         icon: ICONS.phone,  show: !!b.driverPhone, mono: false },
+                { label: 'Vehicle Rego', value: b.vehicleRegistration, icon: ICONS.truck,  show: !!b.vehicleRegistration, mono: true },
+                { label: 'Guest',        value: b.guestName,           icon: ICONS.users,  show: !!b.guestName && b.guestName !== b.driverName, mono: false },
+                { label: 'Guest Email',  value: b.guestEmail,          icon: ICONS.email,  show: !!b.guestEmail, mono: false },
+                { label: 'Guest Phone',  value: b.guestPhone,          icon: ICONS.phone,  show: !!b.guestPhone && b.guestPhone !== b.driverPhone, mono: false },
+                { label: 'Company',      value: b.companyName,         icon: ICONS.building, show: !!b.companyName, mono: false },
+              ].filter(r => r.show).map(row => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={RL}><Icon name={row.icon} size={13} style={{ color: 'var(--text-secondary)' }} />{row.label}</span>
-                  <span style={RV}>{row.value}</span>
+                  <span style={{ ...RV, fontFamily: row.mono ? 'ui-monospace,monospace' : undefined, textAlign: 'right', wordBreak: 'break-word' }}>{row.value}</span>
                 </div>
               ))}
             </div>
@@ -188,16 +243,55 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
           </section>
 
           {/* Shipment */}
-          {(b.houseBillNumber || b.containerNumber || b.weightKg || b.volumeCbm) && (
+          {(b.houseBillNumber || b.containerNumber || b.containerSize || b.weightKg || b.volumeCbm ||
+            b.packageCount || (b.palletCount ?? 0) > 0 || b.entryNumber || b.purpose || b.consolidator || b.bookingReference) && (
             <section>
               <p style={SL}>Shipment</p>
               <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {b.houseBillNumber  && <Row label="HBL"       value={b.houseBillNumber}  icon={ICONS.document}  mono />}
-                {b.containerNumber  && <Row label="Container" value={b.containerNumber}   icon={ICONS.container} mono />}
+                {b.houseBillNumber  && <Row label="HBL"           value={b.houseBillNumber}  icon={ICONS.document}  mono />}
+                {b.bookingReference && <Row label="Booking Ref"   value={b.bookingReference}  icon={ICONS.document}  mono />}
+                {b.entryNumber      && <Row label="Entry #"       value={b.entryNumber}       icon={ICONS.document}  mono />}
+                {b.containerNumber  && <Row label="Container"     value={b.containerNumber}   icon={ICONS.container} mono />}
+                {b.containerSize    && <Row label="Container Size" value={b.containerSize}    icon={ICONS.container} />}
+                {b.consolidator     && <Row label="Consolidator"  value={b.consolidator}      icon={ICONS.building} />}
+                {b.purpose          && <Row label="Purpose"       value={b.purpose} />}
                 {b.weightKg         && <Row label="Weight"    value={`${b.weightKg.toLocaleString()} kg`} icon={ICONS.cargo} />}
                 {b.volumeCbm        && <Row label="Volume"    value={`${b.volumeCbm} CBM`} icon={ICONS.layers} />}
                 {b.packageCount     && <Row label="Packages"  value={`${b.packageCount} pkgs`} />}
                 {(b.palletCount ?? 0) > 0 && <Row label="Pallets" value={`${b.palletCount} × ${b.palletType}`} />}
+              </div>
+            </section>
+          )}
+
+          {/* Documents uploaded during booking */}
+          {documents.length > 0 && (
+            <section>
+              <p style={SL}>Documents</p>
+              <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {documents.map(doc => (
+                  <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                      <span style={{ width: 30, height: 30, borderRadius: 'var(--r-sm)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(var(--brand-rgb),0.08)' }}>
+                        <Icon name={ICONS.document} size={15} style={{ color: 'var(--brand-color)' }} />
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontSize: 14, fontWeight: 600, color: '#1C1917', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmtDocType(doc.document_type)}</p>
+                        <p style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {doc.filename}{fmtFileSize(doc.file_size_bytes) ? ` · ${fmtFileSize(doc.file_size_bytes)}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => viewDoc(doc)}
+                      disabled={viewingDoc === doc.id}
+                      style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 16px', fontSize: 13, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.14)', borderRadius: 'var(--r-full)', cursor: viewingDoc === doc.id ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+                    >
+                      <Icon name={ICONS.eye} size={13} />
+                      {viewingDoc === doc.id ? 'Opening…' : 'View'}
+                    </button>
+                  </div>
+                ))}
               </div>
             </section>
           )}
@@ -287,6 +381,11 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
                 {(b.storageCharge ?? 0) > 0     && <ChargeRow label={`Storage (${b.storageDays} days)`} val={b.storageCharge!} />}
                 {(b.shrinkWrapCharge ?? 0) > 0  && <ChargeRow label="Shrink wrap" val={b.shrinkWrapCharge!} />}
                 {b.slotFee !== undefined          && <ChargeRow label="Slot fee"    val={b.slotFee} />}
+                {b.subtotal !== undefined && b.subtotal !== null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--text-tertiary)' }}>
+                    <span>Subtotal</span><span>${b.subtotal.toFixed(2)}</span>
+                  </div>
+                )}
                 {b.gstAmount !== undefined && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--text-tertiary)', paddingTop: 6, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
                     <span>GST (10%)</span><span>${b.gstAmount.toFixed(2)}</span>
@@ -323,6 +422,24 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={RL}><Icon name={ICONS.checkSquare} size={13} style={{ color: '#22C55E' }} />Completed</span>
                   <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>{fmtDateTime(b.completedAt)}</span>
+                </div>
+              )}
+              {b.completionNotes && (
+                <div style={{ paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>Completion Notes</p>
+                  <p style={{ fontSize: 13, color: '#1C1917', lineHeight: 1.5 }}>{b.completionNotes}</p>
+                </div>
+              )}
+              {b.bookingSource && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+                  <span style={RL}>Source</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{b.bookingSource.replace(/_/g, ' ')}</span>
+                </div>
+              )}
+              {b.groupReference && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={RL}>Group</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', fontFamily: 'ui-monospace,monospace' }}>{b.groupReference}</span>
                 </div>
               )}
             </div>

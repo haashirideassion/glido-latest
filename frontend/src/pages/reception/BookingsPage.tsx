@@ -7,6 +7,8 @@ import { toast } from '@/lib/toast'
 import { todaySydney, TZ } from '@/lib/time'
 import type { Booking } from '@/data/types'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
+import { useTenantInfo } from '@/lib/useTenantInfo'
+import { generateBookingPdf } from '@/lib/bookingPdf'
 import { BookingSlideOver } from '@/components/reception/BookingSlideOver'
 import { AnimatedNumber, motion } from '@/lib/motion'
 import { EmptyState } from '@/components/reception/EmptyState'
@@ -314,6 +316,20 @@ function presetDates(p: Preset): { from: string; to: string } {
 export default function BookingsPage() {
   usePageTitle('Glido | Bookings')
   const perms = useStaffPermissions()
+  const tenant = useTenantInfo()
+  const [printingId, setPrintingId] = useState('')
+
+  const handlePrint = async (b: Booking, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setPrintingId(b.id)
+    try {
+      await generateBookingPdf(b, tenant ? { name: tenant.name, logoUrl: tenant.logoUrl } : undefined)
+    } catch {
+      toast('Could not generate PDF', 'error')
+    } finally {
+      setPrintingId('')
+    }
+  }
 
   const [searchParams, setSearchParams] = useSearchParams()
   const _initialPreset: Preset = searchParams.get('filter') === 'today' ? 'today' : '30d'
@@ -745,12 +761,12 @@ export default function BookingsPage() {
                 // Show every identifying detail this booking actually has, each clearly labelled —
                 // collapsing HBL/container into one unlabelled field made FCL and LCL bookings
                 // look identical and hid whichever value lost the fallback.
-                const details: { label: string; value: string }[] = []
-                if (b.vehicleRegistration) details.push({ label: 'Rego',        value: b.vehicleRegistration })
-                if (b.containerNumber)     details.push({ label: 'Container',   value: b.containerNumber })
-                if (b.houseBillNumber)     details.push({ label: 'HBL',         value: b.houseBillNumber })
-                if (b.bookingReference)    details.push({ label: 'Booking Ref', value: b.bookingReference })
-                if (b.entryNumber)         details.push({ label: 'Entry #',     value: b.entryNumber })
+                const details: { label: string; value: string; icon: string }[] = []
+                if (b.vehicleRegistration) details.push({ label: 'Rego',        value: b.vehicleRegistration, icon: ICONS.truck })
+                if (b.containerNumber)     details.push({ label: 'Container',   value: b.containerNumber,     icon: ICONS.container })
+                if (b.houseBillNumber)     details.push({ label: 'HBL',         value: b.houseBillNumber,     icon: ICONS.document })
+                if (b.bookingReference)    details.push({ label: 'Booking Ref', value: b.bookingReference,    icon: ICONS.bookings })
+                if (b.entryNumber)         details.push({ label: 'Entry #',     value: b.entryNumber,         icon: ICONS.qrCode })
                 const isSel      = selected?.id === b.id
                 const displayRef = b.groupReference ?? b.referenceNumber
 
@@ -822,15 +838,27 @@ export default function BookingsPage() {
                       </div>
 
                       {/* Bottom row */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                         <span style={{ fontSize: 13, fontWeight: 600, color: '#1C1917' }}>{b.driverName}</span>
                         {details.map(d => (
                           <span key={d.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.04)', padding: '2px 8px 2px 7px', borderRadius: 'var(--r-sm)' }}>
+                            <Icon name={d.icon} size={18} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
                             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{d.label}</span>
                             <span style={{ fontSize: 12, color: '#374151' }}>{d.value}</span>
                           </span>
                         ))}
                         <div style={{ flex: 1 }} />
+                        {/* Print booking PDF */}
+                        <motion.button
+                          onClick={e => handlePrint(b, e)}
+                          disabled={printingId === b.id}
+                          whileTap={printingId === b.id ? undefined : { scale: 0.94 }}
+                          title="Print booking PDF"
+                          style={{ height: 28, padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: printingId === b.id ? 'wait' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                        >
+                          <Icon name={ICONS.download} size={13} />
+                          {printingId === b.id ? 'Preparing…' : 'Print'}
+                        </motion.button>
                         {/* Quick action */}
                         {b.status === 'scheduled' && perms.can_mark_complete ? (
                           <motion.button

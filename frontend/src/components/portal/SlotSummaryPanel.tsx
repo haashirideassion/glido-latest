@@ -125,7 +125,7 @@ export function SlotSummaryPanel({ slots, inline }: { slots: SlotConfig[]; inlin
                   {/* Not yet started hint */}
                   {!service && (
                     <p style={{ fontSize: 11.5, color: '#9CA3AF', margin: '4px 0 0', fontStyle: 'italic' }}>
-                      Configure below ↓
+                      Complete the steps to configure
                     </p>
                   )}
                 </div>

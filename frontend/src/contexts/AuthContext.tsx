@@ -65,6 +65,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // ── STEP 1: Instantly restore from JWT payload (no network) ──
     // Prevents login-page flash on every reload.
     const localUser = decodeJwtPayload(token)
+    // A kiosk DEVICE token lives under the same storage key so the kiosk page's API calls
+    // authenticate — but it is NOT a portal user. Never surface it as the logged-in user
+    // (otherwise /book etc. show the device's "kiosk-…@glido.internal" identity), and never
+    // clear it here (the kiosk page still needs it for its own requests).
+    if (localUser && (localUser.role as string) === 'kiosk') {
+      setUser(null)
+      setIsLoading(false)
+      return
+    }
     if (localUser) {
       setUser(localUser)
       setIsLoading(false)
