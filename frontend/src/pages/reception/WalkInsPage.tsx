@@ -80,7 +80,7 @@ const ICS_LEGEND = [
 const daysAgo = (n: number) =>
   new Date(Date.now() - n * 86400000).toLocaleDateString('sv-SE', { timeZone: TZ })
 
-type Preset = 'today' | '7d' | '30d' | 'all'
+type Preset = 'today' | 'tomorrow' | '7d' | '30d' | 'all'
 
 // Service × load-type combo filter (mirrors the Analytics / Bookings row). Walk-ins have no
 // cargo booking, so they only match "All".
@@ -94,7 +94,8 @@ const COMBOS = [
 
 function presetDates(p: Preset): { from: string; to: string } {
   const today = todaySydney()
-  if (p === 'today') return { from: today, to: today }
+  if (p === 'today')    return { from: today, to: today }
+  if (p === 'tomorrow') { const t = daysAgo(-1); return { from: t, to: t } }
   if (p === '7d')   return { from: daysAgo(7),  to: today }
   if (p === '30d')  return { from: daysAgo(30), to: today }
   return { from: '', to: '' }
@@ -350,8 +351,8 @@ export default function WalkInsPage() {
           options={[{ value: 'walkin', label: 'Walk-in Only' }, { value: 'booking', label: 'Booking Only' }]} />
 
         {/* Quick presets */}
-        {(['today', '7d', '30d', 'all'] as const).map(p => {
-          const labels: Record<string, string> = { today: 'Today', '7d': '7 Days', '30d': '30 Days', all: 'All Time' }
+        {(['today', 'tomorrow', '7d', '30d', 'all'] as const).map(p => {
+          const labels: Record<string, string> = { today: 'Today', tomorrow: 'Tomorrow', '7d': '7 Days', '30d': '30 Days', all: 'All Time' }
           const active = preset === p
           return (
             <button key={p} type="button" onClick={() => applyPreset(p)}

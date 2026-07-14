@@ -167,7 +167,7 @@ export default function ReportsConfigPage() {
 
   const vis = (key: string) => visibleColumns.includes(key)
 
-  const QUICK = [{ label: 'Today', from: today(), to: today() }, { label: '7 Days', from: daysAgo(7), to: today() }, { label: '15 Days', from: daysAgo(15), to: today() }]
+  const QUICK = [{ label: 'Today', from: today(), to: today() }, { label: 'Tomorrow', from: daysAgo(-1), to: daysAgo(-1) }, { label: '7 Days', from: daysAgo(7), to: today() }, { label: '15 Days', from: daysAgo(15), to: today() }]
 
   const hasFilters = !!(status || search || from !== daysAgo(7) || to !== today())
   const clearAll = () => { setStatus(''); setSearch(''); setFrom(daysAgo(7)); setTo(today()) }

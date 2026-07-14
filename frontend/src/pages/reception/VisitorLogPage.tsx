@@ -164,6 +164,7 @@ export default function VisitorLogPage() {
 
   const QUICK = [
     { label: 'Today',    from: today(),     to: today()   },
+    { label: 'Tomorrow', from: daysAgo(-1), to: daysAgo(-1) },
     { label: '7 Days',   from: daysAgo(7),  to: today()   },
     { label: '30 Days',  from: daysAgo(30), to: today()   },
     { label: 'All Time', from: '',          to: ''        },
