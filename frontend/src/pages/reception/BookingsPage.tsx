@@ -288,9 +288,10 @@ const ICS_LEGEND = [
 const FIELD = { width: '100%', padding: '0 14px', height: 36, fontSize: 15, color: '#1C1917', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', outline: 'none', boxSizing: 'border-box' as const, transition: 'border-color 0.15s ease, box-shadow 0.15s ease' }
 
 // ─── Preset config ────────────────────────────────────────────────────────────
-type Preset = 'today' | '7d' | '30d' | 'all'
+type Preset = 'today' | 'tomorrow' | '7d' | '30d' | 'all'
 const PRESETS: { id: Preset; label: string }[] = [
-  { id: 'today', label: 'Today' },
+  { id: 'today',    label: 'Today' },
+  { id: 'tomorrow', label: 'Tomorrow' },
   { id: '7d',   label: '7 Days' },
   { id: '30d',  label: '30 Days' },
   { id: 'all',  label: 'All Time' },
@@ -307,7 +308,8 @@ const COMBOS = [
 
 function presetDates(p: Preset): { from: string; to: string } {
   const today = todaySydney()
-  if (p === 'today') return { from: today, to: today }
+  if (p === 'today')    return { from: today, to: today }
+  if (p === 'tomorrow') { const t = daysAgo(-1); return { from: t, to: t } }
   if (p === '7d')   return { from: daysAgo(7),  to: today }
   if (p === '30d')  return { from: daysAgo(30), to: today }
   return { from: '', to: '' }
@@ -601,8 +603,8 @@ export default function BookingsPage() {
           options={[{ value: 'scheduled', label: 'Scheduled' }, { value: 'completed', label: 'Completed' }, { value: 'cancelled', label: 'Cancelled' }]} />
         <FilterSelect placeholder="All Services" value={serviceFilter} onChange={setServiceFilter}
           options={[{ value: 'pickup', label: 'Pick Up' }, { value: 'dropoff', label: 'Drop Off' }]} />
-        {(['today', '7d', '30d', 'all'] as const).map(p => {
-          const labels: Record<string, string> = { today: 'Today', '7d': '7 Days', '30d': '30 Days', all: 'All Time' }
+        {(['today', 'tomorrow', '7d', '30d', 'all'] as const).map(p => {
+          const labels: Record<string, string> = { today: 'Today', tomorrow: 'Tomorrow', '7d': '7 Days', '30d': '30 Days', all: 'All Time' }
           const active = preset === p
           return (
             <button key={p} type="button" onClick={() => applyPreset(p)}

@@ -59,6 +59,15 @@ export function Step3HoldConfirm() {
         setActiveSlot(activeSlot + 1)
       }
     }
+    // Every slot now has a load type (or "apply to all" just filled them all in one go) —
+    // this step is done, so move on automatically instead of forcing a manual Continue click.
+    const allFilled = applyAll || state.slotConfigs.every(c => c.index === slotIndex ? true : !!c.loadType)
+    if (allFilled) {
+      setTimeout(() => {
+        dispatch({ type: 'SET', field: 'step', value: (state.step + 1) as any })
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }, 300)
+    }
   }
 
   const activeCfg = state.slotConfigs[activeSlot]

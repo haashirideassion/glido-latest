@@ -174,6 +174,18 @@ export function Step4ShipmentDetails() {
   })()
   const dates = calendarDays(advanceDays)
 
+  // ── Hooks below must run unconditionally on every render, regardless of `multi` — this
+  // component used to declare them inside the single-slot branch (and `applyAll` only after
+  // it), so single-slot and multi-slot renders called a different NUMBER of hooks. If `multi`
+  // ever flips between renders (e.g. a state reset triggered by logging in mid-booking), React
+  // throws "Rendered more hooks than during the previous render." Hoisted here to fix that.
+  const [applyAll, setApplyAll] = useState(false)
+  const singleSlotGroups = groupSlotsByPeriods(state.slots, periods)
+  const [activePeriod, setActivePeriod] = useState<string>(() => singleSlotGroups[0]?.key ?? 'morning')
+  useEffect(() => {
+    setActivePeriod(singleSlotGroups[0]?.key ?? 'morning')
+  }, [state.selectedDate]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Single-slot UI ────────────────────────────────────────────────────────
   if (!multi) {
     const selectSlot = (slot: TimeSlot) => {
@@ -191,13 +203,8 @@ export function Step4ShipmentDetails() {
         window.scrollTo({ top: 0, behavior: 'smooth' })
       }, 300)
     }
-    const slotGroups   = groupSlotsByPeriods(state.slots, periods)
+    const slotGroups   = singleSlotGroups
     const isLoading    = state.slotsLoading || tenantLoading
-
-    const [activePeriod, setActivePeriod] = useState<string>(() => slotGroups[0]?.key ?? 'morning')
-    useEffect(() => {
-      setActivePeriod(slotGroups[0]?.key ?? 'morning')
-    }, [state.selectedDate]) // eslint-disable-line react-hooks/exhaustive-deps
 
     const activeGroup = slotGroups.find(g => g.key === activePeriod) ?? slotGroups[0]
 
@@ -245,8 +252,6 @@ export function Step4ShipmentDetails() {
   }
 
   // ── Multi-slot UI ──────────────────────────────────────────────────────────
-  const [applyAll, setApplyAll] = useState(false)
-
   const toggleApplyAll = (newVal: boolean) => {
     setApplyAll(newVal)
     if (!newVal) return
@@ -551,13 +556,18 @@ function DateStrip({ dates, selectedDate, wh, cutoff, isTodayPastCutoff, onSelec
   return (
     <div style={{ overflowX: 'auto', overflowY: 'clip', marginBottom: 28 }}>
     <div style={{ display: 'flex', gap: 8, flexWrap: 'nowrap', paddingTop: 12, paddingBottom: 8, paddingRight: 12 }}>
-      {dates.map(d => {
+      {dates.map((d, i) => {
         const sel            = selectedDate === d.iso
         const dayCfg         = wh?.[d.dayKey]
         const closedDay      = dayCfg ? !dayCfg.enabled : false
         const cutoffDisabled = d.isToday && isTodayPastCutoff
         const disabled       = closedDay || cutoffDisabled
         const shortDay       = d.dayFull.slice(0, 3).toUpperCase()
+        // The strip always starts at today and runs day-by-day, so index 0/1 are always
+        // Today/Tomorrow. Swap the weekday abbreviation for those two, and show the actual
+        // weekday + date underneath so it's still identifiable (a11y / at-a-glance clarity).
+        const isTomorrow     = i === 1
+        const topLabel       = d.isToday ? 'TODAY' : isTomorrow ? 'TMRW' : shortDay
         return (
           <button key={d.iso} type="button"
             className={`wiz-tile${sel ? ' selected' : ''}`}
@@ -575,11 +585,16 @@ function DateStrip({ dates, selectedDate, wh, cutoff, isTodayPastCutoff, onSelec
             }}
           >
             <p style={{ fontSize: 11, fontWeight: 700, color: sel ? 'var(--brand-color)' : '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
-              {shortDay}
+              {topLabel}
             </p>
             <p style={{ fontSize: 22, fontWeight: 800, color: sel ? 'var(--brand-color)' : '#1C1917', lineHeight: 1, fontFamily: 'inherit' }}>
               {d.num}
             </p>
+            {(d.isToday || isTomorrow) && (
+              <p style={{ fontSize: 9.5, fontWeight: 600, color: sel ? 'var(--brand-color)' : '#B0AEAC', margin: '3px 0 0' }}>
+                {shortDay} {d.num}
+              </p>
+            )}
             {d.isToday && !cutoffDisabled && (
               <div style={{ width: 4, height: 4, borderRadius: 'var(--r-full)', background: 'var(--brand-color)', margin: '6px auto 0' }} />
             )}
@@ -683,12 +698,26 @@ function SlotGrid({ slots, selectedId, onSelect }: {
               )}
               {full && !selected && <span style={{ fontSize: 13, fontWeight: 600, color: '#EF4444' }}>Full</span>}
             </div>
+            <SlotFillBar capacity={slot.capacity} available={available} full={full} />
             <span style={{ fontSize: 12, color: full ? '#EF4444' : available <= 2 ? '#EF4444' : '#6B7280', fontWeight: 500 }}>
               {full ? 'No spots available' : `${available} spot${available !== 1 ? 's' : ''} left`}
             </span>
           </button>
         )
       })}
+    </div>
+  )
+}
+
+/** Capacity progress bar for a slot card — shows how full the slot is (booked ÷ capacity). */
+function SlotFillBar({ capacity, available, full }: { capacity: number; available: number; full: boolean }) {
+  const booked = Math.max(0, capacity - available)
+  const pct = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
+  const shown = Math.min(100, Math.max(0, pct))
+  const color = full || pct >= 100 ? '#EF4444' : pct >= 60 ? '#F59E0B' : '#22C55E'
+  return (
+    <div style={{ height: 4, borderRadius: 'var(--r-full)', background: 'rgba(0,0,0,0.08)', overflow: 'hidden', margin: '2px 0 8px' }}>
+      <div style={{ height: '100%', width: `${shown}%`, background: color, borderRadius: 'var(--r-full)', transition: 'width 0.3s ease' }} />
     </div>
   )
 }
@@ -741,6 +770,8 @@ function SlotGroup({ label, slots, selectedId, onSelect }: {
                 )}
                 {full && !selected && <span style={{ fontSize: 13, fontWeight: 600, color: '#EF4444' }}>Full</span>}
               </div>
+              {/* Capacity progress */}
+              <SlotFillBar capacity={slot.capacity} available={available} full={full} />
               {/* Spots label */}
               <span style={{ fontSize: 12, color: full ? '#EF4444' : available <= 2 ? '#EF4444' : '#6B7280', fontWeight: 500 }}>
                 {full ? 'No spots available' : `${available} spot${available !== 1 ? 's' : ''} left`}

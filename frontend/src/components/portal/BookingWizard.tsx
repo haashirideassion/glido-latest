@@ -242,6 +242,16 @@ export default function BookingWizard() {
           font-family: inherit; box-shadow: inset 0 1.5px 3px rgba(0,0,0,0.05);
         }
         .wizard-field:focus { border-color: var(--brand-color); box-shadow: inset 0 1.5px 3px rgba(0,0,0,0.05), 0 0 0 3px rgba(var(--brand-rgb),0.14); }
+        /* Keep browser-autofilled fields visually identical to the rest (Chrome otherwise
+           paints its own background/inset shadow, making one field look "different"). */
+        .wizard-field:-webkit-autofill,
+        .wizard-field:-webkit-autofill:hover,
+        .wizard-field:-webkit-autofill:focus {
+          -webkit-text-fill-color: #111827;
+          -webkit-box-shadow: inset 0 1.5px 3px rgba(0,0,0,0.05), inset 0 0 0 1000px #FFFFFF;
+          box-shadow: inset 0 1.5px 3px rgba(0,0,0,0.05), inset 0 0 0 1000px #FFFFFF;
+          transition: background-color 9999s ease-in-out 0s;
+        }
         .wizard-option-card {
           display: flex; align-items: center; gap: 16px; width: 100%;
           padding: 16px 20px; border-radius: 12px; border: 1.5px solid rgba(0,0,0,0.08);
