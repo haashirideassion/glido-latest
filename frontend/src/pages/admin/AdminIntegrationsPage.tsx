@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { getTenant, updateTenant } from '@/lib/db/tenants'
+import { getTenantFull as getTenant, updateTenant } from '@/lib/db/tenants'
 import { toast } from '@/lib/toast'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'

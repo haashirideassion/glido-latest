@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useBlocker, useLocation, useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
-import { getTenant, updateTenant } from '@/lib/db/tenants'
+import { getTenantFull as getTenant, updateTenant } from '@/lib/db/tenants'
 import { fetcher, postFetcher, patchFetcher, deleteFetcher, rawFetcher } from '@/lib/fetcher'
 import { useSignedUrl } from '@/lib/useSignedUrl'
 
