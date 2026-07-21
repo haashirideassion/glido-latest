@@ -16,8 +16,16 @@ export interface WorkingHours {
 export type TenantRow = Record<string, any>
 export type TenantUpdate = Record<string, any>
 
+// Public tenant record — non-sensitive fields only (safe on pre-auth pages).
 export async function getTenant(id: string): Promise<TenantRow | undefined> {
   const res = await fetcher(`${BASE}/${id}`)
+  return res?.data ?? undefined
+}
+
+// Full tenant record incl. secrets (SMTP/CargoWise/Stripe secret keys).
+// AUTHENTICATED endpoint — use only on admin/settings pages behind auth.
+export async function getTenantFull(id: string): Promise<TenantRow | undefined> {
+  const res = await fetcher(`${BASE}/${id}/full`)
   return res?.data ?? undefined
 }
 

@@ -6,7 +6,7 @@ import { AnimatedNumber } from '@/lib/motion'
 import { CustomSelect } from '@/components/ui/CustomSelect'
 import { fmtDate, fmtDateTime as _fmtDateTime, todaySydney, TZ } from '@/lib/time'
 import { getVisitorLogRecords } from '@/lib/db/walk-ins'
-import { getTenant, updateTenant } from '@/lib/db/tenants'
+import { getTenantFull as getTenant, updateTenant } from '@/lib/db/tenants'
 import { toast } from '@/lib/toast'
 import { useStaffPermissions } from '@/lib/useStaffPermissions'
 

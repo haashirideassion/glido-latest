@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { getTenant, updateTenant } from '@/lib/db/tenants'
+import { getTenantFull as getTenant, updateTenant } from '@/lib/db/tenants'
 import { toast } from '@/lib/toast'
 import { CFS_ADMIN_SECTIONS, normalizeAccess, type CfsAdminAccess } from '@/lib/useCfsAdminSections'
 
