@@ -83,6 +83,7 @@ export default function ReceptionLayout() {
   const [logoErr, setLogoErr] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
   const [notifs, setNotifs] = useState<any[]>([])
+  const [isOnline, setIsOnline] = useState(true)
   const [sidebarExtra, setSidebarExtra] = useState<React.ReactNode>(null)
   const setSidebarExtraStable = useCallback((node: React.ReactNode) => setSidebarExtra(node), [])
   const [density, setDensity] = useState<'comfortable' | 'compact'>(
@@ -183,6 +184,23 @@ export default function ReceptionLayout() {
     }
     loadCount()
     const interval = setInterval(loadCount, 30_000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
+
+  // Realtime connection indicator — lightweight heartbeat against an existing,
+  // already-authenticated endpoint (avoids adding any new backend route).
+  useEffect(() => {
+    let cancelled = false
+    const ping = async () => {
+      try {
+        await fetcher('/api/notifications/unread-count')
+        if (!cancelled) setIsOnline(true)
+      } catch {
+        if (!cancelled) setIsOnline(false)
+      }
+    }
+    ping()
+    const interval = setInterval(ping, 20_000)
     return () => { cancelled = true; clearInterval(interval) }
   }, [])
 
@@ -292,6 +310,11 @@ export default function ReceptionLayout() {
           .sidebar-col { display: none; }
         }
         @keyframes menuFade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes connDotPulse {
+          0%, 100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.18); }
+          50%      { box-shadow: 0 0 0 6px rgba(34,197,94,0.32); }
+        }
+        .conn-dot-online { animation: connDotPulse 1.6s ease-in-out infinite; }
         .mobile-menu-item { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 15px 18px; border-radius: 14px; text-decoration: none; font-size: 17px; font-weight: 600; color: #1C1917; transition: background 0.15s ease; }
         .mobile-menu-item:active { background: rgba(0,0,0,0.05); }
       `}</style>
@@ -505,6 +528,23 @@ export default function ReceptionLayout() {
                 <span style={{ width: 1, height: 26, background: 'rgba(0,0,0,0.10)', flexShrink: 0 }} />
               </>
             )}
+
+            {/* Realtime connection indicator */}
+            <div
+              title={isOnline ? 'Connected' : 'Connection lost — retrying…'}
+              aria-label={isOnline ? 'Connected' : 'Connection lost, retrying'}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0 }}
+            >
+              <span
+                className={isOnline ? 'conn-dot-online' : undefined}
+                style={{
+                  width: 9, height: 9, borderRadius: '50%', flexShrink: 0,
+                  background: isOnline ? '#22C55E' : '#9CA3AF',
+                  boxShadow: isOnline ? '0 0 0 3px rgba(34,197,94,0.18)' : '0 0 0 3px rgba(156,163,175,0.18)',
+                  transition: 'background 0.2s ease',
+                }}
+              />
+            </div>
 
             {/* Bell + notifications */}
             <div style={{ position: 'relative' }}>

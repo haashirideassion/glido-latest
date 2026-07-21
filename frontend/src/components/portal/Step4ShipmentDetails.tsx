@@ -679,10 +679,11 @@ function SlotGrid({ slots, selectedId, onSelect }: {
               width: '100%', position: 'relative', display: 'flex', flexDirection: 'column',
               padding: '14px 18px', textAlign: 'left',
               boxSizing: 'border-box', fontFamily: 'inherit',
-              background: full ? '#FAFAFA' : undefined,
+              background: selected ? undefined : capacityCardBg(slot.capacity, available, full),
               cursor: full ? 'not-allowed' : 'pointer',
               opacity: full ? 0.5 : 1,
               boxShadow: full ? 'none' : undefined,
+              transition: 'background 0.2s ease',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -709,12 +710,22 @@ function SlotGrid({ slots, selectedId, onSelect }: {
   )
 }
 
+/** Same green/amber/red thresholds as the fill bar, as a soft card background tint. */
+function capacityCardBg(capacity: number, available: number, full: boolean): string {
+  if (full) return '#FAFAFA'
+  const booked = Math.max(0, capacity - available)
+  const pct = capacity > 0 ? (booked / capacity) * 100 : 0
+  if (pct >= 100) return 'rgba(239,68,68,0.06)'
+  if (pct >= 50)  return 'rgba(245,158,11,0.07)'
+  return 'rgba(34,197,94,0.05)'
+}
+
 /** Capacity progress bar for a slot card — shows how full the slot is (booked ÷ capacity). */
 function SlotFillBar({ capacity, available, full }: { capacity: number; available: number; full: boolean }) {
   const booked = Math.max(0, capacity - available)
   const pct = capacity > 0 ? Math.round((booked / capacity) * 100) : 0
   const shown = Math.min(100, Math.max(0, pct))
-  const color = full || pct >= 100 ? '#EF4444' : pct >= 60 ? '#F59E0B' : '#22C55E'
+  const color = full || pct >= 100 ? '#EF4444' : pct >= 50 ? '#F59E0B' : '#22C55E'
   return (
     <div style={{ height: 4, borderRadius: 'var(--r-full)', background: 'rgba(0,0,0,0.08)', overflow: 'hidden', margin: '2px 0 8px' }}>
       <div style={{ height: '100%', width: `${shown}%`, background: color, borderRadius: 'var(--r-full)', transition: 'width 0.3s ease' }} />
@@ -751,7 +762,7 @@ function SlotGroup({ label, slots, selectedId, onSelect }: {
                 padding: '14px 18px', borderRadius: 'var(--r-lg)', textAlign: 'left',
                 transition: 'all 0.15s ease', boxSizing: 'border-box', fontFamily: 'inherit',
                 border: selected ? '2px solid var(--brand-color)' : '1.5px solid rgba(0,0,0,0.08)',
-                background: full ? '#FAFAFA' : selected ? 'rgba(var(--brand-rgb),0.03)' : '#fff',
+                background: selected ? 'rgba(var(--brand-rgb),0.03)' : capacityCardBg(slot.capacity, available, full),
                 cursor: full ? 'not-allowed' : 'pointer',
                 opacity: full ? 0.5 : 1,
               }}

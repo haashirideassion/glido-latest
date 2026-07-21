@@ -6,6 +6,7 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { fmtTime } from '@/lib/time'
 import { cancelBooking } from '@/lib/db/bookings'
 import { toast } from '@/lib/toast'
+import { useAuth } from '@/contexts/AuthContext'
 import type { Booking } from '@/data/types'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -374,6 +375,10 @@ export function MyBookingsList({ bookings, query, viewMode = 'cards', onCancelle
 
 // ── Detail slide-over panel ───────────────────────────────────────────────────
 function BookingDetailPanel({ booking: b, onClose, onCancelRequest, docked }: { booking: Booking; onClose: () => void; onCancelRequest?: (b: Booking) => void; docked?: boolean }) {
+  // Cancelling requires an authenticated session (PATCH /:id/cancel is staff/visitor-auth only) —
+  // a guest reached via reference-number lookup has no session, so the action isn't offered at all
+  // rather than showing a button that would just 401 and bounce them to the staff login screen.
+  const { user } = useAuth()
   const isPickup  = b.serviceType === 'pickup'
   const isDropoff = b.serviceType === 'dropoff'
   const isFCL     = b.loadType === 'fcl'
@@ -469,7 +474,7 @@ function BookingDetailPanel({ booking: b, onClose, onCancelRequest, docked }: { 
 
         {/* Footer actions */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(0,0,0,0.07)', display: 'flex', gap: 8, position: 'sticky', bottom: 0, background: '#fff' }}>
-          {b.status === 'scheduled' && (
+          {b.status === 'scheduled' && user && (
             <button type="button" onClick={() => onCancelRequest?.(b)}
               style={{ flex: 1, padding: '10px 12px', borderRadius: 'var(--r-sm)', border: '1.5px solid rgba(239,68,68,0.30)', background: 'rgba(239,68,68,0.05)', fontSize: 15, fontWeight: 600, color: '#DC2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: 'inherit' }}>
               <Icon name={ICONS.xCircle} size={15} /> Cancel Booking

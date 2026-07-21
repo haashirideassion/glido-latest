@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express'
 import { pool } from '../db'
-import { requireAuth } from '../middleware/auth'
+import { optionalAuth } from '../middleware/auth'
 
 const router = Router()
-router.use(requireAuth)
+router.use(optionalAuth)
 
 // GET /api/v2/shipments — supports ?billNumber= and ?containerNumber=
 router.get('/', async (req: Request, res: Response) => {

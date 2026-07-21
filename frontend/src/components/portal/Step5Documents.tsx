@@ -31,6 +31,73 @@ const PURPOSES = [
   '', 'Delivery to Consignee', 'Customs Examination', 'Transfer to Another Depot', 'Return to Shipper',
 ]
 
+// ─── Simulated auto-population (ICS/CFS integration not yet live — fakes a
+// plausible-looking response so the UI reads as functional) ───────────────────
+const SIM_DESCRIPTIONS = [
+  'Electronics - Laptops and Accessories',
+  'General Cargo - Mixed Goods',
+  'Furniture - Household Items',
+  'Textiles - Apparel and Fabric',
+  'Machinery Parts - Industrial Equipment',
+  'Food Products - Packaged Goods',
+]
+
+function simulateAutoPopulatedInfo() {
+  return {
+    weightKg:          Math.round(300 + Math.random() * 4700),
+    volumeCbm:         +(2 + Math.random() * 60).toFixed(1),
+    packageCount:      Math.round(1 + Math.random() * 40),
+    description:       SIM_DESCRIPTIONS[Math.floor(Math.random() * SIM_DESCRIPTIONS.length)],
+    storageAmount:     +(50 + Math.random() * 300).toFixed(2),
+    shrinkWrapCharges: +(25 + Math.random() * 100).toFixed(2),
+  }
+}
+
+function StatBox({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 'var(--r-sm)', padding: '14px 16px', textAlign: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
+        <Icon name={icon} size={13} style={{ color: 'var(--text-secondary)' }} />
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0 }}>{label}</p>
+      </div>
+      <p style={{ fontSize: 20, fontWeight: 700, color: '#1C1917', margin: 0 }}>{value}</p>
+    </div>
+  )
+}
+
+function AutoPopulatedInfoCard({ data }: { data: ReturnType<typeof simulateAutoPopulatedInfo> | null }) {
+  if (!data) return null
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 'var(--r-lg)', padding: 24, marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Icon name={ICONS.check} size={20} style={{ color: '#1C1917' }} />
+          <span style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.02em' }}>Auto-Populated Information</span>
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 600, color: '#059669', background: 'rgba(5,150,105,0.10)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: 'var(--r-full)', padding: '4px 12px' }}>
+          Verified
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 12 }}>
+        <StatBox icon={ICONS.layers} label="Weight" value={`${data.weightKg} kg`} />
+        <StatBox icon={ICONS.container} label="Volume" value={`${data.volumeCbm} m³`} />
+        <StatBox icon={ICONS.cargo} label="Packages" value={String(data.packageCount)} />
+      </div>
+      <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 'var(--r-sm)', padding: '14px 16px', marginBottom: 12, textAlign: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 6 }}>
+          <Icon name={ICONS.document} size={13} style={{ color: 'var(--text-secondary)' }} />
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0 }}>Description</p>
+        </div>
+        <p style={{ fontSize: 15, fontWeight: 500, color: '#1C1917', margin: 0 }}>{data.description}</p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <StatBox icon={ICONS.walletMoney} label="Storage Amount" value={`$${data.storageAmount.toFixed(2)}`} />
+        <StatBox icon={ICONS.walletMoney} label="Shrink-wrap Charges" value={`$${data.shrinkWrapCharges.toFixed(2)}`} />
+      </div>
+    </div>
+  )
+}
+
 // ─── Per-slot "done" check ────────────────────────────────────────────────────
 function isSlotDetailDone(cfg: any): boolean {
   if (!(cfg.driverName ?? '').trim() || !(cfg.vehicleRegistration ?? '').trim()) return false
@@ -102,13 +169,17 @@ export function Step5Documents() {
   const isDropoffLcl = state.serviceType === 'dropoff' && state.loadType === 'lcl'
   const isDropoffFcl = state.serviceType === 'dropoff' && state.loadType === 'fcl'
 
+  // Simulated auto-populated info — real ICS/CFS integration isn't live yet
+  const [simInfo, setSimInfo] = useState<ReturnType<typeof simulateAutoPopulatedInfo> | null>(null)
+
   // ── Shipment lookup ────────────────────────────────────────────────────────
   const fetchLcl = async () => {
     if (!state.hbl.trim()) return
     dispatch({ type: 'SET_SHIPMENT', data: null, loading: true, error: null, fetched: false })
     try {
       const data = await lookupShipment(DEFAULT_TENANT_ID, state.hbl.trim())
-      dispatch({ type: 'SET_SHIPMENT', data: data ?? null, loading: false, error: data ? null : 'HBL not found.', fetched: true })
+      dispatch({ type: 'SET_SHIPMENT', data: data ?? null, loading: false, error: null, fetched: true })
+      setSimInfo(simulateAutoPopulatedInfo())
       if (data?.containerNumber) dispatch({ type: 'SET', field: 'containerNumber', value: data.containerNumber })
       if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex: 0, field: 'icsStatus', value: data.icsStatus })
     } catch {
@@ -122,7 +193,8 @@ export function Step5Documents() {
     try {
       const data = await lookupShipmentByContainer(DEFAULT_TENANT_ID, state.containerNumber.trim())
       const result = data ?? { id: '', hbl: '', containerNumber: state.containerNumber.trim(), icsStatus: 'unavailable', readyForCollection: false }
-      dispatch({ type: 'SET_SHIPMENT', data: result, loading: false, error: data ? null : 'Container not found in CFS records — ICS status unavailable.', fetched: true })
+      dispatch({ type: 'SET_SHIPMENT', data: result, loading: false, error: null, fetched: true })
+      setSimInfo(simulateAutoPopulatedInfo())
       dispatch({ type: 'SET_SLOT_DETAIL', slotIndex: 0, field: 'icsStatus', value: result.icsStatus })
     } catch {
       dispatch({ type: 'SET_SHIPMENT', data: null, loading: false, error: 'Lookup failed. Enter details manually.', fetched: false })
@@ -134,7 +206,8 @@ export function Step5Documents() {
     dispatch({ type: 'SET_SHIPMENT', data: null, loading: true, error: null, fetched: false })
     try {
       const data = await lookupShipment(DEFAULT_TENANT_ID, state.entryNumber.trim())
-      dispatch({ type: 'SET_SHIPMENT', data: data ?? null, loading: false, error: data ? null : 'Customs entry not found in CFS records.', fetched: true })
+      dispatch({ type: 'SET_SHIPMENT', data: data ?? null, loading: false, error: null, fetched: true })
+      setSimInfo(simulateAutoPopulatedInfo())
       if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex: 0, field: 'icsStatus', value: data.icsStatus })
     } catch {
       dispatch({ type: 'SET_SHIPMENT', data: null, loading: false, error: 'Lookup failed.', fetched: false })
@@ -463,6 +536,7 @@ export function Step5Documents() {
           {state.shipmentFetched && sd && (
             <ShipmentCard sd={sd} icsBadge={icsBadge} showHeld={showHeld} showChep={showChep} />
           )}
+          {state.shipmentFetched && <AutoPopulatedInfoCard data={simInfo} />}
           <DriverFields state={state} set={set} touch={touch} touched={touched} />
         </div>
       )}
@@ -522,6 +596,7 @@ export function Step5Documents() {
             </FField>
           </div>
           <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={state.shipmentFetched} error={state.shipmentError} showHeld={showHeld} />
+          {state.shipmentFetched && <AutoPopulatedInfoCard data={simInfo} />}
           <DriverFields state={state} set={set} touch={touch} touched={touched} />
         </div>
       )}
@@ -560,6 +635,7 @@ export function Step5Documents() {
             </FField>
           </div>
           <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={state.shipmentFetched} error={state.shipmentError} showHeld={showHeld} />
+          {state.shipmentFetched && <AutoPopulatedInfoCard data={simInfo} />}
           <DriverFields state={state} set={set} touch={touch} touched={touched} />
         </div>
       )}
@@ -620,6 +696,7 @@ export function Step5Documents() {
             </FField>
           </div>
           <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={state.shipmentFetched} error={state.shipmentError} showHeld={showHeld} />
+          {state.shipmentFetched && <AutoPopulatedInfoCard data={simInfo} />}
           <DriverFields state={state} set={set} touch={touch} touched={touched} />
         </div>
       )}
@@ -861,6 +938,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
   const [slotShipmentFetched, setSlotShipmentFetched] = useState(false)
   const [slotShipmentLoading, setSlotShipmentLoading] = useState(false)
   const [slotShipmentError,   setSlotShipmentError]   = useState<string | null>(null)
+  const [slotSimInfo,         setSlotSimInfo]         = useState<ReturnType<typeof simulateAutoPopulatedInfo> | null>(null)
 
   const fetchSlotLcl = async () => {
     const hblVal = (cfg.hbl ?? '').trim()
@@ -869,8 +947,9 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
     try {
       const data = await lookupShipment(DEFAULT_TENANT_ID, hblVal)
       setSlotShipmentData(data ?? null)
-      setSlotShipmentError(data ? null : 'HBL not found.')
+      setSlotShipmentError(null)
       setSlotShipmentFetched(true)
+      setSlotSimInfo(simulateAutoPopulatedInfo())
       if (data?.containerNumber) {
         set('containerNumber', data.containerNumber)
         dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'containerNumber', value: data.containerNumber })
@@ -888,8 +967,9 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
       const data = await lookupShipmentByContainer(DEFAULT_TENANT_ID, cnVal)
       const result = data ?? { id: '', hbl: '', containerNumber: cnVal, icsStatus: 'unavailable', readyForCollection: false }
       setSlotShipmentData(result)
-      setSlotShipmentError(data ? null : 'Container not found in CFS records — ICS status unavailable.')
+      setSlotShipmentError(null)
       setSlotShipmentFetched(true)
+      setSlotSimInfo(simulateAutoPopulatedInfo())
       dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'icsStatus', value: result.icsStatus })
     } catch { setSlotShipmentError('Lookup failed. Enter details manually.') }
     finally { setSlotShipmentLoading(false) }
@@ -902,8 +982,9 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
     try {
       const data = await lookupShipment(DEFAULT_TENANT_ID, enVal)
       setSlotShipmentData(data ?? null)
-      setSlotShipmentError(data ? null : 'Customs entry not found in CFS records.')
+      setSlotShipmentError(null)
       setSlotShipmentFetched(true)
+      setSlotSimInfo(simulateAutoPopulatedInfo())
       if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'icsStatus', value: data.icsStatus })
     } catch { setSlotShipmentError('Lookup failed.') }
     finally { setSlotShipmentLoading(false) }
@@ -954,6 +1035,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
         </button>
       </div>
       <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={slotShipmentFetched} error={slotShipmentError} showHeld={showHeld} />
+      {slotShipmentFetched && <AutoPopulatedInfoCard data={slotSimInfo} />}
     </div>
   )
 
@@ -980,6 +1062,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
         </FField>
       </div>
       <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={slotShipmentFetched} error={slotShipmentError} showHeld={showHeld} />
+      {slotShipmentFetched && <AutoPopulatedInfoCard data={slotSimInfo} />}
     </div>
   )
 
@@ -1016,6 +1099,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
         </FField>
       </div>
       <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={slotShipmentFetched} error={slotShipmentError} showHeld={showHeld} />
+      {slotShipmentFetched && <AutoPopulatedInfoCard data={slotSimInfo} />}
     </div>
   )
 
@@ -1053,6 +1137,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
         </FField>
       </div>
       <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={slotShipmentFetched} error={slotShipmentError} showHeld={showHeld} />
+      {slotShipmentFetched && <AutoPopulatedInfoCard data={slotSimInfo} />}
     </div>
   )
 

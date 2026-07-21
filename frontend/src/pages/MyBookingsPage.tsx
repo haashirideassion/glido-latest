@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Icon, ICONS } from '@/lib/Icon'
 import { MyBookingsList } from '@/components/portal/MyBookingsList'
 import { CustomSelect } from '@/components/ui/CustomSelect'
-import { getBookingByRef, getBookingsByUserId } from '@/lib/db/bookings'
+import { findBooking, getBookingsByUserId } from '@/lib/db/bookings'
 import { useAuth } from '@/contexts/AuthContext'
 import type { Booking } from '@/data/types'
 
@@ -42,7 +42,7 @@ export default function MyBookingsPage() {
     if (!ref && !user) return
     setLoading(true)
     const fetch = ref
-      ? getBookingByRef(ref).then(b => (b ? [b] : []))
+      ? findBooking(ref).then(b => (b ? [b] : []))
       : user ? getBookingsByUserId(user.id) : Promise.resolve([])
     fetch
       .then(setBookings)
@@ -208,7 +208,7 @@ export default function MyBookingsPage() {
               <MyBookingsList bookings={paged} query={ref} viewMode={viewMode} onCancelled={() => {
                 setLoading(true)
                 const fetch = ref
-                  ? getBookingByRef(ref).then(b => (b ? [b] : []))
+                  ? findBooking(ref).then(b => (b ? [b] : []))
                   : user ? getBookingsByUserId(user.id) : Promise.resolve([])
                 fetch.then(setBookings).catch(() => setBookings([])).finally(() => setLoading(false))
               }} />

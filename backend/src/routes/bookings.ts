@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { createNotification } from '../lib/notifications'
 import { pool } from '../db'
-import { requireAuth, optionalAuth } from '../middleware/auth'
+import { requireAuth, optionalAuth, isVisitorRole } from '../middleware/auth'
 import { getTenantSlotSettings, computeDaySlots, getMatrixCapacity } from '../lib/slotAvailability'
 
 const router = Router()
@@ -300,9 +300,16 @@ router.patch('/:id/reschedule', requireAuth, async (req: Request, res: Response)
   }
 })
 
-// PATCH /api/v2/bookings/:id/cancel — staff only
+// PATCH /api/v2/bookings/:id/cancel — staff can cancel any booking; a visitor may only cancel their own
 router.patch('/:id/cancel', requireAuth, async (req: Request, res: Response) => {
   try {
+    if (isVisitorRole(req.user?.role)) {
+      const owner = await pool.query(`SELECT user_id FROM bookings WHERE id = $1`, [req.params.id])
+      if (!owner.rows[0]) return res.status(404).json({ success: false, error: { message: 'Not found' } })
+      if (owner.rows[0].user_id !== req.user!.id) {
+        return res.status(403).json({ success: false, error: { message: 'You can only cancel your own bookings' } })
+      }
+    }
     const result = await pool.query(
       `UPDATE bookings SET status = 'cancelled' WHERE id = $1 AND status = 'scheduled' RETURNING *`,
       [req.params.id]
