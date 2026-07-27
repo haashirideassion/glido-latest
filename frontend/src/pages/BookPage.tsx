@@ -488,7 +488,7 @@ function ConfirmedScreen() {
               }
 
               return (
-                <div key={r} style={{ flex: '1 1 200px', minWidth: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 16px', background: '#fff', borderRadius: 'var(--r-lg)', border: '1px solid rgba(0,0,0,0.07)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 4px 20px rgba(0,0,0,0.07)' }}>
+                <div key={r} style={{ flex: '0 1 calc((100% - 32px) / 3)', minWidth: 200, maxWidth: 'calc((100% - 32px) / 3)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 16px', background: '#fff', borderRadius: 'var(--r-lg)', border: '1px solid rgba(0,0,0,0.07)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 4px 20px rgba(0,0,0,0.07)' }}>
                   <p style={{ fontSize: 13, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>Slot {i + 1}</p>
                   {url ? (
                     <img src={url} alt={`QR for ${r}`} width={160} height={160} style={{ borderRadius: 'var(--r-sm)' }} />

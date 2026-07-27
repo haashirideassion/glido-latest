@@ -118,15 +118,16 @@ function isSlotDetailDone(cfg: any): boolean {
   const cn = (cfg.containerNumber ?? '').trim()
   const hbl = (cfg.hbl ?? '').trim()
   const cs = (cfg.containerSize ?? '').trim()
+  const en = (cfg.entryNumber ?? '').trim()
   const pu = (cfg.purpose ?? '').trim()
   const co = (cfg.consolidator ?? '').trim()
   const br = (cfg.bookingReference ?? '').trim()
   if (svc === 'pickup'  && lt === 'lcl')   return !!(cn && hbl)
   if (svc === 'pickup'  && lt === 'fcl')   return !!(cn && cs)
-  // Customs Entry # (en) is optional — matches deriveCanProceed, so the slot reads complete
-  // (green check / auto-advance) without it. Only booking/purpose fields gate completion.
+  // Entry # (en) is optional for Drop Off + LCL only — matches deriveCanProceed, so the slot
+  // reads complete (green check / auto-advance) without it. Drop Off + FCL still requires it.
   if (svc === 'dropoff' && lt === 'lcl')   return !!(br && co && pu)
-  if (svc === 'dropoff' && lt === 'fcl')   return !!(cn && cs && pu)
+  if (svc === 'dropoff' && lt === 'fcl')   return !!(cn && cs && en && pu)
   return false
 }
 
@@ -220,19 +221,6 @@ export function Step5Documents() {
       dispatch({ type: 'SET_SLOT_DETAIL', slotIndex: 0, field: 'icsStatus', value: result.icsStatus })
     } catch {
       dispatch({ type: 'SET_SHIPMENT', data: null, loading: false, error: 'Lookup failed. Enter details manually.', fetched: false })
-    }
-  }
-
-  const fetchByEntry = async () => {
-    if (state.entryNumber.trim().length < MIN_LOOKUP_LEN) { toast(tooShortMsg('Customs Entry #'), 'error'); return }
-    dispatch({ type: 'SET_SHIPMENT', data: null, loading: true, error: null, fetched: false })
-    try {
-      const data = await lookupShipment(DEFAULT_TENANT_ID, state.entryNumber.trim())
-      dispatch({ type: 'SET_SHIPMENT', data: data ?? null, loading: false, error: null, fetched: true })
-      setSimInfo(simulateAutoPopulatedInfo())
-      if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex: 0, field: 'icsStatus', value: data.icsStatus })
-    } catch {
-      dispatch({ type: 'SET_SHIPMENT', data: null, loading: false, error: 'Lookup failed.', fetched: false })
     }
   }
 
@@ -516,7 +504,7 @@ export function Step5Documents() {
           <p style={{ fontSize: 15, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '4px 0 0' }}>
             {isPickupLcl  && 'Enter your container and house bill details. ICS clearance status is checked automatically.'}
             {isPickupFcl  && 'Enter your container number and size. ICS clearance status is checked automatically.'}
-            {isDropoffLcl && 'Enter your booking and customs details. ICS clearance status is checked automatically using the Customs Entry number.'}
+            {isDropoffLcl && 'Enter your booking and customs details. ICS clearance status is checked automatically using the container number.'}
             {isDropoffFcl && 'Enter your container details and customs information. ICS clearance status is checked automatically.'}
           </p>
         </div>
@@ -524,12 +512,12 @@ export function Step5Documents() {
 
       {/* ══════════════════════════════════════════════════════
           1. PICKUP + LCL
-          Fields: Container Number (req), HBL Number (req)
+          Fields: Container # (req), HB # (req)
       ══════════════════════════════════════════════════════ */}
       {isPickupLcl && (
         <div>
           <div style={{ ...ROW, marginBottom: 24 }}>
-            <FField label="Container Number" required error={touched.containerNumber && !state.containerNumber.trim()}>
+            <FField label="Container #" required error={touched.containerNumber && !state.containerNumber.trim()}>
               <input
                 type="text" className="wizard-field"
                 value={state.containerNumber}
@@ -539,7 +527,7 @@ export function Step5Documents() {
                 style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
               />
             </FField>
-            <FField label="House Bill of Lading #" required error={touched.hbl && !state.hbl.trim()}>
+            <FField label="HB #" required error={touched.hbl && !state.hbl.trim()}>
               <input
                 type="text" className="wizard-field"
                 value={state.hbl}
@@ -551,10 +539,10 @@ export function Step5Documents() {
               <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 5 }}>Enter the lowest house bill number</p>
             </FField>
           </div>
-          <div style={{ marginBottom: 32 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
             <button type="button" className="btn-primary" onClick={fetchLcl} disabled={state.shipmentLoading}>
-              {state.shipmentLoading ? <Spinner /> : <Icon name={ICONS.search} size={16} />}
-              {state.shipmentLoading ? 'Looking up...' : 'Look Up Shipment'}
+              {state.shipmentLoading ? <Spinner /> : null}
+              Look Up
             </button>
           </div>
           {state.shipmentFetched && sd && (
@@ -567,13 +555,13 @@ export function Step5Documents() {
 
       {/* ══════════════════════════════════════════════════════
           2. DROPOFF + LCL
-          Fields: Booking Confirmation # (req), Consolidator (req),
-                  Entry Number (req), Purpose (req dropdown)
+          Fields: Booking Ref # (req), Consolidator (req),
+                  Container # (optional, lookup), Entry # (optional), Purpose (req dropdown)
       ══════════════════════════════════════════════════════ */}
       {isDropoffLcl && (
         <div>
           <div style={{ ...ROW, marginBottom: 24 }}>
-            <FField label="Booking Confirmation #" required error={touched.bookingReference && !state.bookingReference.trim()}>
+            <FField label="Booking Ref #" required error={touched.bookingReference && !state.bookingReference.trim()}>
               <input
                 type="text" className="wizard-field"
                 value={state.bookingReference}
@@ -582,7 +570,7 @@ export function Step5Documents() {
                 placeholder="e.g. BK-2026-00142"
               />
             </FField>
-            <FField label="Consolidator / Freight Forwarder" required error={touched.consolidator && !state.consolidator.trim()}>
+            <FField label="Consolidator" required error={touched.consolidator && !state.consolidator.trim()}>
               <input
                 type="text" className="wizard-field"
                 value={state.consolidator}
@@ -593,22 +581,28 @@ export function Step5Documents() {
             </FField>
           </div>
           <div style={{ ...ROW, marginBottom: 16 }}>
-            <FField label="Customs Entry #">
-              <div style={{ display: 'flex', gap: 10 }}>
-                <input
-                  type="text" className="wizard-field"
-                  value={state.entryNumber}
-                  onChange={e => set('entryNumber', e.target.value.toUpperCase())}
-                  onBlur={() => touch('entryNumber')}
-                  placeholder="e.g. CE2026100142"
-                  style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }}
-                />
-                <button type="button" className="btn-primary" onClick={fetchByEntry} disabled={state.shipmentLoading} style={{ flexShrink: 0 }}>
-                  {state.shipmentLoading ? <Spinner /> : null}
-                  Look Up
-                </button>
-              </div>
+            <FField label="Container #">
+              <input
+                type="text" className="wizard-field"
+                value={state.containerNumber}
+                onChange={e => set('containerNumber', e.target.value.toUpperCase())}
+                onBlur={() => touch('containerNumber')}
+                placeholder="e.g. MSCU1234567"
+                style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
+              />
             </FField>
+            <FField label="Entry #">
+              <input
+                type="text" className="wizard-field"
+                value={state.entryNumber}
+                onChange={e => set('entryNumber', e.target.value.toUpperCase())}
+                onBlur={() => touch('entryNumber')}
+                placeholder="e.g. CE2026100142"
+                style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
+              />
+            </FField>
+          </div>
+          <div style={{ marginBottom: 16 }}>
             <FField label="Purpose" required error={touched.purpose && !state.purpose.trim()}>
               <CustomSelect
                 placeholder="Select purpose…"
@@ -619,6 +613,12 @@ export function Step5Documents() {
               />
             </FField>
           </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
+            <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.shipmentLoading}>
+              {state.shipmentLoading ? <Spinner /> : null}
+              Look Up
+            </button>
+          </div>
           <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={state.shipmentFetched} error={state.shipmentError} showHeld={showHeld} />
           {state.shipmentFetched && <AutoPopulatedInfoCard data={simInfo} />}
           <DriverFields state={state} set={set} touch={touch} touched={touched} />
@@ -627,28 +627,22 @@ export function Step5Documents() {
 
       {/* ══════════════════════════════════════════════════════
           3. PICKUP + FCL
-          Fields: Container Number (req), Container Size (req dropdown)
+          Fields: Container # (req), Size (req dropdown)
       ══════════════════════════════════════════════════════ */}
       {isPickupFcl && (
         <div>
           <div style={{ ...ROW, marginBottom: 24 }}>
-            <FField label="Container Number" required error={touched.containerNumber && !state.containerNumber.trim()}>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <input
-                  type="text" className="wizard-field"
-                  value={state.containerNumber}
-                  onChange={e => set('containerNumber', e.target.value.toUpperCase())}
-                  onBlur={() => touch('containerNumber')}
-                  placeholder="e.g. MSCU1234567"
-                  style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }}
-                />
-                <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.shipmentLoading} style={{ flexShrink: 0 }}>
-                  {state.shipmentLoading ? <Spinner /> : null}
-                  Look Up
-                </button>
-              </div>
+            <FField label="Container #" required error={touched.containerNumber && !state.containerNumber.trim()}>
+              <input
+                type="text" className="wizard-field"
+                value={state.containerNumber}
+                onChange={e => set('containerNumber', e.target.value.toUpperCase())}
+                onBlur={() => touch('containerNumber')}
+                placeholder="e.g. MSCU1234567"
+                style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
+              />
             </FField>
-            <FField label="Container Size" required error={touched.containerSize && !state.containerSize.trim()}>
+            <FField label="Size" required error={touched.containerSize && !state.containerSize.trim()}>
               <CustomSelect
                 placeholder="Select size…"
                 value={state.containerSize}
@@ -658,6 +652,12 @@ export function Step5Documents() {
               />
             </FField>
           </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
+            <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.shipmentLoading}>
+              {state.shipmentLoading ? <Spinner /> : null}
+              Look Up
+            </button>
+          </div>
           <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={state.shipmentFetched} error={state.shipmentError} showHeld={showHeld} />
           {state.shipmentFetched && <AutoPopulatedInfoCard data={simInfo} />}
           <DriverFields state={state} set={set} touch={touch} touched={touched} />
@@ -666,29 +666,23 @@ export function Step5Documents() {
 
       {/* ══════════════════════════════════════════════════════
           4. DROPOFF + FCL
-          Fields: Container Number (req), Container Size (req dropdown),
-                  Entry Number (req), Purpose (req dropdown)
+          Fields: Container # (req), Size (req dropdown),
+                  Entry # (req), Purpose (req dropdown)
       ══════════════════════════════════════════════════════ */}
       {isDropoffFcl && (
         <div>
           <div style={{ ...ROW, marginBottom: 24 }}>
-            <FField label="Container Number" required error={touched.containerNumber && !state.containerNumber.trim()}>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <input
-                  type="text" className="wizard-field"
-                  value={state.containerNumber}
-                  onChange={e => set('containerNumber', e.target.value.toUpperCase())}
-                  onBlur={() => touch('containerNumber')}
-                  placeholder="e.g. MSCU1234567"
-                  style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }}
-                />
-                <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.shipmentLoading} style={{ flexShrink: 0 }}>
-                  {state.shipmentLoading ? <Spinner /> : null}
-                  Look Up
-                </button>
-              </div>
+            <FField label="Container #" required error={touched.containerNumber && !state.containerNumber.trim()}>
+              <input
+                type="text" className="wizard-field"
+                value={state.containerNumber}
+                onChange={e => set('containerNumber', e.target.value.toUpperCase())}
+                onBlur={() => touch('containerNumber')}
+                placeholder="e.g. MSCU1234567"
+                style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
+              />
             </FField>
-            <FField label="Container Size" required error={touched.containerSize && !state.containerSize.trim()}>
+            <FField label="Size" required error={touched.containerSize && !state.containerSize.trim()}>
               <CustomSelect
                 placeholder="Select size…"
                 value={state.containerSize}
@@ -699,7 +693,7 @@ export function Step5Documents() {
             </FField>
           </div>
           <div style={{ ...ROW, marginBottom: 16 }}>
-            <FField label="Customs Entry #">
+            <FField label="Entry #" required error={touched.entryNumber && !state.entryNumber.trim()}>
               <input
                 type="text" className="wizard-field"
                 value={state.entryNumber}
@@ -718,6 +712,12 @@ export function Step5Documents() {
                 options={PURPOSES.filter(Boolean).map(p => ({ value: p, label: p }))}
               />
             </FField>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
+            <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.shipmentLoading}>
+              {state.shipmentLoading ? <Spinner /> : null}
+              Look Up
+            </button>
           </div>
           <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={state.shipmentFetched} error={state.shipmentError} showHeld={showHeld} />
           {state.shipmentFetched && <AutoPopulatedInfoCard data={simInfo} />}
@@ -1007,23 +1007,6 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
     finally { setSlotShipmentLoading(false) }
   }
 
-  const fetchSlotEntry = async () => {
-    const enVal = (cfg.entryNumber ?? '').trim()
-    if (enVal.length < MIN_LOOKUP_LEN) { toast(tooShortMsg('Customs Entry #'), 'error'); return }
-    setSlotShipmentLoading(true); setSlotShipmentData(null); setSlotShipmentFetched(false); setSlotShipmentError(null)
-    try {
-      const data = await lookupShipment(DEFAULT_TENANT_ID, enVal)
-      const simInfo = simulateAutoPopulatedInfo()
-      setSlotShipmentData(data ?? null)
-      setSlotShipmentError(null)
-      setSlotShipmentFetched(true)
-      setSlotSimInfo(simInfo)
-      onCacheUpdate({ data: data ?? null, error: null, fetched: true, simInfo })
-      if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'icsStatus', value: data.icsStatus })
-    } catch { setSlotShipmentError('Lookup failed.'); onCacheUpdate({ error: 'Lookup failed.', fetched: false }) }
-    finally { setSlotShipmentLoading(false) }
-  }
-
   const sd       = slotShipmentData
   const icsBadge = ICS_MAP[sd?.icsStatus ?? ''] ?? ICS_MAP.pending
   const showHeld = sd?.icsStatus === 'held'
@@ -1047,13 +1030,13 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
   if (isPickupLcl) return (
     <div>
       <div style={{ ...ROW, marginBottom: 16 }}>
-        <FField label="Container Number" required error={touched[p+'cn'] && !cn.trim()}>
+        <FField label="Container #" required error={touched[p+'cn'] && !cn.trim()}>
           <input type="text" className="wizard-field" value={cn}
             onChange={e => set('containerNumber', e.target.value.toUpperCase())}
             onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
             style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }} />
         </FField>
-        <FField label="House Bill of Lading #" required error={touched[p+'hbl'] && !hbl.trim()}>
+        <FField label="HB #" required error={touched[p+'hbl'] && !hbl.trim()}>
           <input type="text" className="wizard-field" value={hbl}
             onChange={e => set('hbl', e.target.value.toUpperCase())}
             onBlur={() => touch(p+'hbl')} placeholder="e.g. SYHMSCU001847"
@@ -1061,11 +1044,11 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
           <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 5 }}>Enter the lowest house bill number</p>
         </FField>
       </div>
-      <div style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <button type="button" className="btn-primary" onClick={fetchSlotLcl}
           disabled={slotShipmentLoading}>
-          {slotShipmentLoading ? <Spinner /> : <Icon name={ICONS.search} size={16} />}
-          {slotShipmentLoading ? 'Looking up...' : 'Look Up Shipment'}
+          {slotShipmentLoading ? <Spinner /> : null}
+          Look Up
         </button>
       </div>
       <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={slotShipmentFetched} error={slotShipmentError} showHeld={showHeld} />
@@ -1076,24 +1059,24 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
   if (isPickupFcl) return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16 }}>
-        <FField label="Container Number" required error={touched[p+'cn'] && !cn.trim()}>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input type="text" className="wizard-field" value={cn}
-              onChange={e => set('containerNumber', e.target.value.toUpperCase())}
-              onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
-              style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }} />
-            <button type="button" className="btn-primary" onClick={fetchSlotFcl}
-              disabled={slotShipmentLoading} style={{ flexShrink: 0 }}>
-              {slotShipmentLoading ? <Spinner /> : null}
-              Look Up
-            </button>
-          </div>
+        <FField label="Container #" required error={touched[p+'cn'] && !cn.trim()}>
+          <input type="text" className="wizard-field" value={cn}
+            onChange={e => set('containerNumber', e.target.value.toUpperCase())}
+            onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
+            style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }} />
         </FField>
-        <FField label="Container Size" required error={touched[p+'cs'] && !cs.trim()}>
+        <FField label="Size" required error={touched[p+'cs'] && !cs.trim()}>
           <CustomSelect placeholder="Select size…" value={cs}
             onChange={v => set('containerSize', v)} onBlur={() => touch(p+'cs')}
             options={CONTAINER_SIZES.filter(Boolean).map(s => ({ value: s, label: s }))} />
         </FField>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button type="button" className="btn-primary" onClick={fetchSlotFcl}
+          disabled={slotShipmentLoading}>
+          {slotShipmentLoading ? <Spinner /> : null}
+          Look Up
+        </button>
       </div>
       <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={slotShipmentFetched} error={slotShipmentError} showHeld={showHeld} />
       {slotShipmentFetched && <AutoPopulatedInfoCard data={slotSimInfo} />}
@@ -1103,34 +1086,42 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
   if (isDropoffLcl) return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16 }}>
-        <FField label="Booking Confirmation #" required error={touched[p+'br'] && !br.trim()}>
+        <FField label="Booking Ref #" required error={touched[p+'br'] && !br.trim()}>
           <input type="text" className="wizard-field" value={br}
             onChange={e => set('bookingReference', e.target.value)}
             onBlur={() => touch(p+'br')} placeholder="e.g. BK-2026-00142" />
         </FField>
-        <FField label="Consolidator / Freight Forwarder" required error={touched[p+'co'] && !co.trim()}>
+        <FField label="Consolidator" required error={touched[p+'co'] && !co.trim()}>
           <input type="text" className="wizard-field" value={co}
             onChange={e => set('consolidator', e.target.value)}
             onBlur={() => touch(p+'co')} placeholder="e.g. Kuehne + Nagel" />
         </FField>
-        <FField label="Customs Entry #">
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input type="text" className="wizard-field" value={en}
-              onChange={e => set('entryNumber', e.target.value.toUpperCase())}
-              onBlur={() => touch(p+'en')} placeholder="e.g. CE2026100142"
-              style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }} />
-            <button type="button" className="btn-primary" onClick={fetchSlotEntry}
-              disabled={slotShipmentLoading} style={{ flexShrink: 0 }}>
-              {slotShipmentLoading ? <Spinner /> : null}
-              Look Up
-            </button>
-          </div>
+        <FField label="Container #">
+          <input type="text" className="wizard-field" value={cn}
+            onChange={e => set('containerNumber', e.target.value.toUpperCase())}
+            onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
+            style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }} />
         </FField>
+        <FField label="Entry #">
+          <input type="text" className="wizard-field" value={en}
+            onChange={e => set('entryNumber', e.target.value.toUpperCase())}
+            onBlur={() => touch(p+'en')} placeholder="e.g. CE2026100142"
+            style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }} />
+        </FField>
+      </div>
+      <div style={{ marginBottom: 16 }}>
         <FField label="Purpose" required error={touched[p+'pu'] && !pu.trim()}>
           <CustomSelect placeholder="Select purpose…" value={pu}
             onChange={v => set('purpose', v)} onBlur={() => touch(p+'pu')}
             options={PURPOSES.filter(Boolean).map(p2 => ({ value: p2, label: p2 }))} />
         </FField>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button type="button" className="btn-primary" onClick={fetchSlotFcl}
+          disabled={slotShipmentLoading}>
+          {slotShipmentLoading ? <Spinner /> : null}
+          Look Up
+        </button>
       </div>
       <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={slotShipmentFetched} error={slotShipmentError} showHeld={showHeld} />
       {slotShipmentFetched && <AutoPopulatedInfoCard data={slotSimInfo} />}
@@ -1140,25 +1131,18 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
   if (isDropoffFcl) return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16 }}>
-        <FField label="Container Number" required error={touched[p+'cn'] && !cn.trim()}>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input type="text" className="wizard-field" value={cn}
-              onChange={e => set('containerNumber', e.target.value.toUpperCase())}
-              onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
-              style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }} />
-            <button type="button" className="btn-primary" onClick={fetchSlotFcl}
-              disabled={slotShipmentLoading} style={{ flexShrink: 0 }}>
-              {slotShipmentLoading ? <Spinner /> : null}
-              Look Up
-            </button>
-          </div>
+        <FField label="Container #" required error={touched[p+'cn'] && !cn.trim()}>
+          <input type="text" className="wizard-field" value={cn}
+            onChange={e => set('containerNumber', e.target.value.toUpperCase())}
+            onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
+            style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }} />
         </FField>
-        <FField label="Container Size" required error={touched[p+'cs'] && !cs.trim()}>
+        <FField label="Size" required error={touched[p+'cs'] && !cs.trim()}>
           <CustomSelect placeholder="Select size…" value={cs}
             onChange={v => set('containerSize', v)} onBlur={() => touch(p+'cs')}
             options={CONTAINER_SIZES.filter(Boolean).map(s => ({ value: s, label: s }))} />
         </FField>
-        <FField label="Customs Entry #">
+        <FField label="Entry #" required error={touched[p+'en'] && !en.trim()}>
           <input type="text" className="wizard-field" value={en}
             onChange={e => set('entryNumber', e.target.value.toUpperCase())}
             onBlur={() => touch(p+'en')} placeholder="e.g. CE2026100142"
@@ -1169,6 +1153,13 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
             onChange={v => set('purpose', v)} onBlur={() => touch(p+'pu')}
             options={PURPOSES.filter(Boolean).map(p2 => ({ value: p2, label: p2 }))} />
         </FField>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button type="button" className="btn-primary" onClick={fetchSlotFcl}
+          disabled={slotShipmentLoading}>
+          {slotShipmentLoading ? <Spinner /> : null}
+          Look Up
+        </button>
       </div>
       <ICSLookupBlock sd={sd} icsBadge={icsBadge} fetched={slotShipmentFetched} error={slotShipmentError} showHeld={showHeld} />
       {slotShipmentFetched && <AutoPopulatedInfoCard data={slotSimInfo} />}

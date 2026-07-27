@@ -78,11 +78,17 @@ export async function apiClient<T>(
       const isLoginEndpoint  = path.includes('/auth/login')
       const isAuthMeEndpoint = path.includes('/auth/me')
       if (!isLoginEndpoint) setToken(null)
+      // A 401 from the login endpoint itself just means "wrong email/password" — that's an
+      // inline form error, not a session expiry, so it must never redirect anywhere (previously
+      // this only excluded /login and /kiosk by pathname, so a failed attempt on any other
+      // login-style page — e.g. /visitor-login — would incorrectly bounce to /login).
       if (
         typeof window !== 'undefined' &&
+        !isLoginEndpoint &&
+        !isAuthMeEndpoint &&
         !window.location.pathname.startsWith('/login') &&
-        !window.location.pathname.startsWith('/kiosk') &&
-        !isAuthMeEndpoint
+        !window.location.pathname.startsWith('/visitor-login') &&
+        !window.location.pathname.startsWith('/kiosk')
       ) {
         window.location.href = '/login'
       }
