@@ -4,6 +4,10 @@ import { usePageTitle } from '@/lib/usePageTitle'
 import { getTenantFull as getTenant, updateTenant } from '@/lib/db/tenants'
 import { fetcher, postFetcher, patchFetcher, deleteFetcher, rawFetcher } from '@/lib/fetcher'
 import { useSignedUrl } from '@/lib/useSignedUrl'
+import { getVisitablePersons, addVisitablePerson, updateVisitablePerson, deleteVisitablePerson } from '@/lib/db/visitable-persons'
+import type { VisitablePerson } from '@/lib/db/visitable-persons'
+import { getVisitReasons, addVisitReason, updateVisitReason, deleteVisitReason } from '@/lib/db/visit-reasons'
+import type { VisitReason } from '@/lib/db/visit-reasons'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { toast } from '@/lib/toast'
@@ -178,7 +182,7 @@ const DEFAULT_DOC_REQUIREMENTS: DocRequirement[] = COMBO_DEFAULTS
 const GROUPS = [
   { id: 'General',      label: 'General',      sections: ['General', 'Working Hours'] },
   { id: 'Bookings',     label: 'Bookings',     sections: ['Slot Config', 'Pricing', 'Payment', 'Document Requirements'] },
-  { id: 'Team',         label: 'Team',         sections: ['User Management'] },
+  { id: 'Team',         label: 'Team',         sections: ['User Management', 'Visiting Persons'] },
 ] as const
 type GroupId = typeof GROUPS[number]['id']
 
@@ -186,7 +190,7 @@ type GroupId = typeof GROUPS[number]['id']
 const RAIL_SECTIONS: Record<string, string[]> = {
   General:      ['Business Profile', 'Working Hours', 'Kiosk Agreement', 'Kiosk Devices'],
   Bookings:     ['Slot Config', 'Pricing', 'Payment', 'Document Requirements'],
-  Team:         ['User Management'],
+  Team:         ['User Management', 'Visiting Persons'],
 }
 
 const LABEL: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 8 }
@@ -386,6 +390,190 @@ function SectionHead({ title, desc }: { title: string; desc?: string }) {
   )
 }
 
+// ─── Generic editable name+active list — used for Visiting Persons and both
+// Reason for Visit categories, which are otherwise identical CRUD-list UIs ───
+interface NamedItem { id: string; name: string; active: boolean }
+function EditableNameListCard<T extends NamedItem>({
+  title, desc, placeholder, items, loading, addLabel, emptyLabel,
+  onAdd, onToggle, onRemove,
+}: {
+  title: string
+  desc: string
+  placeholder: string
+  items: T[]
+  loading: boolean
+  addLabel: string
+  emptyLabel: string
+  onAdd: (name: string) => Promise<void>
+  onToggle: (item: T) => Promise<void>
+  onRemove: (item: T) => Promise<void>
+}) {
+  const [newName, setNewName] = useState('')
+  const [adding,  setAdding]  = useState(false)
+  const [busyId,  setBusyId]  = useState('')
+
+  const add = async () => {
+    if (!newName.trim()) return
+    setAdding(true)
+    try { await onAdd(newName.trim()); setNewName('') }
+    finally { setAdding(false) }
+  }
+  const toggle = async (item: T) => {
+    setBusyId(item.id)
+    try { await onToggle(item) } finally { setBusyId('') }
+  }
+  const remove = async (item: T) => {
+    setBusyId(item.id)
+    try { await onRemove(item) } finally { setBusyId('') }
+  }
+
+  return (
+    <div style={CARD}>
+      <SectionHead title={title} desc={desc} />
+
+      {/* Not a <form> — this already sits inside SettingsPage's page-level <form>, and nested
+          forms are invalid HTML (the inner submit never reliably fires). */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+        <FocusInput
+          type="text" placeholder={placeholder} value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }}
+          style={{ flex: 1 }}
+        />
+        <button type="button" onClick={add} disabled={adding || !newName.trim()}
+          style={{ ...SAVE, marginTop: 0, padding: '9px 20px', opacity: (adding || !newName.trim()) ? 0.5 : 1, cursor: (adding || !newName.trim()) ? 'not-allowed' : 'pointer' }}>
+          {adding ? 'Adding…' : addLabel}
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[0, 1, 2].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
+        </div>
+      ) : items.length === 0 ? (
+        <p style={{ fontSize: 15, color: 'var(--text-tertiary)', margin: 0 }}>{emptyLabel}</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {items.map((item, i) => (
+            <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 2px', borderTop: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.05)' }}>
+              <span style={{ fontSize: 15, fontWeight: 500, color: item.active ? '#1C1917' : 'var(--text-tertiary)', textDecoration: item.active ? 'none' : 'line-through' }}>
+                {item.name}
+              </span>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button type="button" onClick={() => toggle(item)} disabled={busyId === item.id}
+                  style={{ fontSize: 13, fontWeight: 600, padding: '5px 12px', borderRadius: 'var(--r-full)', border: '1px solid rgba(0,0,0,0.12)', background: item.active ? '#F3F4F6' : 'rgba(34,197,94,0.08)', color: item.active ? '#374151' : '#16A34A', cursor: busyId === item.id ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {item.active ? 'Deactivate' : 'Activate'}
+                </button>
+                <button type="button" onClick={() => remove(item)} disabled={busyId === item.id}
+                  style={{ width: 30, height: 30, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: busyId === item.id ? 'not-allowed' : 'pointer', color: '#9CA3AF' }}>
+                  <Icon name={ICONS.trash} size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Visiting Persons + Reason for Visit — all configurable kiosk lists ───
+function VisitingPersonsSection() {
+  const [people,       setPeople]       = useState<VisitablePerson[]>([])
+  const [peopleLoading, setPeopleLoading] = useState(true)
+  const [officeReasons, setOfficeReasons] = useState<VisitReason[]>([])
+  const [yardReasons,   setYardReasons]   = useState<VisitReason[]>([])
+  const [reasonsLoading, setReasonsLoading] = useState(true)
+
+  useEffect(() => {
+    setPeopleLoading(true)
+    getVisitablePersons(DEFAULT_TENANT_ID).then(setPeople).catch(() => setPeople([])).finally(() => setPeopleLoading(false))
+    setReasonsLoading(true)
+    Promise.all([
+      getVisitReasons(DEFAULT_TENANT_ID, 'office'),
+      getVisitReasons(DEFAULT_TENANT_ID, 'yard'),
+    ]).then(([office, yard]) => { setOfficeReasons(office); setYardReasons(yard) })
+      .catch(() => { setOfficeReasons([]); setYardReasons([]) })
+      .finally(() => setReasonsLoading(false))
+  }, [])
+
+  return (
+    <div>
+      <EditableNameListCard
+        title="Visiting Persons"
+        desc="The list of names the kiosk's 'Person you're visiting' dropdown offers to walk-in visitors. Deactivate a name to hide it from the kiosk without deleting its history."
+        placeholder="e.g. John Smith"
+        addLabel="Add Name"
+        emptyLabel="No names added yet."
+        items={people}
+        loading={peopleLoading}
+        onAdd={async name => {
+          const p = await addVisitablePerson(DEFAULT_TENANT_ID, name)
+          if (p) setPeople(prev => [...prev, p].sort((a, b) => a.name.localeCompare(b.name)))
+          toast('Name added', 'success')
+        }}
+        onToggle={async p => {
+          const updated = await updateVisitablePerson(p.id, { active: !p.active })
+          if (updated) setPeople(prev => prev.map(x => x.id === p.id ? updated : x))
+        }}
+        onRemove={async p => {
+          await deleteVisitablePerson(p.id)
+          setPeople(prev => prev.filter(x => x.id !== p.id))
+          toast('Name removed', 'success')
+        }}
+      />
+
+      <EditableNameListCard
+        title="Reason for Visit (Office)"
+        desc="Reasons offered on the kiosk when a visitor selects 'Visit Office'."
+        placeholder="e.g. Meeting with Staff"
+        addLabel="Add Reason"
+        emptyLabel="No reasons added yet."
+        items={officeReasons}
+        loading={reasonsLoading}
+        onAdd={async name => {
+          const r = await addVisitReason(DEFAULT_TENANT_ID, 'office', name)
+          if (r) setOfficeReasons(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)))
+          toast('Reason added', 'success')
+        }}
+        onToggle={async r => {
+          const updated = await updateVisitReason(r.id, { active: !r.active })
+          if (updated) setOfficeReasons(prev => prev.map(x => x.id === r.id ? updated : x))
+        }}
+        onRemove={async r => {
+          await deleteVisitReason(r.id)
+          setOfficeReasons(prev => prev.filter(x => x.id !== r.id))
+          toast('Reason removed', 'success')
+        }}
+      />
+
+      <EditableNameListCard
+        title="Reason for Visit (Yard)"
+        desc="Reasons offered on the kiosk when a visitor selects 'Visit Yard'."
+        placeholder="e.g. Container Inspection"
+        addLabel="Add Reason"
+        emptyLabel="No reasons added yet."
+        items={yardReasons}
+        loading={reasonsLoading}
+        onAdd={async name => {
+          const r = await addVisitReason(DEFAULT_TENANT_ID, 'yard', name)
+          if (r) setYardReasons(prev => [...prev, r].sort((a, b) => a.name.localeCompare(b.name)))
+          toast('Reason added', 'success')
+        }}
+        onToggle={async r => {
+          const updated = await updateVisitReason(r.id, { active: !r.active })
+          if (updated) setYardReasons(prev => prev.map(x => x.id === r.id ? updated : x))
+        }}
+        onRemove={async r => {
+          await deleteVisitReason(r.id)
+          setYardReasons(prev => prev.filter(x => x.id !== r.id))
+          toast('Reason removed', 'success')
+        }}
+      />
+    </div>
+  )
+}
+
 function SaveBtn({ loading, dirty }: { loading?: boolean; dirty?: boolean }) {
   const disabled = loading || !dirty
   return (
@@ -425,7 +613,7 @@ export default function SettingsPage() {
     '#general': 'General', '#working-hours': 'General',
     '#slot-config': 'Bookings', '#pricing': 'Bookings', '#payment': 'Bookings',
     '#doc-requirements': 'Bookings',
-    '#user-management': 'Team',
+    '#user-management': 'Team', '#visiting-persons': 'Team',
   }
   const GROUP_TO_HASH: Record<GroupId, string> = {
     General: '#general', Bookings: '#slot-config',
@@ -441,6 +629,7 @@ export default function SettingsPage() {
     '#slot-config': 'slot-config', '#pricing': 'pricing', '#payment': 'payment',
     '#doc-requirements': 'doc-requirements',
     '#user-management': 'user-management',
+    '#visiting-persons': 'visiting-persons',
   }
   const sectionFromHash = (): string => HASH_TO_SECTION[window.location.hash] ?? 'general'
 
@@ -1337,7 +1526,7 @@ export default function SettingsPage() {
                           />
                           {openExceedsMin && (
                             <p style={{ fontSize: 13, color: '#D97706', marginTop: 4, lineHeight: 1.4 }}>
-                              Open time is earlier than the first slot period ({minOpen}). Bookings won't be accepted until {minOpen}.
+                              Open time ({day.open}) is later than the first slot period start ({minOpen}). Slots between {minOpen} and {day.open} won't be bookable since the facility isn't open yet.
                             </p>
                           )}
                         </div>
@@ -2617,6 +2806,8 @@ export default function SettingsPage() {
             </div>
           )
           })()}
+
+          {section === 'visiting-persons' && <VisitingPersonsSection />}
         </form>
       )}
 

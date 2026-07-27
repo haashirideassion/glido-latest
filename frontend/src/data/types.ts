@@ -44,6 +44,7 @@ export interface Booking {
   checkedInAt?: string
   completedAt?: string
   completionNotes?: string
+  staffNotes?: string
   // Extended shipment / load fields
   containerSize?:      string
   entryNumber?:        string

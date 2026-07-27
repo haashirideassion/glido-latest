@@ -14,6 +14,8 @@ import uploadsRoutes from './routes/uploads'
 import usersRoutes from './routes/users'
 import bookingDocumentsRoutes from './routes/booking-documents'
 import savedDriversRoutes from './routes/saved-drivers'
+import visitablePersonsRoutes from './routes/visitable-persons'
+import visitReasonsRoutes from './routes/visit-reasons'
 import carriersRoutes from './routes/carriers'
 import broadcastRoutes from './routes/broadcast'
 import notificationsRoutes from './routes/notifications'
@@ -55,6 +57,8 @@ app.use('/api/uploads', uploadsRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/booking-documents', bookingDocumentsRoutes)
 app.use('/api/saved-drivers', savedDriversRoutes)
+app.use('/api/visitable-persons', visitablePersonsRoutes)
+app.use('/api/visit-reasons', visitReasonsRoutes)
 app.use('/api/carriers', carriersRoutes)
 app.use('/api/broadcasts', broadcastRoutes)
 app.use('/api/notifications', notificationsRoutes)

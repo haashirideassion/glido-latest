@@ -6,8 +6,10 @@ import { motion } from '@/lib/motion'
 import { todaySydney } from '@/lib/time'
 import { toast } from '@/lib/toast'
 import { checkInBooking, completeBooking } from '@/lib/db/bookings'
+import type { ManualCheckInDetails } from '@/lib/db/bookings'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { generateBookingPdf } from '@/lib/bookingPdf'
+import { CheckInModal } from '@/components/reception/CheckInModal'
 import type { Booking } from '@/data/types'
 import type { StaffPermissions } from '@/lib/useStaffPermissions'
 
@@ -63,11 +65,20 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
     finally { setPrintingId('') }
   }
 
-  const handleCheckIn = async (b: Booking, e: React.MouseEvent) => {
+  const [checkInTarget, setCheckInTarget] = useState<Booking | null>(null)
+  const openCheckIn = (b: Booking, e: React.MouseEvent) => {
     e.stopPropagation()
-    setActionId(b.id)
-    try { await checkInBooking(b.id); toast(`✓ ${b.driverName} checked in`, 'success'); onRefresh?.() }
-    catch { toast('Failed to update status', 'error') }
+    setCheckInTarget(b)
+  }
+  const confirmCheckIn = async (details: ManualCheckInDetails) => {
+    if (!checkInTarget) return
+    setActionId(checkInTarget.id)
+    try {
+      await checkInBooking(checkInTarget.id, details)
+      toast(`✓ ${checkInTarget.driverName} checked in`, 'success')
+      onRefresh?.()
+      setCheckInTarget(null)
+    } catch { toast('Failed to update status', 'error') }
     finally { setActionId('') }
   }
 
@@ -275,7 +286,7 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
                     {/* Quick action */}
                     {b.status === 'scheduled' && perms?.can_mark_complete ? (
                       <motion.button
-                        onClick={e => handleCheckIn(b, e)}
+                        onClick={e => openCheckIn(b, e)}
                         disabled={actionId === b.id}
                         whileTap={actionId === b.id ? undefined : { scale: 0.94 }}
                         style={{ height: 28, padding: '0 12px', fontSize: 12.5, fontWeight: 600, color: '#374151', background: '#F3F4F6', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: actionId === b.id ? 'not-allowed' : 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: actionId === b.id ? 0.6 : 1 }}
@@ -298,6 +309,14 @@ export function BookingTable({ bookings, slotCounts, groupSlots, currentDate, lo
             )
           })}
         </div>
+      )}
+      {checkInTarget && (
+        <CheckInModal
+          driverName={checkInTarget.driverName}
+          submitting={actionId === checkInTarget.id}
+          onClose={() => setCheckInTarget(null)}
+          onConfirm={confirmCheckIn}
+        />
       )}
     </div>
   )

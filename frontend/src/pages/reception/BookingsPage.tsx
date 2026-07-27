@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { getBookings, getBookingsByDateRange, cancelBooking, checkInBooking, completeBooking } from '@/lib/db/bookings'
+import type { ManualCheckInDetails } from '@/lib/db/bookings'
+import { CheckInModal } from '@/components/reception/CheckInModal'
 import { Icon, ICONS } from '@/lib/Icon'
 import { toast } from '@/lib/toast'
 import { todaySydney, TZ } from '@/lib/time'
@@ -398,13 +400,20 @@ export default function BookingsPage() {
     }
   }
 
-  const handleCheckIn = async (b: Booking, e: React.MouseEvent) => {
+  const [checkInTarget, setCheckInTarget] = useState<Booking | null>(null)
+  const handleCheckIn = (b: Booking, e: React.MouseEvent) => {
     e.stopPropagation()
+    setCheckInTarget(b)
+  }
+  const confirmCheckIn = async (details: ManualCheckInDetails) => {
+    const b = checkInTarget
+    if (!b) return
     setActionLoading(prev => ({ ...prev, [b.id]: 'checkin' }))
     try {
-      await checkInBooking(b.id)
+      await checkInBooking(b.id, details)
       toast('Marked as pre-processed', 'success')
       load({ silent: true })
+      setCheckInTarget(null)
     } catch { toast('Failed to update status', 'error') }
     finally { setActionLoading(prev => { const n = { ...prev }; delete n[b.id]; return n }) }
   }
@@ -971,6 +980,14 @@ export default function BookingsPage() {
           </div>
         </div>
       </div>
+    )}
+    {checkInTarget && (
+      <CheckInModal
+        driverName={checkInTarget.driverName}
+        submitting={actionLoading[checkInTarget.id] === 'checkin'}
+        onClose={() => setCheckInTarget(null)}
+        onConfirm={confirmCheckIn}
+      />
     )}
     </>
   )

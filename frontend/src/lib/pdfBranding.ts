@@ -33,20 +33,26 @@ export async function glidoLogoPng(): Promise<string | null> {
   } catch { return null }
 }
 
-async function resolveUrl(src: string): Promise<string> {
-  // Already a fetchable URL or data URL — use as-is
-  if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:')) return src
-  // S3 key — fetch a pre-signed URL from the backend
-  const { fetcher } = await import('./fetcher')
-  const res = await fetcher(`/api/uploads/signed-url?key=${encodeURIComponent(src)}`)
-  return res?.data?.url ?? src
-}
-
 export async function loadLogoDataUrl(src: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
   try {
-    const resolvedSrc = await resolveUrl(src)
-    const res = await fetch(resolvedSrc)
-    const blob = await res.blob()
+    let blob: Blob
+    if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('blob:')) {
+      // Already a fetchable URL or data URL — use as-is
+      const res = await fetch(src)
+      blob = await res.blob()
+    } else {
+      // S3 key — stream the bytes through our own backend instead of fetching the S3
+      // presigned URL directly from the browser. A direct browser fetch() to S3 is subject
+      // to the bucket's CORS policy and can silently fail even when the signed URL itself
+      // is valid (an <img src=presignedUrl> still renders fine, since images aren't
+      // CORS-gated for display — only a raw fetch() for bytes is).
+      const { getToken } = await import('./api-client')
+      const res = await fetch(`/api/uploads/proxy?key=${encodeURIComponent(src)}`, {
+        headers: { Authorization: `Bearer ${getToken() ?? ''}` },
+      })
+      if (!res.ok) return null
+      blob = await res.blob()
+    }
     const dataUrl: string = await new Promise((resolve, reject) => {
       const fr = new FileReader()
       fr.onload = () => resolve(fr.result as string)

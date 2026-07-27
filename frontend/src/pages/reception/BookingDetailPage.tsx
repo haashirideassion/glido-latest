@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Icon, ICONS } from '@/lib/Icon'
-import { fmtDateTime } from '@/lib/time'
+import { fmtDateTime, todaySydney } from '@/lib/time'
 import { toast } from '@/lib/toast'
 import { fetcher } from '@/lib/fetcher'
 import { openSignedUrl } from '@/lib/useSignedUrl'
@@ -94,6 +94,13 @@ export default function BookingDetailPage() {
   const [selectedAction, setSelectedAction] = useState<'checkin' | 'reschedule' | 'cancel' | null>(null)
   const [selectedSlot,   setSelectedSlot]   = useState<Booking | null>(null)
 
+  // Manual check-in fields — mirror the kiosk's simulated licence-scan fields
+  const [ciLicenceName,    setCiLicenceName]    = useState('')
+  const [ciLicenceNumber,  setCiLicenceNumber]  = useState('')
+  const [ciLicenceDob,     setCiLicenceDob]     = useState('')
+  const [ciLicenceExpiry,  setCiLicenceExpiry]  = useState('')
+  const [ciLicenceAddress, setCiLicenceAddress] = useState('')
+
   // Block driver modal
   const [blockModalOpen,  setBlockModalOpen]  = useState(false)
   const [blockReason,     setBlockReason]     = useState('')
@@ -119,6 +126,7 @@ export default function BookingDetailPage() {
         setSelectedSlot(slot)
         setNewDate(slot.slotDate)
         setNewStart(slot.slotStartTime)
+        if (action === 'checkin') setCiLicenceName(slot.driverName ?? '')
       }
     } else {
       setSelectedSlot(null)
@@ -130,6 +138,7 @@ export default function BookingDetailPage() {
     setSelectedAction(null)
     setSelectedSlot(null)
     setCancelReason('')
+    setCiLicenceName(''); setCiLicenceNumber(''); setCiLicenceDob(''); setCiLicenceExpiry(''); setCiLicenceAddress('')
   }
 
   const ACTION_LABEL: Record<string, string> = { checkin: 'Check In', reschedule: 'Reschedule', cancel: 'Cancel Slot' }
@@ -573,8 +582,7 @@ export default function BookingDetailPage() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             {slot.status === 'scheduled' && (<>
                               <button type="button"
-                                disabled={acting === slot.id + '-checkin'}
-                                onClick={async () => { setActing(slot.id + '-checkin'); try { await checkInBooking(slot.id); setGroupSlots(prev => { const next = prev.map(s => s.id === slot.id ? { ...s, status: 'checked_in' as any } : s); const allChecked = next.every(s => s.status === 'checked_in' || s.status === 'completed' || s.status === 'cancelled'); if (allChecked) setB(p => p ? { ...p, status: 'checked_in' as any } : p); return next }); toast('Checked in', 'success') } catch { toast('Failed', 'error') } finally { setActing('') } }}
+                                onClick={() => { setSelectedSlot(slot); setCiLicenceName(slot.driverName ?? ''); setSelectedAction('checkin') }}
                                 style={{ padding: '7px 14px', fontSize: 14, fontWeight: 600, background: 'rgba(34,197,94,0.10)', color: '#16A34A', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
                                 {acting === slot.id + '-checkin' ? '…' : 'Check In'}
                               </button>
@@ -942,7 +950,7 @@ export default function BookingDetailPage() {
                   key={slot.id}
                   type="button"
                   disabled={!actionable}
-                  onClick={() => { setSelectedSlot(slot); setNewDate(slot.slotDate); setNewStart(slot.slotStartTime) }}
+                  onClick={() => { setSelectedSlot(slot); setNewDate(slot.slotDate); setNewStart(slot.slotStartTime); if (selectedAction === 'checkin') setCiLicenceName(slot.driverName ?? '') }}
                   style={{
                     width: '100%', textAlign: 'left', padding: '14px 16px',
                     background: actionable ? '#FAFAF9' : 'rgba(0,0,0,0.025)',
@@ -1195,6 +1203,20 @@ export default function BookingDetailPage() {
                     </div>
                   ))}
                 </div>
+                <p style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.07em', color: 'var(--text-secondary)', textTransform: 'uppercase', margin: '0 0 10px' }}>
+                  ID details (as from a licence scan)
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+                  <input value={ciLicenceName} onChange={e => setCiLicenceName(e.target.value)} placeholder="Full name" style={FIELD} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <input value={ciLicenceNumber} onChange={e => setCiLicenceNumber(e.target.value)} placeholder="Licence number" style={FIELD} />
+                    <input type="date" value={ciLicenceDob} onChange={e => setCiLicenceDob(e.target.value)} max={todaySydney()} style={FIELD} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <input type="date" value={ciLicenceExpiry} onChange={e => setCiLicenceExpiry(e.target.value)} min={todaySydney()} style={FIELD} />
+                    <input value={ciLicenceAddress} onChange={e => setCiLicenceAddress(e.target.value)} placeholder="Address" style={FIELD} />
+                  </div>
+                </div>
                 <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5, margin: '0 0 4px' }}>
                   Confirming will mark this slot as arrived and record the exact time.
                 </p>
@@ -1204,7 +1226,13 @@ export default function BookingDetailPage() {
                     onClick={async () => {
                       setActing('checkin-' + sl.id)
                       try {
-                        await checkInBooking(sl.id)
+                        await checkInBooking(sl.id, {
+                          licenceName:    ciLicenceName.trim()    || undefined,
+                          licenceNumber:  ciLicenceNumber.trim()  || undefined,
+                          licenceDob:     ciLicenceDob.trim()     || undefined,
+                          licenceExpiry:  ciLicenceExpiry.trim()  || undefined,
+                          licenceAddress: ciLicenceAddress.trim() || undefined,
+                        })
                         setGroupSlots(prev => {
                           const next = prev.map(s => s.id === sl.id ? { ...s, status: 'checked_in' as any } : s)
                           // Only promote group-level status to checked_in when every slot is now checked in or done
@@ -1212,6 +1240,10 @@ export default function BookingDetailPage() {
                           if (allChecked) setB(p => p ? { ...p, status: 'checked_in' as any } : p)
                           return next
                         })
+                        // Refetch so the just-saved identity-check fields show immediately, without a page reload
+                        fetcher(`/api/checkin-records?bookingId=${encodeURIComponent(sl.id)}`)
+                          .then((res: any) => setCheckinRecord((res?.data ?? [])[0] ?? null))
+                          .catch(() => {})
                         toast(`✓ ${b.driverName} checked in`, 'success')
                         closeActionModal()
                       } catch (err: any) {

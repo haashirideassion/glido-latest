@@ -64,6 +64,30 @@ router.get('/signed-url', requireAuth, async (req: Request, res: Response) => {
   }
 })
 
+// ── GET /api/uploads/proxy?key= ────────────────────────────────
+// Streams an S3 object's bytes through our own backend instead of handing the browser a
+// presigned URL to fetch directly — a direct browser fetch() to S3 is subject to the
+// bucket's CORS policy and can silently fail ("Failed to fetch") if that policy doesn't
+// allow the current origin, even though the presigned URL itself is valid (as proven by
+// <img src=presignedUrl> still rendering fine — images aren't CORS-gated for display).
+// Needed for anything that must read the raw bytes client-side (e.g. embedding the tenant
+// logo into a jsPDF-generated PDF), where <img> alone isn't enough.
+router.get('/proxy', requireAuth, async (req: Request, res: Response) => {
+  const { key } = req.query
+  if (!key) return res.status(400).json({ success: false, error: { message: 'key is required' } })
+  try {
+    const s3Key = extractKey(key as string)
+    const command = new GetObjectCommand({ Bucket: BUCKET, Key: s3Key })
+    const obj = await s3.send(command)
+    if (!obj.Body) return res.status(404).json({ success: false, error: { message: 'Not found' } })
+    res.setHeader('Content-Type', obj.ContentType ?? 'application/octet-stream')
+    ;(obj.Body as any).pipe(res)
+  } catch (e: any) {
+    console.error('[uploads/proxy] error:', e.message)
+    return res.status(500).json({ success: false, error: { message: 'Could not fetch object' } })
+  }
+})
+
 // ── POST /api/uploads/logo — staff only ───────────────────────
 router.post('/logo', requireAuth, (req: Request, res: Response) => {
   memoryUpload.single('file')(req, res, async (err: any) => {

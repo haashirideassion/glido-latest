@@ -236,7 +236,11 @@ router.post('/', optionalAuth, async (req: Request, res: Response) => {
 })
 
 // PATCH /api/v2/bookings/:id/checkin — staff only
+// Optional body: manually-entered licence details mirroring the kiosk's scanner fields
+// (licenceName, licenceNumber, licenceDob, licenceExpiry, licenceAddress), captured via
+// Reception's check-in confirmation modal since there's no physical scanner at the desk.
 router.patch('/:id/checkin', requireAuth, async (req: Request, res: Response) => {
+  const { licenceName, licenceNumber, licenceDob, licenceExpiry, licenceAddress } = req.body ?? {}
   try {
     const result = await pool.query(
       `UPDATE bookings SET status = 'checked_in', checked_in_at = NOW() WHERE id = $1 RETURNING *`,
@@ -245,17 +249,41 @@ router.patch('/:id/checkin', requireAuth, async (req: Request, res: Response) =>
     const booking = result.rows[0]
     if (!booking) return res.status(404).json({ success: false, error: { message: 'Not found' } })
 
-    // Create a checkin_record so this booking appears in the Visitor Log
-    // Only insert if one doesn't already exist for this booking
+    // Create (or update) the checkin_record so this booking appears in the Visitor Log.
+    // Upsert rather than insert-only-if-missing — a record can already exist for this
+    // booking (e.g. a prior check-in that was reverted and redone), and previously the
+    // fresh licence details typed into the modal were silently discarded in that case.
     const existing = await pool.query(
       `SELECT id FROM checkin_records WHERE booking_id = $1 LIMIT 1`,
       [booking.id]
     )
     if (existing.rows.length === 0) {
       await pool.query(
-        `INSERT INTO checkin_records (booking_id, tenant_id, is_walk_in, licence_name)
-         VALUES ($1, $2, FALSE, $3)`,
-        [booking.id, booking.tenant_id, booking.driver_name ?? null]
+        `INSERT INTO checkin_records
+           (booking_id, tenant_id, is_walk_in, licence_scan_method,
+            licence_name, licence_number, licence_dob, licence_expiry, licence_address)
+         VALUES ($1, $2, FALSE, $3, $4, $5, $6, $7, $8)`,
+        [
+          booking.id, booking.tenant_id,
+          licenceName ? 'manual' : null,
+          licenceName ?? booking.driver_name ?? null,
+          licenceNumber ?? null,
+          licenceDob ?? null,
+          licenceExpiry ?? null,
+          licenceAddress ?? null,
+        ]
+      )
+    } else if (licenceName || licenceNumber || licenceDob || licenceExpiry || licenceAddress) {
+      await pool.query(
+        `UPDATE checkin_records SET
+           licence_scan_method = 'manual',
+           licence_name    = COALESCE($2, licence_name),
+           licence_number  = COALESCE($3, licence_number),
+           licence_dob     = COALESCE($4, licence_dob),
+           licence_expiry  = COALESCE($5, licence_expiry),
+           licence_address = COALESCE($6, licence_address)
+         WHERE id = $1`,
+        [existing.rows[0].id, licenceName ?? null, licenceNumber ?? null, licenceDob ?? null, licenceExpiry ?? null, licenceAddress ?? null]
       )
     }
 
@@ -325,6 +353,22 @@ router.patch('/:id/cancel', requireAuth, async (req: Request, res: Response) => 
     return res.json({ success: true, data: b })
   } catch (err) {
     console.error('[bookings PATCH cancel]', err)
+    return res.status(500).json({ success: false, error: { message: 'Server error' } })
+  }
+})
+
+// PATCH /api/v2/bookings/:id/staff-notes — staff only. Internal comment, never shown to the visitor.
+router.patch('/:id/staff-notes', requireAuth, async (req: Request, res: Response) => {
+  const { staff_notes } = req.body ?? {}
+  try {
+    const result = await pool.query(
+      `UPDATE bookings SET staff_notes = $1 WHERE id = $2 RETURNING *`,
+      [staff_notes ?? null, req.params.id]
+    )
+    if (!result.rows[0]) return res.status(404).json({ success: false, error: { message: 'Not found' } })
+    return res.json({ success: true, data: result.rows[0] })
+  } catch (err) {
+    console.error('[bookings PATCH staff-notes]', err)
     return res.status(500).json({ success: false, error: { message: 'Server error' } })
   }
 })

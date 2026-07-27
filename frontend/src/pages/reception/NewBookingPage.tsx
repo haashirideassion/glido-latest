@@ -39,6 +39,27 @@ function buildIcs(events: Array<{ ref: string; date: string; slotLabel: string; 
   return lines.join('\r\n')
 }
 
+// ── Google Calendar "quick add" link — no OAuth, just a prefilled create-event URL ──
+function buildGoogleCalendarUrl(e: { ref: string; date: string; slotLabel: string; summary: string }): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const toGDate = (date: string, time: string) => {
+    const [y, m, d] = date.split('-')
+    const [h, min]  = time.replace(/\s/g, '').split(':')
+    return `${y}${m}${d}T${pad(Number(h))}${pad(Number(min))}00`
+  }
+  const parts = e.slotLabel.replace('–', '-').split('-').map(s => s.trim())
+  const start = toGDate(e.date, parts[0] || '00:00')
+  const end   = toGDate(e.date, parts[1] || parts[0] || '00:00')
+  const params = new URLSearchParams({
+    action:  'TEMPLATE',
+    text:    e.summary,
+    dates:   `${start}/${end}`,
+    details: `Booking reference: ${e.ref}`,
+    ctz:     'Australia/Sydney',
+  })
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
+}
+
 // EFT details fetched live — see useTenantInfo() inside ConfirmedScreen
 
 function ConfirmedScreen() {
@@ -104,6 +125,15 @@ function ConfirmedScreen() {
     a.download = `booking-${refs[0] ?? 'glido'}.ics`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Google Calendar has no multi-event "quick add" link — open one prefilled tab per
+  // booking, staggered slightly so the popup blocker doesn't swallow the later ones.
+  const handleAddToGoogleCalendar = () => {
+    rawRefs.forEach((r, i) => {
+      const url = buildGoogleCalendarUrl({ ref: r.ref, date: r.date, slotLabel: r.slotLabel, summary: `Glido CFS Visit · ${r.ref}` })
+      setTimeout(() => window.open(url, '_blank', 'noopener,noreferrer'), i * 400)
+    })
   }
 
   // One QR per booking ref
@@ -635,7 +665,14 @@ function ConfirmedScreen() {
             style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 22px', fontSize: 15, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', transition: 'all 0.15s' }}
           >
             <Icon name={ICONS.calendar} size={14} />
-            Add to Calendar
+            Add to Calendar (.ics)
+          </button>
+          <button
+            onClick={handleAddToGoogleCalendar}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 22px', fontSize: 15, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', transition: 'all 0.15s' }}
+          >
+            <Icon name={ICONS.calendar} size={14} />
+            Add to Google Calendar
           </button>
         </div>
 

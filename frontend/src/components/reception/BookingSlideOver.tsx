@@ -5,9 +5,11 @@ import { fmtDateTime } from '@/lib/time'
 import { toast } from '@/lib/toast'
 import { fetcher } from '@/lib/fetcher'
 import { openSignedUrl } from '@/lib/useSignedUrl'
+import { CheckInModal } from '@/components/reception/CheckInModal'
+import type { ManualCheckInDetails } from '@/lib/db/bookings'
 import {
   checkInBooking, completeBooking, cancelBooking,
-  rescheduleBooking, refreshIcsStatus,
+  rescheduleBooking, refreshIcsStatus, updateStaffNotes,
 } from '@/lib/db/bookings'
 import type { Booking } from '@/data/types'
 import type { StaffPermissions } from '@/lib/useStaffPermissions'
@@ -82,14 +84,29 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
   const [checkin, setCheckin] = useState<any>(null)
   const [documents, setDocuments] = useState<BookingDocument[]>([])
   const [viewingDoc, setViewingDoc] = useState('')
+  const [staffNotesDraft, setStaffNotesDraft] = useState(b.staffNotes ?? '')
+  const [savingNotes, setSavingNotes] = useState(false)
+  const staffNotesDirty = staffNotesDraft !== (b.staffNotes ?? '')
+  const saveStaffNotes = async () => {
+    setSavingNotes(true)
+    try {
+      const updated = await updateStaffNotes(b.id, staffNotesDraft)
+      if (updated) { setB(updated); onUpdated(updated) }
+      toast('Comment saved', 'success')
+    } catch { toast('Failed to save comment', 'error') }
+    finally { setSavingNotes(false) }
+  }
 
   // Fetch identity check record when booking is checked-in or completed
-  useEffect(() => {
-    if (b.status !== 'checked_in' && b.status !== 'completed') return
+  const loadCheckin = () => {
     fetcher(`/api/checkin-records?bookingId=${encodeURIComponent(b.id)}`)
       .then((res: any) => setCheckin((res?.data ?? [])[0] ?? null))
       .catch(() => {})
-  }, [b.id, b.status])
+  }
+  useEffect(() => {
+    if (b.status !== 'checked_in' && b.status !== 'completed') return
+    loadCheckin()
+  }, [b.id, b.status]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch documents uploaded during the booking (cartage advice, packing list, etc.)
   useEffect(() => {
@@ -115,6 +132,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
   const [confirmModal,    setConfirmModal]    = useState(false)
   const [cancelModal,     setCancelModal]     = useState(false)
   const [rescheduleModal, setRescheduleModal] = useState(false)
+  const [checkInModal,    setCheckInModal]    = useState(false)
 
   // Form fields
   const [completionNotes, setCompletionNotes] = useState('')
@@ -444,12 +462,33 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
               )}
             </div>
           </section>
+
+          {/* Staff Comment — internal, never shown to the guest/visitor */}
+          <section>
+            <p style={SL}>Staff Comment</p>
+            <div style={PANEL}>
+              <textarea
+                rows={3}
+                value={staffNotesDraft}
+                onChange={e => setStaffNotesDraft(e.target.value)}
+                placeholder="Internal note for depot staff (feasibility, handling instructions, etc.) — not visible to the visitor."
+                style={{ ...fieldStyle, resize: 'none', marginBottom: 8 }}
+                onFocus={focus} onBlur={blur}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={saveStaffNotes} disabled={!staffNotesDirty || savingNotes}
+                  style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, color: '#fff', background: (!staffNotesDirty || savingNotes) ? '#9CA3AF' : 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: (!staffNotesDirty || savingNotes) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {savingNotes ? 'Saving…' : 'Save Comment'}
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
 
         {/* ── Action footer ── */}
         <div style={{ flexShrink: 0, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid rgba(0,0,0,0.07)', background: '#FFFFFF' }}>
           {b.status === 'scheduled' && (
-            <ActionBtn color="green" loading={loading === 'checkin'} onClick={() => act('checkin', () => checkInBooking(b.id), `✓ ${b.driverName} checked in`, 'success')}>
+            <ActionBtn color="green" loading={loading === 'checkin'} onClick={() => setCheckInModal(true)}>
               <Icon name={ICONS.userCheck} size={16} /> Mark as Checked In
             </ActionBtn>
           )}
@@ -472,6 +511,19 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
       </motion.div>
 
       {/* ── Reschedule modal ── */}
+      {checkInModal && (
+        <CheckInModal
+          driverName={b.driverName}
+          submitting={loading === 'checkin'}
+          onClose={() => setCheckInModal(false)}
+          onConfirm={async (details: ManualCheckInDetails) => {
+            await act('checkin', () => checkInBooking(b.id, details), `✓ ${b.driverName} checked in`, 'success')
+            loadCheckin()
+            setCheckInModal(false)
+          }}
+        />
+      )}
+
       {rescheduleModal && (
         <Modal onClose={() => setRescheduleModal(false)}>
           <h3 style={{ fontSize: 17, fontWeight: 700, color: '#1C1917', marginBottom: 6 }}>Reschedule Booking</h3>

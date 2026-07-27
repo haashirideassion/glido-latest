@@ -76,15 +76,15 @@ export function Step7Confirmation() {
       const slotFeeUnit = charges.slotFee / state.slotCount
 
       // Each slot gets its own fully independent reference — no group linking
-      const generateRef = () => {
+      const generateRef = (serviceType: string, loadType: string) => {
         const year = new Date().getFullYear()
         const rand = Math.random().toString(36).slice(2, 7).toUpperCase()
-        return `GLD-${year}-${rand}`
+        return `GLD-${year}-${rand}-${comboSuffix(serviceType, loadType)}`
       }
 
       const slotRefMap = new Map<number, string>()
       for (const cfg of state.slotConfigs) {
-        slotRefMap.set(cfg.index, generateRef())
+        slotRefMap.set(cfg.index, generateRef(cfg.serviceType!, cfg.loadType!))
       }
 
       const refs: Array<{ ref: string; slotLabel: string; date: string }> = []
@@ -105,7 +105,7 @@ export function Step7Confirmation() {
         const bookingReference = multi ? cfg.bookingReference : state.bookingReference
         const uploadedDocs     = (multi ? cfg.documentFiles   : state.documentFiles).filter(d => d.storagePath)
 
-        let slotRef = slotRefMap.get(cfg.index) ?? generateRef()
+        let slotRef = slotRefMap.get(cfg.index) ?? generateRef(cfg.serviceType!, cfg.loadType!)
         const bookingParams = {
           reference_number: slotRef,
           serviceType: cfg.serviceType!, loadType: cfg.loadType!,
@@ -153,7 +153,7 @@ export function Step7Confirmation() {
         } catch (err: any) {
           if (err?.code === '23505') {
             // Duplicate reference_number — regenerate and retry
-            slotRef = generateRef()
+            slotRef = generateRef(cfg.serviceType!, cfg.loadType!)
             booking = await createBooking({ ...bookingParams, reference_number: slotRef } as any)
           } else {
             throw err

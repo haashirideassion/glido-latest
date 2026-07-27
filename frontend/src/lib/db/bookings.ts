@@ -51,6 +51,7 @@ function rowToBooking(row: any): Booking {
     checkedInAt:         row.checked_in_at        ?? undefined,
     completedAt:         row.completed_at         ?? undefined,
     completionNotes:     row.completion_notes     ?? undefined,
+    staffNotes:          row.staff_notes          ?? undefined,
     containerSize:       row.container_size       ?? undefined,
     entryNumber:         row.entry_number         ?? undefined,
     purpose:             row.purpose              ?? undefined,
@@ -123,8 +124,16 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   }
 }
 
-export async function checkInBooking(id: string): Promise<Booking | undefined> {
-  const res = await patchFetcher(`${BASE}/${id}/checkin`, {})
+export interface ManualCheckInDetails {
+  licenceName?: string
+  licenceNumber?: string
+  licenceDob?: string
+  licenceExpiry?: string
+  licenceAddress?: string
+}
+
+export async function checkInBooking(id: string, details?: ManualCheckInDetails): Promise<Booking | undefined> {
+  const res = await patchFetcher(`${BASE}/${id}/checkin`, details ?? {})
   return res?.data ? rowToBooking(res.data) : undefined
 }
 
@@ -159,6 +168,11 @@ export async function refreshIcsStatus(id: string): Promise<Booking | undefined>
 
 export async function cancelBooking(id: string): Promise<void> {
   await patchFetcher(`${BASE}/${id}/cancel`, {})
+}
+
+export async function updateStaffNotes(id: string, staffNotes: string): Promise<Booking | undefined> {
+  const res = await patchFetcher(`${BASE}/${id}/staff-notes`, { staff_notes: staffNotes })
+  return res?.data ? rowToBooking(res.data) : undefined
 }
 
 export async function overrideBookingStatus(

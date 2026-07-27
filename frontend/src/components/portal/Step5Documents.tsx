@@ -11,6 +11,10 @@ import { CustomSelect } from '@/components/ui/CustomSelect'
 import { lookupShipment, lookupShipmentByContainer } from '@/lib/db/cfs-shipments'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { validators, sanitize } from '@/lib/validation'
+import { toast } from '@/lib/toast'
+
+const MIN_LOOKUP_LEN = 4
+const tooShortMsg = (label: string) => `Enter at least ${MIN_LOOKUP_LEN} characters for ${label} before looking up.`
 
 const FL: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 6 }
 const ROW: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }
@@ -98,6 +102,15 @@ function AutoPopulatedInfoCard({ data }: { data: ReturnType<typeof simulateAutoP
   )
 }
 
+// Cached shipment-lookup result for one slot tab — kept in the Step5Documents parent so it
+// survives the per-tab SlotDetailFields remount (see slotShipmentCache above).
+interface SlotShipmentCacheEntry {
+  data:    any
+  fetched: boolean
+  error:   string | null
+  simInfo: ReturnType<typeof simulateAutoPopulatedInfo> | null
+}
+
 // ─── Per-slot "done" check ────────────────────────────────────────────────────
 function isSlotDetailDone(cfg: any): boolean {
   if (!(cfg.driverName ?? '').trim() || !(cfg.vehicleRegistration ?? '').trim()) return false
@@ -164,6 +177,15 @@ export function Step5Documents() {
   const activeSlot5 = state.step5ActiveSlot ?? 0
   const setActiveSlot5 = (i: number) => dispatch({ type: 'SET', field: 'step5ActiveSlot', value: i })
 
+  // Per-slot shipment-lookup cache — lives here (not remounted on tab switch) rather than as
+  // local state inside SlotDetailFields, whose wrapper is keyed by activeSlot5 and therefore
+  // fully unmounts/remounts on every tab switch. Without this, switching tabs and back would
+  // silently drop the "Auto-Populated Information" card even though the real typed fields
+  // (HBL, container, etc.) survive fine since those live in state.slotConfigs.
+  const [slotShipmentCache, setSlotShipmentCache] = useState<Record<number, SlotShipmentCacheEntry>>({})
+  const updateSlotShipmentCache = (idx: number, patch: Partial<SlotShipmentCacheEntry>) =>
+    setSlotShipmentCache(prev => ({ ...prev, [idx]: { ...prev[idx], ...patch } }))
+
   const isPickupLcl  = state.serviceType === 'pickup'  && state.loadType === 'lcl'
   const isPickupFcl  = state.serviceType === 'pickup'  && state.loadType === 'fcl'
   const isDropoffLcl = state.serviceType === 'dropoff' && state.loadType === 'lcl'
@@ -174,7 +196,7 @@ export function Step5Documents() {
 
   // ── Shipment lookup ────────────────────────────────────────────────────────
   const fetchLcl = async () => {
-    if (!state.hbl.trim()) return
+    if (state.hbl.trim().length < MIN_LOOKUP_LEN) { toast(tooShortMsg('HBL Number'), 'error'); return }
     dispatch({ type: 'SET_SHIPMENT', data: null, loading: true, error: null, fetched: false })
     try {
       const data = await lookupShipment(DEFAULT_TENANT_ID, state.hbl.trim())
@@ -188,7 +210,7 @@ export function Step5Documents() {
   }
 
   const fetchFcl = async () => {
-    if (!state.containerNumber.trim()) return
+    if (state.containerNumber.trim().length < MIN_LOOKUP_LEN) { toast(tooShortMsg('Container Number'), 'error'); return }
     dispatch({ type: 'SET_SHIPMENT', data: null, loading: true, error: null, fetched: false })
     try {
       const data = await lookupShipmentByContainer(DEFAULT_TENANT_ID, state.containerNumber.trim())
@@ -202,7 +224,7 @@ export function Step5Documents() {
   }
 
   const fetchByEntry = async () => {
-    if (!state.entryNumber.trim()) return
+    if (state.entryNumber.trim().length < MIN_LOOKUP_LEN) { toast(tooShortMsg('Customs Entry #'), 'error'); return }
     dispatch({ type: 'SET_SHIPMENT', data: null, loading: true, error: null, fetched: false })
     try {
       const data = await lookupShipment(DEFAULT_TENANT_ID, state.entryNumber.trim())
@@ -409,6 +431,8 @@ export function Step5Documents() {
               touch={touch}
               touchPrefix={`s${activeSlot5}_`}
               slotIndex={activeCfg5.index}
+              cached={slotShipmentCache[activeCfg5.index]}
+              onCacheUpdate={patch => updateSlotShipmentCache(activeCfg5.index, patch)}
             />
             <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -528,7 +552,7 @@ export function Step5Documents() {
             </FField>
           </div>
           <div style={{ marginBottom: 32 }}>
-            <button type="button" className="btn-primary" onClick={fetchLcl} disabled={state.hbl.trim().length < 4 || state.shipmentLoading}>
+            <button type="button" className="btn-primary" onClick={fetchLcl} disabled={state.shipmentLoading}>
               {state.shipmentLoading ? <Spinner /> : <Icon name={ICONS.search} size={16} />}
               {state.shipmentLoading ? 'Looking up...' : 'Look Up Shipment'}
             </button>
@@ -579,7 +603,7 @@ export function Step5Documents() {
                   placeholder="e.g. CE2026100142"
                   style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }}
                 />
-                <button type="button" className="btn-primary" onClick={fetchByEntry} disabled={state.entryNumber.trim().length < 4 || state.shipmentLoading} style={{ flexShrink: 0 }}>
+                <button type="button" className="btn-primary" onClick={fetchByEntry} disabled={state.shipmentLoading} style={{ flexShrink: 0 }}>
                   {state.shipmentLoading ? <Spinner /> : null}
                   Look Up
                 </button>
@@ -618,7 +642,7 @@ export function Step5Documents() {
                   placeholder="e.g. MSCU1234567"
                   style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }}
                 />
-                <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.containerNumber.trim().length < 4 || state.shipmentLoading} style={{ flexShrink: 0 }}>
+                <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.shipmentLoading} style={{ flexShrink: 0 }}>
                   {state.shipmentLoading ? <Spinner /> : null}
                   Look Up
                 </button>
@@ -658,7 +682,7 @@ export function Step5Documents() {
                   placeholder="e.g. MSCU1234567"
                   style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }}
                 />
-                <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.containerNumber.trim().length < 4 || state.shipmentLoading} style={{ flexShrink: 0 }}>
+                <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.shipmentLoading} style={{ flexShrink: 0 }}>
                   {state.shipmentLoading ? <Spinner /> : null}
                   Look Up
                 </button>
@@ -925,68 +949,78 @@ function Spinner() {
 
 // ─── Per-slot detail fields for multi-slot mode ───────────────────────────────
 
-function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: {
+function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, cached, onCacheUpdate }: {
   cfg: SlotConfig
   set: (f: string, v: string) => void
   touched: Record<string, boolean>
   touch: (f: string) => void
   touchPrefix: string
   slotIndex: number
+  cached?: SlotShipmentCacheEntry
+  onCacheUpdate: (patch: Partial<SlotShipmentCacheEntry>) => void
 }) {
   const { dispatch } = useWizard()
-  const [slotShipmentData,    setSlotShipmentData]    = useState<any>(null)
-  const [slotShipmentFetched, setSlotShipmentFetched] = useState(false)
+  // Seeded from the parent's cache (survives this component's remount when switching slot
+  // tabs — see slotShipmentCache in Step5Documents) rather than always starting blank.
+  const [slotShipmentData,    setSlotShipmentData]    = useState<any>(() => cached?.data ?? null)
+  const [slotShipmentFetched, setSlotShipmentFetched] = useState(() => cached?.fetched ?? false)
   const [slotShipmentLoading, setSlotShipmentLoading] = useState(false)
-  const [slotShipmentError,   setSlotShipmentError]   = useState<string | null>(null)
-  const [slotSimInfo,         setSlotSimInfo]         = useState<ReturnType<typeof simulateAutoPopulatedInfo> | null>(null)
+  const [slotShipmentError,   setSlotShipmentError]   = useState<string | null>(() => cached?.error ?? null)
+  const [slotSimInfo,         setSlotSimInfo]         = useState<ReturnType<typeof simulateAutoPopulatedInfo> | null>(() => cached?.simInfo ?? null)
 
   const fetchSlotLcl = async () => {
     const hblVal = (cfg.hbl ?? '').trim()
-    if (!hblVal) return
+    if (hblVal.length < MIN_LOOKUP_LEN) { toast(tooShortMsg('HBL Number'), 'error'); return }
     setSlotShipmentLoading(true); setSlotShipmentData(null); setSlotShipmentFetched(false); setSlotShipmentError(null)
     try {
       const data = await lookupShipment(DEFAULT_TENANT_ID, hblVal)
+      const simInfo = simulateAutoPopulatedInfo()
       setSlotShipmentData(data ?? null)
       setSlotShipmentError(null)
       setSlotShipmentFetched(true)
-      setSlotSimInfo(simulateAutoPopulatedInfo())
+      setSlotSimInfo(simInfo)
+      onCacheUpdate({ data: data ?? null, error: null, fetched: true, simInfo })
       if (data?.containerNumber) {
         set('containerNumber', data.containerNumber)
         dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'containerNumber', value: data.containerNumber })
       }
       if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'icsStatus', value: data.icsStatus })
-    } catch { setSlotShipmentError('Lookup failed.') }
+    } catch { setSlotShipmentError('Lookup failed.'); onCacheUpdate({ error: 'Lookup failed.', fetched: false }) }
     finally { setSlotShipmentLoading(false) }
   }
 
   const fetchSlotFcl = async () => {
     const cnVal = (cfg.containerNumber ?? '').trim()
-    if (!cnVal) return
+    if (cnVal.length < MIN_LOOKUP_LEN) { toast(tooShortMsg('Container Number'), 'error'); return }
     setSlotShipmentLoading(true); setSlotShipmentData(null); setSlotShipmentFetched(false); setSlotShipmentError(null)
     try {
       const data = await lookupShipmentByContainer(DEFAULT_TENANT_ID, cnVal)
       const result = data ?? { id: '', hbl: '', containerNumber: cnVal, icsStatus: 'unavailable', readyForCollection: false }
+      const simInfo = simulateAutoPopulatedInfo()
       setSlotShipmentData(result)
       setSlotShipmentError(null)
       setSlotShipmentFetched(true)
-      setSlotSimInfo(simulateAutoPopulatedInfo())
+      setSlotSimInfo(simInfo)
+      onCacheUpdate({ data: result, error: null, fetched: true, simInfo })
       dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'icsStatus', value: result.icsStatus })
-    } catch { setSlotShipmentError('Lookup failed. Enter details manually.') }
+    } catch { setSlotShipmentError('Lookup failed. Enter details manually.'); onCacheUpdate({ error: 'Lookup failed. Enter details manually.', fetched: false }) }
     finally { setSlotShipmentLoading(false) }
   }
 
   const fetchSlotEntry = async () => {
     const enVal = (cfg.entryNumber ?? '').trim()
-    if (!enVal) return
+    if (enVal.length < MIN_LOOKUP_LEN) { toast(tooShortMsg('Customs Entry #'), 'error'); return }
     setSlotShipmentLoading(true); setSlotShipmentData(null); setSlotShipmentFetched(false); setSlotShipmentError(null)
     try {
       const data = await lookupShipment(DEFAULT_TENANT_ID, enVal)
+      const simInfo = simulateAutoPopulatedInfo()
       setSlotShipmentData(data ?? null)
       setSlotShipmentError(null)
       setSlotShipmentFetched(true)
-      setSlotSimInfo(simulateAutoPopulatedInfo())
+      setSlotSimInfo(simInfo)
+      onCacheUpdate({ data: data ?? null, error: null, fetched: true, simInfo })
       if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'icsStatus', value: data.icsStatus })
-    } catch { setSlotShipmentError('Lookup failed.') }
+    } catch { setSlotShipmentError('Lookup failed.'); onCacheUpdate({ error: 'Lookup failed.', fetched: false }) }
     finally { setSlotShipmentLoading(false) }
   }
 
@@ -1029,7 +1063,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
       </div>
       <div style={{ marginBottom: 16 }}>
         <button type="button" className="btn-primary" onClick={fetchSlotLcl}
-          disabled={hbl.trim().length < 4 || slotShipmentLoading}>
+          disabled={slotShipmentLoading}>
           {slotShipmentLoading ? <Spinner /> : <Icon name={ICONS.search} size={16} />}
           {slotShipmentLoading ? 'Looking up...' : 'Look Up Shipment'}
         </button>
@@ -1049,7 +1083,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
               onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
               style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }} />
             <button type="button" className="btn-primary" onClick={fetchSlotFcl}
-              disabled={cn.trim().length < 4 || slotShipmentLoading} style={{ flexShrink: 0 }}>
+              disabled={slotShipmentLoading} style={{ flexShrink: 0 }}>
               {slotShipmentLoading ? <Spinner /> : null}
               Look Up
             </button>
@@ -1086,7 +1120,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
               onBlur={() => touch(p+'en')} placeholder="e.g. CE2026100142"
               style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }} />
             <button type="button" className="btn-primary" onClick={fetchSlotEntry}
-              disabled={en.trim().length < 4 || slotShipmentLoading} style={{ flexShrink: 0 }}>
+              disabled={slotShipmentLoading} style={{ flexShrink: 0 }}>
               {slotShipmentLoading ? <Spinner /> : null}
               Look Up
             </button>
@@ -1113,7 +1147,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex }: 
               onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
               style={{ flex: 1, textTransform: 'uppercase', letterSpacing: '0.04em' }} />
             <button type="button" className="btn-primary" onClick={fetchSlotFcl}
-              disabled={cn.trim().length < 4 || slotShipmentLoading} style={{ flexShrink: 0 }}>
+              disabled={slotShipmentLoading} style={{ flexShrink: 0 }}>
               {slotShipmentLoading ? <Spinner /> : null}
               Look Up
             </button>

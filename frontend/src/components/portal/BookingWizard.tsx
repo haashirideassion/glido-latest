@@ -77,7 +77,13 @@ export default function BookingWizard() {
     setHoldExpiredModal(true)
   }, [dispatch, state.selectedSlotId])
 
-  const { holdActive, holdLabel, expiring } = useHoldTimer(handleHoldExpire)
+  const { holdActive, holdLabel, expiring, extendHold } = useHoldTimer(handleHoldExpire)
+  const [justExtended, setJustExtended] = useState(false)
+  const handleStayLonger = useCallback(() => {
+    extendHold(60)
+    setJustExtended(true)
+    setTimeout(() => setJustExtended(false), 2500)
+  }, [extendHold])
 
   // ── Leave-page protection ───────────────────────────────────────────────────
   const shouldBlock = state.step > 1 && !state.bookingConfirmed
@@ -297,6 +303,7 @@ export default function BookingWizard() {
         }
         .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 3px 6px rgba(0,0,0,0.10), 0 8px 20px rgba(var(--brand-rgb),0.42), inset 0 1.5px 0 rgba(255,255,255,0.5), inset 0 -2px 3px rgba(0,0,0,0.10); }
         .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; transform: none; }
         .btn-dark {
           display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px;
           font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(160deg, #2B2725 0%, #1C1917 60%, #0E0C0B 100%);
@@ -593,8 +600,17 @@ export default function BookingWizard() {
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: `1.5px solid ${expiring ? 'rgba(239,68,68,0.35)' : 'rgba(var(--brand-rgb),0.28)'}`, boxShadow: '0 4px 18px rgba(0,0,0,0.09),0 2px 8px rgba(var(--brand-rgb),0.12)', whiteSpace: 'nowrap' }}>
             <Icon name={ICONS.clock} size={26} style={{ color: expiring ? '#EF4444' : 'var(--brand-color)', flexShrink: 0 }} />
             <span style={{ fontSize: 15, fontWeight: 700, color: expiring ? '#EF4444' : '#1C1917' }}>
-              Slot held · <span style={{ fontFamily: 'ui-monospace,monospace' }}>{holdLabel}</span>
+              {justExtended ? 'Extended +1 min' : (<>Slot held · <span style={{ fontFamily: 'ui-monospace,monospace' }}>{holdLabel}</span></>)}
             </span>
+            {expiring && !justExtended && (
+              <button
+                type="button"
+                onClick={handleStayLonger}
+                style={{ pointerEvents: 'auto', marginLeft: 2, padding: '5px 12px', borderRadius: 'var(--r-full)', border: 'none', background: '#EF4444', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+              >
+                Stay 1 more min
+              </button>
+            )}
           </div>
         </div>,
         document.body

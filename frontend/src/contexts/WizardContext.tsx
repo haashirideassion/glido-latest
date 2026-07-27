@@ -1,10 +1,11 @@
 import {
-  createContext, useContext, useReducer, useEffect, useRef,
+  createContext, useContext, useReducer, useEffect, useRef, useCallback,
   type ReactNode, type Dispatch,
 } from 'react'
 import { todaySydney } from '@/lib/time'
 import { getTenant } from '@/lib/db/tenants'
 import { loadWizardDraft } from '@/lib/db/wizard-drafts'
+import { postFetcher } from '@/lib/fetcher'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import type { TimeSlot } from '@/data/types'
 import type { ShipmentLookupResult } from '@/lib/db/cfs-shipments'
@@ -200,6 +201,7 @@ export type WizardAction =
   | { type: 'ADD_DOCUMENT'; doc: { name: string; size: number; docType?: string; storagePath: string | null } }
   | { type: 'REMOVE_DOCUMENT'; name: string }
   | { type: 'TICK_HOLD' }
+  | { type: 'EXTEND_HOLD'; seconds: number }
   | { type: 'CLEAR_HOLD' }
   | { type: 'STOP_HOLD_TIMER' }   // stop countdown without clearing the selected slot
   | { type: 'DESELECT_SLOT' }
@@ -312,6 +314,9 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
       return { ...state, documentFiles: state.documentFiles.filter(d => d.name !== action.name) }
     case 'TICK_HOLD':
       return { ...state, holdSeconds: Math.max(0, state.holdSeconds - 1) }
+    case 'EXTEND_HOLD':
+      // Only meaningful while a hold is actively counting down — ignore if already expired/stopped.
+      return state.holdSeconds > 0 ? { ...state, holdSeconds: state.holdSeconds + action.seconds } : state
     case 'CLEAR_HOLD':
       return { ...state, holdSeconds: 0, selectedSlotId: null, selectedSlotLabel: '' }
     case 'STOP_HOLD_TIMER':
@@ -518,11 +523,20 @@ export function useHoldTimer(onExpire?: () => void) {
 
   const mins = String(Math.floor(state.holdSeconds / 60)).padStart(2, '0')
   const secs = String(state.holdSeconds % 60).padStart(2, '0')
+  const extendHold = useCallback((seconds = 60) => {
+    dispatch({ type: 'EXTEND_HOLD', seconds })
+    // Best-effort re-ping so the legacy held-count on the slot doesn't look released server-side.
+    const slotId = state.selectedSlotId
+    if (slotId && !slotId.startsWith('gen-')) {
+      postFetcher(`/api/v2/slots/${slotId}/hold`, {}).catch(() => { /* best-effort */ })
+    }
+  }, [dispatch, state.selectedSlotId])
   return {
     holdSeconds: state.holdSeconds,
     holdActive: state.holdSeconds > 0,
     holdLabel: `${mins}:${secs}`,
     expiring: state.holdSeconds > 0 && state.holdSeconds <= 60,
+    extendHold,
   }
 }
 

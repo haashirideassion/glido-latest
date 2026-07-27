@@ -1,33 +1,31 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useKiosk } from '@/contexts/KioskContext'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { Icon, ICONS } from '@/lib/Icon'
 import { validators } from '@/lib/validation'
 import { TermsBlock } from '@/components/kiosk/IDScanScreen'
+import { CustomSelect } from '@/components/ui/CustomSelect'
+import { getVisitablePersons } from '@/lib/db/visitable-persons'
+import type { VisitablePerson } from '@/lib/db/visitable-persons'
+import { getVisitReasons } from '@/lib/db/visit-reasons'
 
-const OFFICE_REASONS = [
-  'Meeting with Staff',
-  'Document Submission',
-  'Invoice / Payment Query',
-  'Customs Documentation',
-  'General Enquiry',
-]
-
-const YARD_REASONS = [
-  'Container Inspection',
-  'Cargo Survey',
-  'Damage Assessment',
-  'Photography / Documentation',
-  'Customs Examination',
-  'Insurance Assessment',
-  'Quality Control Inspection',
-]
+const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 
 export function WalkInScreen() {
   const { state, dispatch, submitWalkIn, goTo } = useKiosk()
   const tenant = useTenantInfo()
   const [phoneError, setPhoneError] = useState('')
   const [agreed, setAgreed] = useState(false)
+  const [visitablePersons, setVisitablePersons] = useState<VisitablePerson[]>([])
+  useEffect(() => {
+    getVisitablePersons(DEFAULT_TENANT_ID, true).then(setVisitablePersons).catch(() => setVisitablePersons([]))
+  }, [])
+  const [officeReasons, setOfficeReasons] = useState<string[]>([])
+  const [yardReasons,   setYardReasons]   = useState<string[]>([])
+  useEffect(() => {
+    getVisitReasons(DEFAULT_TENANT_ID, 'office', true).then(rs => setOfficeReasons(rs.map(r => r.name))).catch(() => setOfficeReasons([]))
+    getVisitReasons(DEFAULT_TENANT_ID, 'yard', true).then(rs => setYardReasons(rs.map(r => r.name))).catch(() => setYardReasons([]))
+  }, [])
 
   type WalkInField = 'walkInPurpose' | 'walkInName' | 'walkInPhone' | 'walkInCompany' | 'walkInVehicle' | 'walkInBLRef' | 'walkInPersonVisited' | 'walkInReason'
   const set = (field: WalkInField, value: string) =>
@@ -47,7 +45,7 @@ export function WalkInScreen() {
   const isYard     = purpose === 'visit_yard'
   const isVisit    = isOffice || isYard || purpose === 'visit_person'
 
-  const reasonOptions = isOffice ? OFFICE_REASONS : isYard ? YARD_REASONS : []
+  const reasonOptions = isOffice ? officeReasons : isYard ? yardReasons : []
 
   const bodyTitle = isOffice ? 'Visiting Office' : isYard ? 'Visiting Yard' : 'Walk-In Registration'
   const bodySubtitle = isOffice
@@ -60,7 +58,7 @@ export function WalkInScreen() {
   const FIELD: React.CSSProperties = { minHeight: 64, padding: '20px 14px', fontSize: 15 }
 
   const terms = tenant?.kioskTerms?.trim() ?? ''
-  const canSubmit = canProceed(state.walkInName, state.walkInPhone, state.walkInReason, isOffice || isYard) && (!terms || isYard || agreed)
+  const canSubmit = canProceed(state.walkInName, state.walkInPhone, state.walkInReason, isOffice || isYard, state.walkInPersonVisited, isVisit) && (!terms || isYard || agreed)
 
   const handleSubmit = () => {
     if (isYard) {
@@ -140,8 +138,13 @@ export function WalkInScreen() {
           {/* Person being visited — for visit_person legacy + office/yard */}
           {isVisit && (
             <div>
-              <label style={LABEL}>Person You're Visiting <span style={{ fontWeight: 400, color: 'var(--text-tertiary)', fontSize: 10 }}>(optional)</span></label>
-              <input type="text" placeholder="Staff member's name" className="wizard-field" style={FIELD} value={state.walkInPersonVisited} onChange={e => set('walkInPersonVisited', e.target.value)} />
+              <label style={LABEL}>Person You're Visiting <span style={{ color: '#EF4444', marginLeft: 3 }}>*</span></label>
+              <CustomSelect
+                placeholder="Select who you're visiting…"
+                value={state.walkInPersonVisited}
+                onChange={v => set('walkInPersonVisited', v)}
+                options={visitablePersons.map(p => ({ value: p.name, label: p.name }))}
+              />
             </div>
           )}
 
@@ -218,9 +221,10 @@ export function WalkInScreen() {
   )
 }
 
-function canProceed(name: string, phone: string, reason: string, requireReason: boolean): boolean {
+function canProceed(name: string, phone: string, reason: string, requireReason: boolean, personVisited: string, requirePerson: boolean): boolean {
   if (!name.trim()) return false
   if (requireReason && !reason.trim()) return false
+  if (requirePerson && !personVisited.trim()) return false
   if (phone.trim() && validators.phoneAU(phone)) return false
   return true
 }
