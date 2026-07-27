@@ -9,7 +9,7 @@ import { CheckInModal } from '@/components/reception/CheckInModal'
 import type { ManualCheckInDetails } from '@/lib/db/bookings'
 import {
   checkInBooking, completeBooking, cancelBooking,
-  rescheduleBooking, refreshIcsStatus, updateStaffNotes,
+  rescheduleBooking, refreshIcsStatus, updateStaffNotes, updateAdditionalReference,
 } from '@/lib/db/bookings'
 import type { Booking } from '@/data/types'
 import type { StaffPermissions } from '@/lib/useStaffPermissions'
@@ -84,17 +84,30 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
   const [checkin, setCheckin] = useState<any>(null)
   const [documents, setDocuments] = useState<BookingDocument[]>([])
   const [viewingDoc, setViewingDoc] = useState('')
+  // Staff Comment + Reference — both internal-only fields, edited and saved together
+  // from one "Internal Notes" card rather than two separate save buttons.
   const [staffNotesDraft, setStaffNotesDraft] = useState(b.staffNotes ?? '')
-  const [savingNotes, setSavingNotes] = useState(false)
+  const [referenceDraft,  setReferenceDraft]  = useState(b.additionalReference ?? '')
+  const [savingInternal,  setSavingInternal]  = useState(false)
   const staffNotesDirty = staffNotesDraft !== (b.staffNotes ?? '')
-  const saveStaffNotes = async () => {
-    setSavingNotes(true)
+  const referenceDirty  = referenceDraft  !== (b.additionalReference ?? '')
+  const internalDirty   = staffNotesDirty || referenceDirty
+  const saveInternalNotes = async () => {
+    setSavingInternal(true)
     try {
-      const updated = await updateStaffNotes(b.id, staffNotesDraft)
+      let updated
+      if (staffNotesDirty) updated = await updateStaffNotes(b.id, staffNotesDraft)
+      if (referenceDirty)  updated = await updateAdditionalReference(b.id, referenceDraft)
       if (updated) { setB(updated); onUpdated(updated) }
-      toast('Comment saved', 'success')
-    } catch { toast('Failed to save comment', 'error') }
-    finally { setSavingNotes(false) }
+      toast('Saved', 'success')
+    } catch { toast('Failed to save', 'error') }
+    finally { setSavingInternal(false) }
+  }
+
+  // Guard against losing an unsaved Staff Comment / Reference edit on close
+  const attemptClose = () => {
+    if (internalDirty) setConfirmCloseModal(true)
+    else onClose()
   }
 
   // Fetch identity check record when booking is checked-in or completed
@@ -132,6 +145,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
   const [confirmModal,    setConfirmModal]    = useState(false)
   const [cancelModal,     setCancelModal]     = useState(false)
   const [rescheduleModal, setRescheduleModal] = useState(false)
+  const [confirmCloseModal, setConfirmCloseModal] = useState(false)
   const [checkInModal,    setCheckInModal]    = useState(false)
 
   // Form fields
@@ -176,7 +190,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
       {/* Backdrop — overlay mode only */}
       {!docked && (
         <motion.div
-          onClick={onClose}
+          onClick={attemptClose}
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }}
           style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(4px)' }}
         />
@@ -205,7 +219,7 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
               {STATUS_LABEL[b.status] ?? b.status}
             </span>
           </div>
-          <button onClick={onClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-secondary)', transition: 'background 0.15s, color 0.15s' }}
+          <button onClick={attemptClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-secondary)', transition: 'background 0.15s, color 0.15s' }}
             onMouseOver={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#1C1917' }}
             onMouseOut={e  => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
           >
@@ -463,22 +477,33 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
             </div>
           </section>
 
-          {/* Staff Comment — internal, never shown to the guest/visitor */}
+          {/* Internal Notes — Staff Comment + Reference, both internal-only, one save action */}
           <section>
-            <p style={SL}>Staff Comment</p>
+            <p style={SL}>Internal Notes</p>
             <div style={PANEL}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5, display: 'block' }}>Staff Comment</label>
               <textarea
-                rows={3}
+                rows={2}
                 value={staffNotesDraft}
                 onChange={e => setStaffNotesDraft(e.target.value)}
-                placeholder="Internal note for depot staff (feasibility, handling instructions, etc.) — not visible to the visitor."
-                style={{ ...fieldStyle, resize: 'none', marginBottom: 8 }}
+                placeholder="e.g. Fragile cargo — forklift required, notify supervisor on arrival"
+                style={{ ...fieldStyle, resize: 'none', marginBottom: 14 }}
                 onFocus={focus} onBlur={blur}
               />
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5, display: 'block' }}>Reference</label>
+              <input
+                type="text"
+                value={referenceDraft}
+                onChange={e => setReferenceDraft(e.target.value)}
+                placeholder="e.g. PO-48213 or Job #JB-2201"
+                style={{ ...fieldStyle, marginBottom: 4 }}
+                onFocus={focus} onBlur={blur}
+              />
+              <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '0 0 12px' }}>Not visible to the visitor.</p>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={saveStaffNotes} disabled={!staffNotesDirty || savingNotes}
-                  style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, color: '#fff', background: (!staffNotesDirty || savingNotes) ? '#9CA3AF' : 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: (!staffNotesDirty || savingNotes) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
-                  {savingNotes ? 'Saving…' : 'Save Comment'}
+                <button type="button" onClick={saveInternalNotes} disabled={!internalDirty || savingInternal}
+                  style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, color: '#fff', background: (!internalDirty || savingInternal) ? '#9CA3AF' : 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: (!internalDirty || savingInternal) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {savingInternal ? 'Saving…' : 'Save'}
                 </button>
               </div>
             </div>
@@ -607,6 +632,34 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
             </ActionBtn>
           </div>
         </Modal>
+      )}
+
+      {/* ── Unsaved-changes guard on close ── */}
+      {confirmCloseModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 'var(--r-xl)', padding: 32, width: 400, maxWidth: 'calc(100vw - 48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.18)' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Discard unsaved changes?</h3>
+            <p style={{ fontSize: 15, color: 'var(--text-mid)', lineHeight: 1.6, margin: '0 0 24px' }}>
+              Your Staff Comment or Reference edit hasn't been saved yet. Closing now will lose it.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setConfirmCloseModal(false)}
+                style={{ flex: 1, padding: '12px 0', borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.12)', background: '#F9F9F8', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit', color: '#1C1917' }}
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmCloseModal(false); onClose() }}
+                style={{ flex: 1, padding: '12px 0', borderRadius: 'var(--r-sm)', border: 'none', background: '#EF4444', color: '#fff', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Discard & Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   )

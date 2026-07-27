@@ -583,7 +583,7 @@ export default function BookingWizard() {
               <span style={{ width: 7, height: 7, borderRadius: 'var(--r-full)', background: '#EF4444', flexShrink: 0, display: 'inline-block' }} />
               <span style={{ fontSize: 15, fontWeight: 700, color: '#1C1917' }}>{state.selectedSlotLabel}</span>
               <span style={{ fontSize: 13, color: '#9CA3AF', background: 'rgba(0,0,0,0.05)', borderRadius: 'var(--r-sm)', padding: '2px 7px', fontWeight: 500 }}>selected</span>
-              <span style={{ fontSize: 13, color: '#EF4444', fontWeight: 600 }}>· {tenant?.slotHoldDurationMin ?? 10}-min hold on Next →</span>
+              <span style={{ fontSize: 13, color: '#EF4444', fontWeight: 600 }}>· Hold active</span>
             </div>
           ) : (
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '7px 20px', borderRadius: 'var(--r-full)', background: '#fff', border: '1.5px solid rgba(0,0,0,0.10)', boxShadow: '0 4px 18px rgba(0,0,0,0.06)', whiteSpace: 'nowrap' }}>

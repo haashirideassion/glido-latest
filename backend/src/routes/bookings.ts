@@ -373,6 +373,22 @@ router.patch('/:id/staff-notes', requireAuth, async (req: Request, res: Response
   }
 })
 
+// PATCH /api/v2/bookings/:id/reference — staff only. Optional internal reference/PO/job number.
+router.patch('/:id/reference', requireAuth, async (req: Request, res: Response) => {
+  const { additional_reference } = req.body ?? {}
+  try {
+    const result = await pool.query(
+      `UPDATE bookings SET additional_reference = $1 WHERE id = $2 RETURNING *`,
+      [additional_reference ?? null, req.params.id]
+    )
+    if (!result.rows[0]) return res.status(404).json({ success: false, error: { message: 'Not found' } })
+    return res.json({ success: true, data: result.rows[0] })
+  } catch (err) {
+    console.error('[bookings PATCH reference]', err)
+    return res.status(500).json({ success: false, error: { message: 'Server error' } })
+  }
+})
+
 // PATCH /api/v2/bookings/:id/override-status — staff with can_override_status permission
 router.patch('/:id/override-status', requireAuth, async (req: Request, res: Response) => {
   const { id } = req.params

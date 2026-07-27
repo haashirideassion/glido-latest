@@ -52,6 +52,7 @@ function rowToBooking(row: any): Booking {
     completedAt:         row.completed_at         ?? undefined,
     completionNotes:     row.completion_notes     ?? undefined,
     staffNotes:          row.staff_notes          ?? undefined,
+    additionalReference: row.additional_reference ?? undefined,
     containerSize:       row.container_size       ?? undefined,
     entryNumber:         row.entry_number         ?? undefined,
     purpose:             row.purpose              ?? undefined,
@@ -172,6 +173,11 @@ export async function cancelBooking(id: string): Promise<void> {
 
 export async function updateStaffNotes(id: string, staffNotes: string): Promise<Booking | undefined> {
   const res = await patchFetcher(`${BASE}/${id}/staff-notes`, { staff_notes: staffNotes })
+  return res?.data ? rowToBooking(res.data) : undefined
+}
+
+export async function updateAdditionalReference(id: string, additionalReference: string): Promise<Booking | undefined> {
+  const res = await patchFetcher(`${BASE}/${id}/reference`, { additional_reference: additionalReference })
   return res?.data ? rowToBooking(res.data) : undefined
 }
 
