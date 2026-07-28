@@ -33,6 +33,22 @@ export async function glidoLogoPng(): Promise<string | null> {
   } catch { return null }
 }
 
+async function blobToLogoData(blob: Blob): Promise<{ dataUrl: string; w: number; h: number }> {
+  const dataUrl: string = await new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(fr.result as string)
+    fr.onerror = reject
+    fr.readAsDataURL(blob)
+  })
+  const dims: { w: number; h: number } = await new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+    img.onerror = () => resolve({ w: 1, h: 1 })
+    img.src = dataUrl
+  })
+  return { dataUrl, w: dims.w, h: dims.h }
+}
+
 export async function loadLogoDataUrl(src: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
   try {
     let blob: Blob
@@ -53,18 +69,19 @@ export async function loadLogoDataUrl(src: string): Promise<{ dataUrl: string; w
       if (!res.ok) return null
       blob = await res.blob()
     }
-    const dataUrl: string = await new Promise((resolve, reject) => {
-      const fr = new FileReader()
-      fr.onload = () => resolve(fr.result as string)
-      fr.onerror = reject
-      fr.readAsDataURL(blob)
-    })
-    const dims: { w: number; h: number } = await new Promise((resolve) => {
-      const img = new Image()
-      img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
-      img.onerror = () => resolve({ w: 1, h: 1 })
-      img.src = dataUrl
-    })
-    return { dataUrl, w: dims.w, h: dims.h }
+    return await blobToLogoData(blob)
+  } catch { return null }
+}
+
+// Public, unauthenticated counterpart for guest-facing pages (e.g. the public /book
+// confirmation PDF) — no Authorization header, and the backend resolves the logo key from
+// the tenant record itself rather than accepting an arbitrary S3 key (see
+// GET /api/uploads/logo-proxy in backend/src/routes/uploads.ts for why that's safe here).
+export async function loadPublicTenantLogo(tenantId: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  try {
+    const res = await fetch(`/api/uploads/logo-proxy?tenantId=${encodeURIComponent(tenantId)}`)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await blobToLogoData(blob)
   } catch { return null }
 }

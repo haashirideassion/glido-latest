@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { getTenant } from '@/lib/db/tenants'
 
-const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
+export const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 
 export interface TenantInfo {
   name:               string

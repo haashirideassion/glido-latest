@@ -88,6 +88,33 @@ router.get('/proxy', requireAuth, async (req: Request, res: Response) => {
   }
 })
 
+// ── GET /api/uploads/logo-proxy?tenantId= ──────────────────────
+// Public, unauthenticated variant of /proxy scoped ONLY to a tenant's own logo — needed so
+// guest-facing pages (e.g. the public /book confirmation PDF) can embed the tenant logo
+// without an auth token. Unlike /proxy this never accepts an arbitrary S3 key: it looks up
+// the key itself from the tenants table, so it can't be used to read other private objects
+// (booking documents, licence scans, etc). The tenant logo is already public data — it's
+// rendered as a plain <img> on the public booking page and returned by the public tenant
+// GET /:id endpoint (see PUBLIC_TENANT_SELECT in tenants.ts).
+router.get('/logo-proxy', async (req: Request, res: Response) => {
+  const { tenantId } = req.query
+  if (!tenantId) return res.status(400).json({ success: false, error: { message: 'tenantId is required' } })
+  try {
+    const { rows } = await pool.query('SELECT logo_url FROM tenants WHERE id = $1', [tenantId])
+    const logoUrl = rows[0]?.logo_url
+    if (!logoUrl) return res.status(404).json({ success: false, error: { message: 'No logo set' } })
+    const s3Key = extractKey(logoUrl)
+    const command = new GetObjectCommand({ Bucket: BUCKET, Key: s3Key })
+    const obj = await s3.send(command)
+    if (!obj.Body) return res.status(404).json({ success: false, error: { message: 'Not found' } })
+    res.setHeader('Content-Type', obj.ContentType ?? 'application/octet-stream')
+    ;(obj.Body as any).pipe(res)
+  } catch (e: any) {
+    console.error('[uploads/logo-proxy] error:', e.message)
+    return res.status(500).json({ success: false, error: { message: 'Could not fetch logo' } })
+  }
+})
+
 // ── POST /api/uploads/logo — staff only ───────────────────────
 router.post('/logo', requireAuth, (req: Request, res: Response) => {
   memoryUpload.single('file')(req, res, async (err: any) => {

@@ -4,9 +4,9 @@ import QRCode from 'qrcode'
 import { Link } from 'react-router-dom'
 import { WizardProvider, useWizard, calcCharges } from '@/contexts/WizardContext'
 import BookingWizard from '@/components/portal/BookingWizard'
-import { useTenantInfo } from '@/lib/useTenantInfo'
+import { useTenantInfo, DEFAULT_TENANT_ID } from '@/lib/useTenantInfo'
 import { Icon, ICONS } from '@/lib/Icon'
-import { loadLogoDataUrl, glidoLogoPng } from '@/lib/pdfBranding'
+import { loadPublicTenantLogo, glidoLogoPng } from '@/lib/pdfBranding'
 import { postFetcher } from '@/lib/fetcher'
 import { toast } from '@/lib/toast'
 import { Confetti } from '@/components/Confetti'
@@ -218,10 +218,9 @@ function ConfirmedScreen() {
     let y = 18
 
     // ── Header ────────────────────────────────────────────────────────────────
-    const logoSrc = tenant?.logoUrl
     let placedLogo = false
-    if (logoSrc) {
-      const logo = await loadLogoDataUrl(logoSrc)
+    if (tenant?.logoUrl) {
+      const logo = await loadPublicTenantLogo(DEFAULT_TENANT_ID)
       if (logo) {
         const maxW = 40, maxH = 16
         const ratio = Math.min(maxW / logo.w, maxH / logo.h)
@@ -400,10 +399,9 @@ function ConfirmedScreen() {
                 }
 
                 let y = 18
-                const logoSrc = tenant?.logoUrl
                 let placedLogo = false
-                if (logoSrc) {
-                  const logo = await loadLogoDataUrl(logoSrc)
+                if (tenant?.logoUrl) {
+                  const logo = await loadPublicTenantLogo(DEFAULT_TENANT_ID)
                   if (logo) {
                     const maxW = 40, maxH = 16
                     const ratio = Math.min(maxW / logo.w, maxH / logo.h)
@@ -420,7 +418,7 @@ function ConfirmedScreen() {
                 }
 
                 pdoc.setFontSize(14); pdoc.setFont('helvetica', 'bold'); pdoc.setTextColor(28, 25, 23)
-                pdoc.text(`Booking Confirmation — Slot ${i + 1} of ${n}`, pw / 2, y, { align: 'center' }); y += 9
+                pdoc.text('Booking Confirmation', pw / 2, y, { align: 'center' }); y += 9
 
                 pdoc.setFontSize(13); pdoc.setFont('courier', 'bold'); pdoc.setTextColor(100, 92, 80)
                 pdoc.text(r, pw / 2, y, { align: 'center' }); y += 10

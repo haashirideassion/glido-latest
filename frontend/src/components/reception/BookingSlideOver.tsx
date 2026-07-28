@@ -444,6 +444,12 @@ export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked 
                 <span style={RL}><Icon name={ICONS.document} size={13} style={{ color: 'var(--text-secondary)' }} />Created</span>
                 <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>{fmtDateTime(b.createdAt)}</span>
               </div>
+              {b.updatedAt && b.updatedAt !== b.createdAt && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={RL}><Icon name={ICONS.refresh} size={13} style={{ color: 'var(--text-secondary)' }} />Last Updated</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>{fmtDateTime(b.updatedAt)}</span>
+                </div>
+              )}
               {b.checkedInAt && (
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={RL}><Icon name={ICONS.userCheck} size={13} style={{ color: '#FBBF24' }} />Checked In</span>

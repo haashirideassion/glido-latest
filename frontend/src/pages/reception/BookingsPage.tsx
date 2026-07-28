@@ -669,7 +669,11 @@ export default function BookingsPage() {
           {/* Divider */}
           <span style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.15)', margin: '0 4px', flexShrink: 0 }} />
 
-          {perms.can_mark_complete && (
+          {/* "Mark pre-processed" bulk action disabled for now — its actual behavior (silent
+              bulk check-in with no license verification) contradicts the "Pre-processed" KPI
+              meaning (scheduled, not checked in) used elsewhere. Revisit with a real design —
+              see bulkCheckIn below, kept intact for that — before re-enabling. */}
+          {false && perms.can_mark_complete && (
             <button onClick={bulkCheckIn} disabled={bulkBusy}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 34, padding: '0 14px', fontSize: 13, fontWeight: 600, color: '#1C1917', background: bulkBusy ? 'rgba(255,255,255,0.5)' : '#fff', border: 'none', borderRadius: 9999, cursor: bulkBusy ? 'wait' : 'pointer', fontFamily: 'inherit', transition: 'background 0.12s' }}
               onMouseOver={e => { if (!bulkBusy) e.currentTarget.style.background = '#F3F4F6' }}

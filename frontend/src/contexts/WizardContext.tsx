@@ -438,7 +438,7 @@ function deriveCanProceed(s: WizardState): boolean {
         if (s.serviceType === 'dropoff' && s.loadType === 'lcl')
           return !!s.bookingReference.trim() && !!s.consolidator.trim() && !!s.purpose.trim()
         if (s.serviceType === 'dropoff' && s.loadType === 'fcl')
-          return !!s.containerNumber.trim() && !!s.containerSize.trim() && !!s.entryNumber.trim() && !!s.purpose.trim()
+          return !!s.containerNumber.trim() && !!s.containerSize.trim() && !!s.purpose.trim()
         return true
       }
       // Multi-slot: each slot must have its own driver + combo fields
@@ -448,7 +448,7 @@ function deriveCanProceed(s: WizardState): boolean {
         if (svc === 'pickup'  && lt === 'lcl')   return !!(cfg.containerNumber?.trim()) && !!(cfg.hbl?.trim())
         if (svc === 'pickup'  && lt === 'fcl')   return !!(cfg.containerNumber?.trim()) && !!(cfg.containerSize?.trim())
         if (svc === 'dropoff' && lt === 'lcl')   return !!(cfg.bookingReference?.trim()) && !!(cfg.consolidator?.trim()) && !!(cfg.purpose?.trim())
-        if (svc === 'dropoff' && lt === 'fcl')   return !!(cfg.containerNumber?.trim()) && !!(cfg.containerSize?.trim()) && !!(cfg.entryNumber?.trim()) && !!(cfg.purpose?.trim())
+        if (svc === 'dropoff' && lt === 'fcl')   return !!(cfg.containerNumber?.trim()) && !!(cfg.containerSize?.trim()) && !!(cfg.purpose?.trim())
         return true
       })
     }

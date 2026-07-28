@@ -118,16 +118,15 @@ function isSlotDetailDone(cfg: any): boolean {
   const cn = (cfg.containerNumber ?? '').trim()
   const hbl = (cfg.hbl ?? '').trim()
   const cs = (cfg.containerSize ?? '').trim()
-  const en = (cfg.entryNumber ?? '').trim()
   const pu = (cfg.purpose ?? '').trim()
   const co = (cfg.consolidator ?? '').trim()
   const br = (cfg.bookingReference ?? '').trim()
   if (svc === 'pickup'  && lt === 'lcl')   return !!(cn && hbl)
   if (svc === 'pickup'  && lt === 'fcl')   return !!(cn && cs)
-  // Entry # (en) is optional for Drop Off + LCL only — matches deriveCanProceed, so the slot
-  // reads complete (green check / auto-advance) without it. Drop Off + FCL still requires it.
+  // Entry # (en) is optional for both Drop Off combos — matches deriveCanProceed, so the slot
+  // reads complete (green check / auto-advance) without it.
   if (svc === 'dropoff' && lt === 'lcl')   return !!(br && co && pu)
-  if (svc === 'dropoff' && lt === 'fcl')   return !!(cn && cs && en && pu)
+  if (svc === 'dropoff' && lt === 'fcl')   return !!(cn && cs && pu)
   return false
 }
 
@@ -221,6 +220,19 @@ export function Step5Documents() {
       dispatch({ type: 'SET_SLOT_DETAIL', slotIndex: 0, field: 'icsStatus', value: result.icsStatus })
     } catch {
       dispatch({ type: 'SET_SHIPMENT', data: null, loading: false, error: 'Lookup failed. Enter details manually.', fetched: false })
+    }
+  }
+
+  const fetchByEntry = async () => {
+    if (state.entryNumber.trim().length < MIN_LOOKUP_LEN) { toast(tooShortMsg('Entry #'), 'error'); return }
+    dispatch({ type: 'SET_SHIPMENT', data: null, loading: true, error: null, fetched: false })
+    try {
+      const data = await lookupShipment(DEFAULT_TENANT_ID, state.entryNumber.trim())
+      dispatch({ type: 'SET_SHIPMENT', data: data ?? null, loading: false, error: null, fetched: true })
+      setSimInfo(simulateAutoPopulatedInfo())
+      if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex: 0, field: 'icsStatus', value: data.icsStatus })
+    } catch {
+      dispatch({ type: 'SET_SHIPMENT', data: null, loading: false, error: 'Lookup failed.', fetched: false })
     }
   }
 
@@ -556,7 +568,7 @@ export function Step5Documents() {
       {/* ══════════════════════════════════════════════════════
           2. DROPOFF + LCL
           Fields: Booking Ref # (req), Consolidator (req),
-                  Container # (optional, lookup), Entry # (optional), Purpose (req dropdown)
+                  Entry # (optional, lookup), Purpose (req dropdown)
       ══════════════════════════════════════════════════════ */}
       {isDropoffLcl && (
         <div>
@@ -581,16 +593,6 @@ export function Step5Documents() {
             </FField>
           </div>
           <div style={{ ...ROW, marginBottom: 16 }}>
-            <FField label="Container #">
-              <input
-                type="text" className="wizard-field"
-                value={state.containerNumber}
-                onChange={e => set('containerNumber', e.target.value.toUpperCase())}
-                onBlur={() => touch('containerNumber')}
-                placeholder="e.g. MSCU1234567"
-                style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
-              />
-            </FField>
             <FField label="Entry #">
               <input
                 type="text" className="wizard-field"
@@ -601,8 +603,6 @@ export function Step5Documents() {
                 style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }}
               />
             </FField>
-          </div>
-          <div style={{ marginBottom: 16 }}>
             <FField label="Purpose" required error={touched.purpose && !state.purpose.trim()}>
               <CustomSelect
                 placeholder="Select purpose…"
@@ -614,7 +614,7 @@ export function Step5Documents() {
             </FField>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 24 }}>
-            <button type="button" className="btn-primary" onClick={fetchFcl} disabled={state.shipmentLoading}>
+            <button type="button" className="btn-primary" onClick={fetchByEntry} disabled={state.shipmentLoading}>
               {state.shipmentLoading ? <Spinner /> : null}
               Look Up
             </button>
@@ -667,7 +667,7 @@ export function Step5Documents() {
       {/* ══════════════════════════════════════════════════════
           4. DROPOFF + FCL
           Fields: Container # (req), Size (req dropdown),
-                  Entry # (req), Purpose (req dropdown)
+                  Entry # (optional), Purpose (req dropdown)
       ══════════════════════════════════════════════════════ */}
       {isDropoffFcl && (
         <div>
@@ -693,7 +693,7 @@ export function Step5Documents() {
             </FField>
           </div>
           <div style={{ ...ROW, marginBottom: 16 }}>
-            <FField label="Entry #" required error={touched.entryNumber && !state.entryNumber.trim()}>
+            <FField label="Entry #">
               <input
                 type="text" className="wizard-field"
                 value={state.entryNumber}
@@ -1007,6 +1007,23 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
     finally { setSlotShipmentLoading(false) }
   }
 
+  const fetchSlotEntry = async () => {
+    const enVal = (cfg.entryNumber ?? '').trim()
+    if (enVal.length < MIN_LOOKUP_LEN) { toast(tooShortMsg('Entry #'), 'error'); return }
+    setSlotShipmentLoading(true); setSlotShipmentData(null); setSlotShipmentFetched(false); setSlotShipmentError(null)
+    try {
+      const data = await lookupShipment(DEFAULT_TENANT_ID, enVal)
+      const simInfo = simulateAutoPopulatedInfo()
+      setSlotShipmentData(data ?? null)
+      setSlotShipmentError(null)
+      setSlotShipmentFetched(true)
+      setSlotSimInfo(simInfo)
+      onCacheUpdate({ data: data ?? null, error: null, fetched: true, simInfo })
+      if (data?.icsStatus) dispatch({ type: 'SET_SLOT_DETAIL', slotIndex, field: 'icsStatus', value: data.icsStatus })
+    } catch { setSlotShipmentError('Lookup failed.'); onCacheUpdate({ error: 'Lookup failed.', fetched: false }) }
+    finally { setSlotShipmentLoading(false) }
+  }
+
   const sd       = slotShipmentData
   const icsBadge = ICS_MAP[sd?.icsStatus ?? ''] ?? ICS_MAP.pending
   const showHeld = sd?.icsStatus === 'held'
@@ -1096,20 +1113,14 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
             onChange={e => set('consolidator', e.target.value)}
             onBlur={() => touch(p+'co')} placeholder="e.g. Kuehne + Nagel" />
         </FField>
-        <FField label="Container #">
-          <input type="text" className="wizard-field" value={cn}
-            onChange={e => set('containerNumber', e.target.value.toUpperCase())}
-            onBlur={() => touch(p+'cn')} placeholder="e.g. MSCU1234567"
-            style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }} />
-        </FField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 16 }}>
         <FField label="Entry #">
           <input type="text" className="wizard-field" value={en}
             onChange={e => set('entryNumber', e.target.value.toUpperCase())}
             onBlur={() => touch(p+'en')} placeholder="e.g. CE2026100142"
             style={{ textTransform: 'uppercase', letterSpacing: '0.04em' }} />
         </FField>
-      </div>
-      <div style={{ marginBottom: 16 }}>
         <FField label="Purpose" required error={touched[p+'pu'] && !pu.trim()}>
           <CustomSelect placeholder="Select purpose…" value={pu}
             onChange={v => set('purpose', v)} onBlur={() => touch(p+'pu')}
@@ -1117,7 +1128,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
         </FField>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-        <button type="button" className="btn-primary" onClick={fetchSlotFcl}
+        <button type="button" className="btn-primary" onClick={fetchSlotEntry}
           disabled={slotShipmentLoading}>
           {slotShipmentLoading ? <Spinner /> : null}
           Look Up
@@ -1142,7 +1153,7 @@ function SlotDetailFields({ cfg, set, touched, touch, touchPrefix, slotIndex, ca
             onChange={v => set('containerSize', v)} onBlur={() => touch(p+'cs')}
             options={CONTAINER_SIZES.filter(Boolean).map(s => ({ value: s, label: s }))} />
         </FField>
-        <FField label="Entry #" required error={touched[p+'en'] && !en.trim()}>
+        <FField label="Entry #">
           <input type="text" className="wizard-field" value={en}
             onChange={e => set('entryNumber', e.target.value.toUpperCase())}
             onBlur={() => touch(p+'en')} placeholder="e.g. CE2026100142"
