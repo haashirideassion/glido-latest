@@ -1,3 +1,5 @@
+import { API_BASE } from './apiBase'
+
 const GLIDO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 31" width="320" height="62">
   <path fill="#1C232C" d="m25.5 13c-1.2 0-2.5 0.6-3.4 1.6l-3 3.2 0.1 0.2h24.8l-0.8 3.1c-0.6 2.3-1.9 3.5-4.3 3.5h-23.6c-5.3 0-8.7-3.1-8.3-8.3s3.1-9.8 8.3-9.8h15.5c0.8 0 1.4-0.5 1.8-1.1l2-3.5-0.1-0.6h-19.3c-8.2 0-12.8 6.1-13.3 14-0.5 7.1 2.8 14.2 12.7 14.3h24.4c5.4 0 8.6-2.2 9.9-7.3l2.4-9.2-25.8-0.1z"/>
   <path fill="#1C232C" d="m60.9 1.3-6.3 21.2c-0.9 4.1 1.1 6.8 5.5 6.9h5.8l1.3-5h-4.6c-1.6 0-2.5-0.9-2-2.6l5.7-20.5h-5.4z"/>
@@ -63,7 +65,7 @@ export async function loadLogoDataUrl(src: string): Promise<{ dataUrl: string; w
       // is valid (an <img src=presignedUrl> still renders fine, since images aren't
       // CORS-gated for display — only a raw fetch() for bytes is).
       const { getToken } = await import('./api-client')
-      const res = await fetch(`/api/uploads/proxy?key=${encodeURIComponent(src)}`, {
+      const res = await fetch(`${API_BASE}/api/uploads/proxy?key=${encodeURIComponent(src)}`, {
         headers: { Authorization: `Bearer ${getToken() ?? ''}` },
       })
       if (!res.ok) return null
@@ -79,7 +81,7 @@ export async function loadLogoDataUrl(src: string): Promise<{ dataUrl: string; w
 // GET /api/uploads/logo-proxy in backend/src/routes/uploads.ts for why that's safe here).
 export async function loadPublicTenantLogo(tenantId: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
   try {
-    const res = await fetch(`/api/uploads/logo-proxy?tenantId=${encodeURIComponent(tenantId)}`)
+    const res = await fetch(`${API_BASE}/api/uploads/logo-proxy?tenantId=${encodeURIComponent(tenantId)}`)
     if (!res.ok) return null
     const blob = await res.blob()
     return await blobToLogoData(blob)

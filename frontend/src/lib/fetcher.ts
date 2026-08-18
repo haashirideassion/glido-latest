@@ -1,4 +1,5 @@
 import { apiClient, getToken } from './api-client'
+import { API_BASE as RAW_BASE } from './apiBase'
 
 /**
  * Fetcher wrappers — Glido
@@ -33,7 +34,6 @@ export const deleteFetcher = async <T = any>(url: string): Promise<any> => {
 /**
  * rawFetcher — for file/blob responses (uploads, downloads)
  */
-const RAW_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
 /**
  * Resolve a backend-relative path (e.g. /api/uploads/files/logo.png)

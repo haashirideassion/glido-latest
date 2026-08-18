@@ -6,7 +6,13 @@
  *
  * All Supabase direct-API calls have been removed. Shipment lookup
  * and booking submission now go through the Express backend at /api/*.
+ *
+ * Plain static JS (not bundled by Vite), so it can't read import.meta.env —
+ * the surrounding page sets window.__GLIDO_API_BASE__ before this file loads
+ * (see LandingLayout.tsx) so requests hit the right backend origin instead of
+ * resolving relative paths against whatever domain this page is served from.
  */
+var API_BASE = window.__GLIDO_API_BASE__ || ''
 
 document.addEventListener('alpine:init', function () {
   window.Alpine.store('wizard', wizardStore())
@@ -227,7 +233,7 @@ function wizardStore() {
       this.slotsLoading = true
       this.slots = []
       var self = this
-      fetch('/api/slots?date=' + date)
+      fetch(API_BASE + '/api/slots?date=' + date)
         .then(function (r) { return r.json() })
         .then(function (data) { self.slotsLoading = false; self.slots = (data.data || data.slots || []) })
         .catch(function () { self.slotsLoading = false; self.slots = [] })
@@ -258,7 +264,7 @@ function wizardStore() {
       var qs = new URLSearchParams()
       if (self.houseBillNumber.trim())  qs.set('billNumber',      self.houseBillNumber.trim())
       if (self.containerNumber.trim())  qs.set('containerNumber', self.containerNumber.trim())
-      fetch('/api/shipments?' + qs.toString())
+      fetch(API_BASE + '/api/shipments?' + qs.toString())
         .then(function (r) { return r.json() })
         .then(function (data) { self.shipmentFetching = false; self.shipmentFetched = true; self.shipmentData = (data.data || null) })
         .catch(function () { self.shipmentFetching = false; self.shipmentFetched = true; self.shipmentData = null })
@@ -269,7 +275,7 @@ function wizardStore() {
       this.shipmentFetching = true
       this.shipmentFetched  = false
       var self = this
-      fetch('/api/shipments?containerNumber=' + encodeURIComponent(self.containerNumber.trim()))
+      fetch(API_BASE + '/api/shipments?containerNumber=' + encodeURIComponent(self.containerNumber.trim()))
         .then(function (r) { return r.json() })
         .then(function (data) { self.shipmentFetching = false; self.shipmentFetched = true; self.shipmentData = (data.data || null) })
         .catch(function () { self.shipmentFetching = false; self.shipmentFetched = true; self.shipmentData = null })
@@ -289,7 +295,7 @@ function wizardStore() {
       var parts = this.selectedSlotLabel.split(' – ')
 
       try {
-        var res = await fetch('/api/bookings', {
+        var res = await fetch(API_BASE + '/api/bookings', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -411,7 +417,7 @@ function kioskStore() {
       var self = this
       var ref  = this.referenceInput.trim().toUpperCase()
       self.lookupError = false
-      fetch('/kiosk/lookup/' + encodeURIComponent(ref))
+      fetch(API_BASE + '/kiosk/lookup/' + encodeURIComponent(ref))
         .then(function (r) { return r.json() })
         .then(function (data) {
           if (data.found) { self.lookupResult = data; self.lookupError = false; self.goTo('confirm') }
@@ -486,7 +492,7 @@ function kioskStore() {
       var ld        = self.licenceData || {}
       self.arrivedVisitorName = ld.name || (self.lookupResult ? self.lookupResult.name : '') || 'Visitor'
       if (bookingId) {
-        fetch('/kiosk/checkin', {
+        fetch(API_BASE + '/kiosk/checkin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ bookingId: bookingId, licenceName: ld.name || '', licenceNumber: ld.licenceNo || '', licenceDob: ld.dob || '', licenceExpiry: ld.expiry || '', licenceAddress: ld.address || '', nameMatchResult: ld.nameMatchResult || 'not_checked', nameMatchScore: ld.nameMatchScore || 0, expiryValid: !self.licenceExpired }),
@@ -500,7 +506,7 @@ function kioskStore() {
       var self = this
       if (!self.walkInName.trim()) return
       self.arrivedVisitorName = self.walkInName.trim()
-      fetch('/kiosk/walk-in', {
+      fetch(API_BASE + '/kiosk/walk-in', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ purpose: self.walkInPurpose || 'visit_person', visitorName: self.walkInName.trim() || 'Kiosk Walk-In', contactNumber: self.walkInPhone.trim() || null, vehicleReg: self.walkInVehicle.trim() || null, blRef: self.walkInBLRef.trim() || null, personBeingVisited: self.walkInPersonVisited.trim() || null, reason: self.walkInReason.trim() || null }),

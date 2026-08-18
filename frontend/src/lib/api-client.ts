@@ -1,4 +1,5 @@
 import { toast } from 'sonner'
+import { API_BASE } from './apiBase'
 
 /**
  * Centralized API Client — Glido
@@ -13,7 +14,6 @@ import { toast } from 'sonner'
  */
 
 const SESSION_KEY = 'glido_auth_token'
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
 const inFlightRequests = new Map<string, Promise<any>>()
 

@@ -6,6 +6,7 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { GlidoLogo } from '@/lib/GlidoLogo'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from '@/lib/toast'
+import { API_BASE } from '@/lib/apiBase'
 import loginBgImg from '@/assets/login-bg.webp'
 
 const FIELD: React.CSSProperties = {
@@ -97,7 +98,7 @@ export default function VisitorLoginPage() {
     }
     setIsSubmitting(true)
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ firstName: suFirst, lastName: suLast, email: suEmail, password: suPass, companyName: suCompany.trim() || undefined }),
