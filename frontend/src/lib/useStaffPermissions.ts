@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { getTenant } from '@/lib/db/tenants'
+// staff_permissions is stripped from the public tenant payload, so this hook
+// must use the authenticated route. It only runs on signed-in reception screens.
+import { getTenantFull } from '@/lib/db/tenants'
 import { useReceptionAuth } from '@/contexts/ReceptionAuthContext'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
@@ -52,7 +54,7 @@ export function useStaffPermissions(): StaffPermissions {
 
   useEffect(() => {
     if (loading || isAdmin) return
-    getTenant(DEFAULT_TENANT_ID)
+    getTenantFull(DEFAULT_TENANT_ID)
       .then(t => {
         const sp = (t?.working_hours as any)?.staff_permissions
         if (sp && typeof sp === 'object') {
