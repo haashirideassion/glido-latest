@@ -101,7 +101,7 @@ function ConfirmedScreen() {
   const handleResendEmail = async () => {
     setResendLoading(true)
     try {
-      await postFetcher('/api/v2/bookings/resend-confirmation', { refs })
+      await postFetcher('/api/bookings/resend-confirmation', { refs })
       toast('Confirmation email sent!', 'success')
     } catch {
       toast('Failed to resend email. Please try again.', 'error')

@@ -160,7 +160,6 @@ const BENTO_3 = [
 function ReceptionDashboardMockup() {
   const reduce = useReducedMotion()
   const [frame, setFrame] = useState(0)
-  const [hoverKey, setHoverKey] = useState<string | null>(null)
 
   useEffect(() => {
     if (reduce) return
@@ -235,12 +234,10 @@ function ReceptionDashboardMockup() {
                 key={row.key}
                 layout
                 initial={reduce ? undefined : { opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto', backgroundColor: hoverKey === row.key ? 'rgba(var(--brand-rgb),0.045)' : row.status === 'ICS Hold' ? 'rgba(239,68,68,0.025)' : 'rgba(255,255,255,0)' }}
+                animate={{ opacity: 1, height: 'auto', backgroundColor: row.status === 'ICS Hold' ? 'rgba(239,68,68,0.025)' : 'rgba(255,255,255,0)' }}
                 exit={reduce ? undefined : { opacity: 0, height: 0 }}
                 transition={{ layout: { duration: 0.45, ease: EASE }, backgroundColor: { duration: 0.2 } }}
-                onMouseEnter={() => setHoverKey(row.key)}
-                onMouseLeave={() => setHoverKey(null)}
-                style={{ display: 'grid', gridTemplateColumns: '1fr 72px 80px 28px', padding: '9px 14px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer' }}
+                style={{ display: 'grid', gridTemplateColumns: '1fr 72px 80px 28px', padding: '9px 14px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'default' }}
               >
                 <div>
                   <p style={{ fontSize: 14, fontWeight: 500, color: '#1C1917' }}>{row.name}</p>
@@ -262,9 +259,7 @@ function ReceptionDashboardMockup() {
                   </AnimatePresence>
                 </div>
                 <div style={{ alignSelf: 'center', display: 'flex', justifyContent: 'flex-end' }}>
-                  <motion.div animate={{ x: hoverKey === row.key ? 2 : 0, opacity: hoverKey === row.key ? 0.7 : 0.25 }} transition={{ duration: 0.15 }}>
-                    <Icon name={ICONS.arrowRight} size={11} style={{ color: 'inherit' }} />
-                  </motion.div>
+                  <Icon name={ICONS.arrowRight} size={11} style={{ color: 'inherit', opacity: 0.25 }} />
                 </div>
               </motion.div>
             ))}

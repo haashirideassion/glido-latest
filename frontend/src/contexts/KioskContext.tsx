@@ -4,7 +4,28 @@ import {
 } from 'react'
 import { getBookingByRef, getBookingsByGroupRef, checkInBooking } from '@/lib/db/bookings'
 import type { Booking } from '@/data/types'
-import { createWalkIn } from '@/lib/db/walk-ins'
+import { createWalkIn, type CreateWalkInInput } from '@/lib/db/walk-ins'
+
+/**
+ * The kiosk is unattended — a walk-in submission failing silently means the visitor sees
+ * a normal "arrived" screen while no record was ever written, and nobody finds out until
+ * someone notices they're missing from Visitors. One immediate retry covers the common
+ * transient case (network blip, brief backend hiccup); if it still fails, log loudly
+ * instead of swallowing it, so it's at least visible in server logs.
+ */
+async function createWalkInWithRetry(input: CreateWalkInInput) {
+  try {
+    return await createWalkIn(input)
+  } catch (err) {
+    console.error('[kiosk] createWalkIn failed, retrying once', err)
+    try {
+      return await createWalkIn(input)
+    } catch (err2) {
+      console.error('[kiosk] createWalkIn FAILED AFTER RETRY — walk-in record lost', input, err2)
+      return null
+    }
+  }
+}
 import { createCheckinRecord } from '@/lib/db/checkin-records'
 import { playSuccessTone, playErrorTone } from '@/lib/kioskSound'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
@@ -285,19 +306,16 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       // Yard walk-in completed ID scan — submit walk-in record with licence data included
       const licenceNote = ld ? `Licence: ${ld.licenceNo} | DOB: ${ld.dob}` : ''
       const visitorName = state.walkInName.trim() || ld?.name || 'Visitor'
-      let walkInId: string | undefined
-      try {
-        const wi = await createWalkIn({
-          tenantId: DEFAULT_TENANT_ID,
-          purpose: 'visit_yard',
-          visitorName,
-          companyName: state.walkInCompany.trim() || undefined,
-          personBeingVisited: state.walkInPersonVisited.trim() || undefined,
-          reason: [state.walkInReason, licenceNote].filter(Boolean).join(' | ') || undefined,
-          licenceCaptured: !!ld,
-        })
-        walkInId = wi?.id
-      } catch (err) { console.error('[kiosk] createWalkIn failed', err) }
+      const wi = await createWalkInWithRetry({
+        tenantId: DEFAULT_TENANT_ID,
+        purpose: 'visit_yard',
+        visitorName,
+        companyName: state.walkInCompany.trim() || undefined,
+        personBeingVisited: state.walkInPersonVisited.trim() || undefined,
+        reason: [state.walkInReason, licenceNote].filter(Boolean).join(' | ') || undefined,
+        licenceCaptured: !!ld,
+      })
+      const walkInId = wi?.id
       // Write audit record for yard walk-in so Identity Check card renders in VisitorDetailPage
       createCheckinRecord({
         tenantId:          DEFAULT_TENANT_ID,
@@ -326,7 +344,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       ? `Licence: ${state.licenceData.licenceNo} | DOB: ${state.licenceData.dob}`
       : ''
     const isOfficeOrYard = state.walkInPurpose === 'visit_office' || state.walkInPurpose === 'visit_yard'
-    createWalkIn({
+    await createWalkInWithRetry({
       tenantId: DEFAULT_TENANT_ID,
       purpose: state.walkInPurpose ?? 'visit_person',
       visitorName: state.walkInName.trim(),
@@ -336,7 +354,7 @@ export function KioskProvider({ children }: { children: ReactNode }) {
       personBeingVisited: state.walkInPersonVisited.trim() || undefined,
       reason: [state.walkInReason, state.walkInVehicle ? `Vehicle: ${state.walkInVehicle}` : '', state.walkInBLRef ? `B/L: ${state.walkInBLRef}` : '', licenceNote].filter(Boolean).join(' | ') || undefined,
       licenceCaptured: !!state.licenceData,
-    }).catch(() => {})
+    })
     goTo('arrived')
   }, [state, goTo])
 

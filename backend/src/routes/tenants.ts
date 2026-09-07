@@ -68,7 +68,12 @@ router.patch('/:id', requireAuth, async (req: Request, res: Response) => {
     let i = 2
     for (const key of fields) {
       setClauses.push(`${key} = $${i++}`)
-      params.push(updates[key])
+      const val = updates[key]
+      // node-postgres auto-JSON.stringifies plain objects for jsonb columns, but encodes a
+      // JS array as a Postgres ARRAY literal instead — invalid for a jsonb column whose value
+      // is a top-level array (e.g. required_documents). Stringify arrays explicitly so they're
+      // sent as JSON text, which Postgres coerces into the jsonb column correctly.
+      params.push(Array.isArray(val) ? JSON.stringify(val) : val)
     }
     setClauses.push(`updated_at = NOW()`)
     const { rows } = await pool.query(
