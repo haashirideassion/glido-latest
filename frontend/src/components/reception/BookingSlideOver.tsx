@@ -1,0 +1,735 @@
+import { useState, useEffect } from 'react'
+import { motion } from 'motion/react'
+import { Icon, ICONS } from '@/lib/Icon'
+import { fmtDateTime } from '@/lib/time'
+import { toast } from '@/lib/toast'
+import { fetcher } from '@/lib/fetcher'
+import { openSignedUrl } from '@/lib/useSignedUrl'
+import { CheckInModal } from '@/components/reception/CheckInModal'
+import type { ManualCheckInDetails } from '@/lib/db/bookings'
+import {
+  checkInBooking, completeBooking, cancelBooking,
+  rescheduleBooking, refreshIcsStatus, updateStaffNotes, updateAdditionalReference,
+} from '@/lib/db/bookings'
+import type { Booking } from '@/data/types'
+import type { StaffPermissions } from '@/lib/useStaffPermissions'
+
+interface BookingDocument {
+  id: string
+  document_type: string
+  filename: string
+  file_size_bytes: number | null
+  storage_path: string
+}
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  cartage_advice:       'Cartage Advice',
+  delivery_order:       'Delivery Order',
+  packing_list:         'Packing List',
+  commercial_invoice:   'Commercial Invoice',
+  bill_of_lading:       'Bill of Lading',
+  customs_declaration:  'Customs Declaration',
+  biosecurity:          'Biosecurity Direction',
+  general:              'Document',
+}
+function fmtDocType(t: string): string {
+  return DOC_TYPE_LABELS[t] ?? t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+function fmtFileSize(bytes: number | null): string {
+  if (!bytes || bytes <= 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const ICS_BADGE: Record<string, string> = {
+  cleared:     'background:rgba(34,197,94,0.10);color:#16A34A;border:1px solid rgba(34,197,94,0.22);',
+  held:        'background:rgba(239,68,68,0.10);color:#EF4444;border:1px solid rgba(239,68,68,0.22);',
+  examination: 'background:rgba(251,191,36,0.10);color:#B45309;border:1px solid rgba(251,191,36,0.22);',
+  pending:     'background:rgba(0,0,0,0.04);color:#78716C;border:1px solid rgba(0,0,0,0.10);',
+  unavailable: 'background:rgba(0,0,0,0.04);color:#78716C;border:1px solid rgba(0,0,0,0.10);',
+}
+const ICS_LABEL: Record<string, string> = { cleared: 'Cleared', held: 'Held', examination: 'Examination', pending: 'Pending', unavailable: 'N/A' }
+
+const STATUS_BADGE: Record<string, React.CSSProperties> = {
+  scheduled:  { background: '#F5F5F4', color: '#57534E', border: '1px solid rgba(0,0,0,0.10)' },
+  checked_in: { background: 'rgba(34,197,94,0.12)', color: '#16A34A', border: '1px solid rgba(34,197,94,0.25)' },
+  completed:  { background: '#F5F5F4', color: 'var(--text-secondary)', border: '1px solid rgba(0,0,0,0.08)' },
+  cancelled:  { background: 'transparent', color: 'var(--text-tertiary)', border: '1px solid rgba(0,0,0,0.15)' },
+}
+const STATUS_LABEL: Record<string, string> = { scheduled: 'Scheduled', checked_in: 'Checked In', completed: 'Completed', cancelled: 'Cancelled' }
+
+const SL: React.CSSProperties = { fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }
+const PANEL: React.CSSProperties = { background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-sm)', padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }
+const RL: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-secondary)' }
+const RV: React.CSSProperties = { fontSize: 14, fontWeight: 600, color: '#1C1917' }
+
+interface Props {
+  booking: Booking
+  onClose: () => void
+  onUpdated: (b: Booking) => void
+  /** When true, render inline as a docked split-pane (no fixed positioning, no backdrop). */
+  docked?: boolean
+  /** Hoisted from the parent page — this panel remounts (via `key`) on every row switch,
+   *  so calling useStaffPermissions() in here would re-fetch tenant permissions on every click. */
+  perms: StaffPermissions
+  /** Hide the "Complete" action — used on the Visitors page, where completing a job isn't
+   *  a visitor-management action (it still is on Bookings/Dashboard). */
+  hideCompleteAction?: boolean
+}
+
+export function BookingSlideOver({ booking: initial, onClose, onUpdated, docked = false, perms, hideCompleteAction = false }: Props) {
+  const [b, setB] = useState<Booking>(initial)
+  const [loading, setLoading] = useState('')
+  const [checkin, setCheckin] = useState<any>(null)
+  const [documents, setDocuments] = useState<BookingDocument[]>([])
+  const [viewingDoc, setViewingDoc] = useState('')
+  // Staff Comment + Reference — both internal-only fields, edited and saved together
+  // from one "Internal Notes" card rather than two separate save buttons.
+  const [staffNotesDraft, setStaffNotesDraft] = useState(b.staffNotes ?? '')
+  const [referenceDraft,  setReferenceDraft]  = useState(b.additionalReference ?? '')
+  const [savingInternal,  setSavingInternal]  = useState(false)
+  const staffNotesDirty = staffNotesDraft !== (b.staffNotes ?? '')
+  const referenceDirty  = referenceDraft  !== (b.additionalReference ?? '')
+  const internalDirty   = staffNotesDirty || referenceDirty
+  const saveInternalNotes = async () => {
+    setSavingInternal(true)
+    try {
+      let updated
+      if (staffNotesDirty) updated = await updateStaffNotes(b.id, staffNotesDraft)
+      if (referenceDirty)  updated = await updateAdditionalReference(b.id, referenceDraft)
+      if (updated) { setB(updated); onUpdated(updated) }
+      toast('Saved', 'success')
+    } catch { toast('Failed to save', 'error') }
+    finally { setSavingInternal(false) }
+  }
+
+  // Guard against losing an unsaved Staff Comment / Reference edit on close
+  const attemptClose = () => {
+    if (internalDirty) setConfirmCloseModal(true)
+    else onClose()
+  }
+
+  // Fetch identity check record when booking is checked-in or completed
+  const loadCheckin = () => {
+    fetcher(`/api/checkin-records?bookingId=${encodeURIComponent(b.id)}`)
+      .then((res: any) => setCheckin((res?.data ?? [])[0] ?? null))
+      .catch(() => {})
+  }
+  useEffect(() => {
+    if (b.status !== 'checked_in' && b.status !== 'completed') return
+    loadCheckin()
+  }, [b.id, b.status]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch documents uploaded during the booking (cartage advice, packing list, etc.)
+  useEffect(() => {
+    let cancelled = false
+    fetcher(`/api/booking-documents?bookingId=${encodeURIComponent(b.id)}`)
+      .then((res: any) => { if (!cancelled) setDocuments(Array.isArray(res?.data) ? res.data : []) })
+      .catch(() => { if (!cancelled) setDocuments([]) })
+    return () => { cancelled = true }
+  }, [b.id])
+
+  const viewDoc = async (doc: BookingDocument) => {
+    setViewingDoc(doc.id)
+    try {
+      await openSignedUrl(doc.storage_path)
+    } catch {
+      toast('Could not open document', 'error')
+    } finally {
+      setViewingDoc('')
+    }
+  }
+
+  // Modal state
+  const [confirmModal,    setConfirmModal]    = useState(false)
+  const [cancelModal,     setCancelModal]     = useState(false)
+  const [rescheduleModal, setRescheduleModal] = useState(false)
+  const [confirmCloseModal, setConfirmCloseModal] = useState(false)
+  const [checkInModal,    setCheckInModal]    = useState(false)
+
+  // Form fields
+  const [completionNotes, setCompletionNotes] = useState('')
+  const [newDate,  setNewDate]  = useState(b.slotDate)
+  const [newStart, setNewStart] = useState(b.slotStartTime)
+
+  const act = async (
+    label: string,
+    fn: () => Promise<Booking | void | undefined>,
+    successMsg?: string,
+    toastType: 'success' | 'info' | 'error' = 'success',
+  ) => {
+    setLoading(label)
+    try {
+      const updated = await fn()
+      if (updated) { setB(updated); onUpdated(updated) }
+      if (successMsg) toast(successMsg, toastType)
+    } catch (err: any) {
+      toast(err?.message ?? 'Action failed', 'error')
+    } finally {
+      setLoading('')
+    }
+  }
+
+  const fieldStyle: React.CSSProperties = {
+    width: '100%', padding: '10px 14px', fontSize: 15, color: '#1C1917',
+    background: '#EBEBEA', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)',
+    outline: 'none', boxSizing: 'border-box',
+  }
+  const focus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => { e.target.style.borderColor = 'rgba(var(--brand-rgb),0.50)' }
+  const blur  = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => { e.target.style.borderColor = 'rgba(0,0,0,0.10)' }
+
+  const icsStyle = ICS_BADGE[b.icsStatus ?? ''] ?? ICS_BADGE.unavailable
+
+  const panelStyle: React.CSSProperties = docked
+    ? { position: 'relative', height: '100%', width: '100%', zIndex: 1, background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+    : { position: 'fixed', right: 0, top: 0, height: '100%', width: 'min(480px, 100vw)', zIndex: 50, background: '#FFFFFF', borderLeft: '1px solid rgba(0,0,0,0.08)', boxShadow: '-8px 0 40px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+
+  return (
+    <>
+      {/* Backdrop — overlay mode only */}
+      {!docked && (
+        <motion.div
+          onClick={attemptClose}
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }}
+          style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(4px)' }}
+        />
+      )}
+
+      {/* Panel */}
+      <motion.div
+        style={panelStyle}
+        initial={docked ? { opacity: 0, x: 16 } : { x: '100%' }}
+        animate={docked ? { opacity: 1, x: 0 } : { x: 0 }}
+        transition={docked ? { duration: 0.24, ease: [0.16, 1, 0.3, 1] } : { type: 'spring', stiffness: 400, damping: 40 }}
+      >
+
+        {/* ── Sticky header ── */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px 10px 20px', borderBottom: '1px solid rgba(0,0,0,0.07)', background: '#FFFFFF', flexShrink: 0, gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+            <span
+              style={{ fontFamily: 'ui-monospace,monospace', fontSize: 15, fontWeight: 700, color: 'var(--brand-color)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', flexShrink: 0 }}
+              title="Click to copy"
+              onClick={() => navigator.clipboard.writeText(b.referenceNumber).then(() => toast('Reference copied', 'info')).catch(() => {})}
+            >
+              {b.referenceNumber}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.45 }}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </span>
+            <span style={{ ...STATUS_BADGE[b.status] ?? STATUS_BADGE.scheduled, fontSize: 13, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--r-full)', whiteSpace: 'nowrap' }}>
+              {STATUS_LABEL[b.status] ?? b.status}
+            </span>
+          </div>
+          <button onClick={attemptClose} aria-label="Close" style={{ width: 34, height: 34, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--text-secondary)', transition: 'background 0.15s, color 0.15s' }}
+            onMouseOver={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#1C1917' }}
+            onMouseOut={e  => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* ── Body ── */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 20, background: '#F5F4F3' }}>
+
+          {/* Driver */}
+          <section>
+            <p style={SL}>Driver / Visitor</p>
+            <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                { label: 'Driver',       value: b.driverName,          icon: ICONS.user,   show: true, mono: false },
+                { label: 'Driver Phone', value: b.driverPhone,         icon: ICONS.phone,  show: !!b.driverPhone, mono: false },
+                { label: 'Vehicle Rego', value: b.vehicleRegistration, icon: ICONS.truck,  show: !!b.vehicleRegistration, mono: true },
+                { label: 'Guest',        value: b.guestName,           icon: ICONS.users,  show: !!b.guestName && b.guestName !== b.driverName, mono: false },
+                { label: 'Guest Email',  value: b.guestEmail,          icon: ICONS.email,  show: !!b.guestEmail, mono: false },
+                { label: 'Guest Phone',  value: b.guestPhone,          icon: ICONS.phone,  show: !!b.guestPhone && b.guestPhone !== b.driverPhone, mono: false },
+                { label: 'Company',      value: b.companyName,         icon: ICONS.building, show: !!b.companyName, mono: false },
+              ].filter(r => r.show).map(row => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <span style={RL}><Icon name={row.icon} size={13} style={{ color: 'var(--text-secondary)' }} />{row.label}</span>
+                  <span style={{ ...RV, fontFamily: row.mono ? 'ui-monospace,monospace' : undefined, textAlign: 'right', wordBreak: 'break-word' }}>{row.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Slot */}
+          <section>
+            <p style={SL}>Slot</p>
+            <div style={{ ...PANEL, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {[
+                { label: 'Date',      value: b.slotDate,           icon: ICONS.calendar },
+                { label: 'Time',      value: `${b.slotStartTime} – ${b.slotEndTime}`, icon: ICONS.clock },
+                { label: 'Service',   value: b.serviceType === 'pickup' ? 'Pick Up' : 'Drop Off', icon: null },
+                { label: 'Load Type', value: (b.loadType ?? '').toUpperCase(), icon: null },
+              ].map(row => (
+                <div key={row.label}>
+                  <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginBottom: 3 }}>{row.label}</p>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', display: 'flex', alignItems: 'center', gap: 5 }}>
+                    {row.icon && <Icon name={row.icon} size={13} style={{ color: 'var(--text-secondary)' }} />}
+                    {row.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Shipment */}
+          {(b.houseBillNumber || b.containerNumber || b.containerSize || b.weightKg || b.volumeCbm ||
+            b.packageCount || (b.palletCount ?? 0) > 0 || b.entryNumber || b.purpose || b.consolidator || b.bookingReference) && (
+            <section>
+              <p style={SL}>Shipment</p>
+              <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {b.houseBillNumber  && <Row label="HBL"           value={b.houseBillNumber}  icon={ICONS.document}  mono />}
+                {b.bookingReference && <Row label="Booking Ref"   value={b.bookingReference}  icon={ICONS.document}  mono />}
+                {b.entryNumber      && <Row label="Entry #"       value={b.entryNumber}       icon={ICONS.document}  mono />}
+                {b.containerNumber  && <Row label="Container"     value={b.containerNumber}   icon={ICONS.container} mono />}
+                {b.containerSize    && <Row label="Container Size" value={b.containerSize}    icon={ICONS.container} />}
+                {b.consolidator     && <Row label="Consolidator"  value={b.consolidator}      icon={ICONS.building} />}
+                {b.purpose          && <Row label="Purpose"       value={b.purpose} />}
+                {b.weightKg         && <Row label="Weight"    value={`${b.weightKg.toLocaleString()} kg`} icon={ICONS.cargo} />}
+                {b.volumeCbm        && <Row label="Volume"    value={`${b.volumeCbm} CBM`} icon={ICONS.layers} />}
+                {b.packageCount     && <Row label="Packages"  value={`${b.packageCount} pkgs`} />}
+                {(b.palletCount ?? 0) > 0 && <Row label="Pallets" value={`${b.palletCount} × ${b.palletType}`} />}
+              </div>
+            </section>
+          )}
+
+          {/* Documents uploaded during booking */}
+          {documents.length > 0 && (
+            <section>
+              <p style={SL}>Documents</p>
+              <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {documents.map(doc => (
+                  <div key={doc.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                      <span style={{ width: 30, height: 30, borderRadius: 'var(--r-sm)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(var(--brand-rgb),0.08)' }}>
+                        <Icon name={ICONS.document} size={15} style={{ color: 'var(--brand-color)' }} />
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontSize: 14, fontWeight: 600, color: '#1C1917', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fmtDocType(doc.document_type)}</p>
+                        <p style={{ fontSize: 12, color: 'var(--text-tertiary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {doc.filename}{fmtFileSize(doc.file_size_bytes) ? ` · ${fmtFileSize(doc.file_size_bytes)}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => viewDoc(doc)}
+                      disabled={viewingDoc === doc.id}
+                      style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '7px 16px', fontSize: 13, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.14)', borderRadius: 'var(--r-full)', cursor: viewingDoc === doc.id ? 'wait' : 'pointer', fontFamily: 'inherit' }}
+                    >
+                      <Icon name={ICONS.eye} size={13} />
+                      {viewingDoc === doc.id ? 'Opening…' : 'View'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* CHEP warning */}
+          {b.palletType === 'chep' && (
+            <div style={{ background: 'rgba(251,191,36,0.07)', border: '1px solid rgba(251,191,36,0.20)', borderRadius: 'var(--r-sm)', padding: '12px 16px', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <Icon name={ICONS.warning} size={16} style={{ color: '#FBBF24', flexShrink: 0, marginTop: 1 }} />
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 600, color: '#B45309', marginBottom: 2 }}>CHEP Pallet Exchange</p>
+                <p style={{ fontSize: 14, color: 'rgba(180,83,9,0.75)' }}>{b.palletCount} CHEP pallet{(b.palletCount ?? 0) > 1 ? 's' : ''} must be exchanged at collection.</p>
+              </div>
+            </div>
+          )}
+
+          {/* ICS */}
+          {b.icsStatus && (
+            <section>
+              <p style={SL}>ICS Status</p>
+              <div style={{ ...PANEL, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r-full)', ...Object.fromEntries(icsStyle.split(';').filter(Boolean).map(s => { const [k, ...v] = s.split(':'); return [k.trim().replace(/-([a-z])/g, (_: string, c: string) => c.toUpperCase()), v.join(':').trim()] })) } as any}>
+                  {ICS_LABEL[b.icsStatus] ?? b.icsStatus}
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <button
+                    onClick={() => act('ics', () => refreshIcsStatus(b.id), 'ICS status refreshed', 'info')}
+                    disabled={loading === 'ics'}
+                    style={{ fontSize: 13, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                  >
+                    <Icon name={ICONS.refresh} size={12} />
+                    {loading === 'ics' ? 'Refreshing…' : 'Refresh ICS'}
+                  </button>
+                </div>
+              </div>
+              {b.icsLastCheckedAt && (
+                <p style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 5 }}>Last checked: {fmtDateTime(b.icsLastCheckedAt)}</p>
+              )}
+            </section>
+          )}
+
+          {/* Identity Check */}
+          {(b.status === 'checked_in' || b.status === 'completed') && perms.can_view_id_scan && (
+            <section>
+              <p style={SL}>Identity Check</p>
+              <div style={{ ...PANEL }}>
+                {!checkin ? (
+                  <p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>No ID scan data available</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {/* Name match badge */}
+                    {checkin.name_match_score != null && (() => {
+                      const score = checkin.name_match_score ?? 0
+                      const badge = score >= 85
+                        ? { label: 'Verified', bg: 'rgba(34,197,94,0.10)', color: '#16A34A', border: 'rgba(34,197,94,0.22)' }
+                        : score >= 60
+                          ? { label: 'Warning',  bg: 'rgba(251,191,36,0.10)', color: '#B45309', border: 'rgba(251,191,36,0.22)' }
+                          : { label: 'Mismatch', bg: 'rgba(239,68,68,0.10)',  color: '#EF4444', border: 'rgba(239,68,68,0.22)' }
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, padding: '4px 10px', borderRadius: 'var(--r-full)', background: badge.bg, color: badge.color, border: `1px solid ${badge.border}` }}>
+                            <Icon name={ICONS.check} size={13} />{badge.label}
+                          </span>
+                          <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Score: {score}%</span>
+                        </div>
+                      )
+                    })()}
+                    {/* Fields grid */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      {checkin.licence_name    && <IdField label="Name on Licence"  value={checkin.licence_name} />}
+                      {checkin.licence_number  && <IdField label="Licence Number"   value={checkin.licence_number} mono />}
+                      {checkin.licence_dob     && <IdField label="Date of Birth"    value={checkin.licence_dob} />}
+                      {checkin.licence_expiry  && <IdField label="Expiry"           value={checkin.licence_expiry} />}
+                      {checkin.licence_address && <IdField label="Address"          value={checkin.licence_address} />}
+                      {checkin.licence_scan_method && <IdField label="Scan Method"  value={checkin.licence_scan_method} />}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Charges */}
+          {b.totalAmount && perms.can_view_charge_details && (
+            <section>
+              <p style={SL}>Charges</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7, fontSize: 15 }}>
+                {(b.storageCharge ?? 0) > 0     && <ChargeRow label={`Storage (${b.storageDays} days)`} val={b.storageCharge!} />}
+                {(b.shrinkWrapCharge ?? 0) > 0  && <ChargeRow label="Shrink wrap" val={b.shrinkWrapCharge!} />}
+                {b.slotFee !== undefined          && <ChargeRow label="Slot fee"    val={b.slotFee} />}
+                {b.subtotal !== undefined && b.subtotal !== null && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--text-tertiary)' }}>
+                    <span>Subtotal</span><span>${b.subtotal.toFixed(2)}</span>
+                  </div>
+                )}
+                {b.gstAmount !== undefined && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--text-tertiary)', paddingTop: 6, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+                    <span>GST (10%)</span><span>${b.gstAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#1C1917', paddingTop: 6, borderTop: '1px solid rgba(0,0,0,0.09)' }}>
+                  <span>Total</span><span style={{ color: 'var(--brand-color)' }}>${b.totalAmount.toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--text-tertiary)' }}>
+                  <span>{(b.paymentMethod ?? '—').toUpperCase()}</span>
+                  <span style={{ color: b.paymentStatus === 'paid' ? '#22C55E' : '#FBBF24', fontWeight: 500 }}>
+                    {b.paymentStatus === 'paid' ? 'Paid' : b.paymentStatus === 'pending_eft' ? 'EFT Pending' : b.paymentStatus}
+                  </span>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Timeline */}
+          <section>
+            <p style={SL}>Timeline</p>
+            <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={RL}><Icon name={ICONS.document} size={13} style={{ color: 'var(--text-secondary)' }} />Created</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>{fmtDateTime(b.createdAt)}</span>
+              </div>
+              {b.updatedAt && b.updatedAt !== b.createdAt && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={RL}><Icon name={ICONS.refresh} size={13} style={{ color: 'var(--text-secondary)' }} />Last Updated</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>{fmtDateTime(b.updatedAt)}</span>
+                </div>
+              )}
+              {b.checkedInAt && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={RL}><Icon name={ICONS.userCheck} size={13} style={{ color: '#FBBF24' }} />Checked In</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>{fmtDateTime(b.checkedInAt)}</span>
+                </div>
+              )}
+              {b.completedAt && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={RL}><Icon name={ICONS.checkSquare} size={13} style={{ color: '#22C55E' }} />Completed</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>{fmtDateTime(b.completedAt)}</span>
+                </div>
+              )}
+              {b.completionNotes && (
+                <div style={{ paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>Completion Notes</p>
+                  <p style={{ fontSize: 13, color: '#1C1917', lineHeight: 1.5 }}>{b.completionNotes}</p>
+                </div>
+              )}
+              {b.bookingSource && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+                  <span style={RL}>Source</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{b.bookingSource.replace(/_/g, ' ')}</span>
+                </div>
+              )}
+              {b.groupReference && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={RL}>Group</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', fontFamily: 'ui-monospace,monospace' }}>{b.groupReference}</span>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Internal Notes — Staff Comment + Reference, both internal-only, one save action */}
+          <section>
+            <p style={SL}>Internal Notes</p>
+            <div style={PANEL}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5, display: 'block' }}>Staff Comment</label>
+              <textarea
+                rows={2}
+                value={staffNotesDraft}
+                onChange={e => setStaffNotesDraft(e.target.value)}
+                placeholder="e.g. Fragile cargo — forklift required, notify supervisor on arrival"
+                style={{ ...fieldStyle, resize: 'none', marginBottom: 14 }}
+                onFocus={focus} onBlur={blur}
+              />
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5, display: 'block' }}>Reference</label>
+              <input
+                type="text"
+                value={referenceDraft}
+                onChange={e => setReferenceDraft(e.target.value)}
+                placeholder="e.g. PO-48213 or Job #JB-2201"
+                style={{ ...fieldStyle, marginBottom: 4 }}
+                onFocus={focus} onBlur={blur}
+              />
+              <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: '0 0 12px' }}>Not visible to the visitor.</p>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={saveInternalNotes} disabled={!internalDirty || savingInternal}
+                  style={{ padding: '7px 16px', fontSize: 13, fontWeight: 600, color: '#fff', background: (!internalDirty || savingInternal) ? '#9CA3AF' : 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: (!internalDirty || savingInternal) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                  {savingInternal ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* ── Action footer ── */}
+        <div style={{ flexShrink: 0, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid rgba(0,0,0,0.07)', background: '#FFFFFF' }}>
+          {b.status === 'scheduled' && (
+            <ActionBtn color="green" loading={loading === 'checkin'} onClick={() => setCheckInModal(true)}>
+              <Icon name={ICONS.userCheck} size={16} /> Mark as Checked In
+            </ActionBtn>
+          )}
+          {b.status === 'checked_in' && !hideCompleteAction && (
+            <ActionBtn color="orange" loading={loading === 'complete'} onClick={() => setConfirmModal(true)}>
+              <Icon name={ICONS.checkSquare} size={16} /> Complete
+            </ActionBtn>
+          )}
+          {(b.status === 'scheduled') && (
+            <ActionBtn color="ghost" onClick={() => setRescheduleModal(true)}>
+              <Icon name={ICONS.calendar} size={15} /> Reschedule
+            </ActionBtn>
+          )}
+          {b.status === 'scheduled' && (
+            <ActionBtn color="danger" onClick={() => setCancelModal(true)}>
+              <Icon name={ICONS.close} size={15} /> Cancel Booking
+            </ActionBtn>
+          )}
+        </div>
+      </motion.div>
+
+      {/* ── Reschedule modal ── */}
+      {checkInModal && (
+        <CheckInModal
+          driverName={b.driverName}
+          submitting={loading === 'checkin'}
+          onClose={() => setCheckInModal(false)}
+          onConfirm={async (details: ManualCheckInDetails) => {
+            await act('checkin', () => checkInBooking(b.id, details), `✓ ${b.driverName} checked in`, 'success')
+            loadCheckin()
+            setCheckInModal(false)
+          }}
+        />
+      )}
+
+      {rescheduleModal && (
+        <Modal onClose={() => setRescheduleModal(false)}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#1C1917', marginBottom: 6 }}>Reschedule Booking</h3>
+          <p style={{ fontSize: 15, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
+            Change the slot for <strong style={{ color: '#1C1917', fontFamily: 'ui-monospace,monospace' }}>{b.referenceNumber}</strong>.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>New Date</label>
+              <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} style={fieldStyle} onFocus={focus} onBlur={blur} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>New Start Time</label>
+              <input type="time" value={newStart} onChange={e => setNewStart(e.target.value)} style={fieldStyle} onFocus={focus} onBlur={blur} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <ActionBtn color="ghost" onClick={() => setRescheduleModal(false)}>Cancel</ActionBtn>
+            <ActionBtn color="orange" loading={loading === 'reschedule'} onClick={async () => {
+              if (!newDate || !newStart) return
+              const endH = String(parseInt(newStart.split(':')[0]) + 1).padStart(2, '0')
+              const newEnd = `${endH}:${newStart.split(':')[1]}`
+              await act('reschedule', () => rescheduleBooking(b.id, newDate, newStart, newEnd), `Rescheduled to ${newDate} at ${newStart}`, 'success')
+              setRescheduleModal(false)
+            }}>
+              <Icon name={ICONS.calendar} size={14} /> Confirm Reschedule
+            </ActionBtn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Cancel modal ── */}
+      {cancelModal && (
+        <Modal onClose={() => setCancelModal(false)}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#1C1917', marginBottom: 6 }}>Cancel this booking?</h3>
+          <p style={{ fontSize: 15, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
+            Cancelling <strong style={{ fontFamily: 'ui-monospace,monospace', color: '#1C1917' }}>{b.referenceNumber}</strong> for <strong style={{ color: '#1C1917' }}>{b.driverName}</strong>. This cannot be undone.
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <ActionBtn color="ghost" onClick={() => setCancelModal(false)}>Keep Booking</ActionBtn>
+            <ActionBtn color="danger" loading={loading === 'cancel'} onClick={async () => {
+              await act('cancel', () => cancelBooking(b.id), `Booking ${b.referenceNumber} cancelled`, 'info')
+              setCancelModal(false)
+            }}>
+              <Icon name={ICONS.close} size={14} /> Confirm Cancel
+            </ActionBtn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Complete modal ── */}
+      {confirmModal && (
+        <Modal onClose={() => setConfirmModal(false)}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#1C1917', marginBottom: 6 }}>Complete this job?</h3>
+          <p style={{ fontSize: 15, color: 'var(--text-secondary)', marginBottom: 20, lineHeight: 1.5 }}>
+            Marking <strong style={{ color: '#1C1917' }}>{b.driverName}</strong>'s visit as complete. This action is final.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+            {['Driver identity verified', 'Documents checked', 'Cargo released'].map(item => (
+              <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 15, color: '#1C1917' }}>
+                <span style={{ width: 20, height: 20, borderRadius: 'var(--r-full)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.22)' }}>
+                  <Icon name={ICONS.check} size={11} style={{ color: '#22C55E' }} />
+                </span>
+                {item}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'rgba(0,0,0,0.40)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }}>Completion Notes (optional)</label>
+              <textarea rows={2} value={completionNotes} onChange={e => setCompletionNotes(e.target.value)} placeholder="Any notes for records..." style={{ ...fieldStyle, resize: 'none' }} onFocus={focus} onBlur={blur} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <ActionBtn color="ghost" onClick={() => setConfirmModal(false)}>Cancel</ActionBtn>
+            <ActionBtn color="orange" loading={loading === 'complete'} onClick={async () => {
+              await act('complete', () => completeBooking(b.id, completionNotes || undefined), `✓ ${b.driverName}'s visit completed`, 'success')
+              setConfirmModal(false)
+            }}>
+              <Icon name={ICONS.check} size={16} /> Confirm Complete
+            </ActionBtn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Unsaved-changes guard on close ── */}
+      {confirmCloseModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 'var(--r-xl)', padding: 32, width: 400, maxWidth: 'calc(100vw - 48px)', boxShadow: '0 24px 64px rgba(0,0,0,0.18)' }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', margin: '0 0 8px', letterSpacing: '-0.02em' }}>Discard unsaved changes?</h3>
+            <p style={{ fontSize: 15, color: 'var(--text-mid)', lineHeight: 1.6, margin: '0 0 24px' }}>
+              Your Staff Comment or Reference edit hasn't been saved yet. Closing now will lose it.
+            </p>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setConfirmCloseModal(false)}
+                style={{ flex: 1, padding: '12px 0', borderRadius: 'var(--r-sm)', border: '1px solid rgba(0,0,0,0.12)', background: '#F9F9F8', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit', color: '#1C1917' }}
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmCloseModal(false); onClose() }}
+                style={{ flex: 1, padding: '12px 0', borderRadius: 'var(--r-sm)', border: 'none', background: '#EF4444', color: '#fff', fontWeight: 600, fontSize: 15, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Discard & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/* ── Small helper components ── */
+
+function Row({ label, value, icon, mono }: { label: string; value: string; icon?: string; mono?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'var(--text-secondary)' }}>
+        {icon && <Icon name={icon} size={13} style={{ color: 'var(--text-secondary)' }} />}
+        {label}
+      </span>
+      <span style={{ fontFamily: mono ? 'ui-monospace,monospace' : undefined, fontSize: 14, fontWeight: 600, color: mono ? '#78716C' : '#1C1917' }}>{value}</span>
+    </div>
+  )
+}
+
+function IdField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div style={{ background: '#F5F4F3', borderRadius: 'var(--r-sm)', padding: '8px 10px' }}>
+      <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{label}</p>
+      <p style={{ fontSize: 13, fontWeight: 600, color: '#1C1917', fontFamily: mono ? 'ui-monospace,monospace' : undefined, wordBreak: 'break-all' }}>{value}</p>
+    </div>
+  )
+}
+
+function ChargeRow({ label, val }: { label: string; val: number }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+      <span>{label}</span><span>${val.toFixed(2)}</span>
+    </div>
+  )
+}
+
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }} onClick={onClose} />
+      <div style={{ position: 'relative', background: '#FFFFFF', borderRadius: 'var(--r-lg)', boxShadow: '0 24px 64px rgba(0,0,0,0.28)', maxWidth: 420, width: '100%', padding: 24 }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ActionBtn({ color, onClick, loading, children }: { color: 'orange' | 'green' | 'ghost' | 'danger'; onClick: () => void; loading?: boolean; children: React.ReactNode }) {
+  const styles: Record<string, React.CSSProperties> = {
+    orange: { background: 'linear-gradient(135deg,#FF7A2A,#E85A0A)', color: '#fff', border: 'none', boxShadow: '0 2px 8px rgba(var(--brand-rgb),0.30)' },
+    green:  { background: 'linear-gradient(135deg,#22C55E,#16A34A)', color: '#fff', border: 'none', boxShadow: '0 2px 8px rgba(34,197,94,0.30)' },
+    ghost:  { background: '#fff', color: '#374151', border: '1.5px solid #e5e7eb' },
+    danger: { background: 'rgba(239,68,68,0.08)', color: '#DC2626', border: '1px solid rgba(239,68,68,0.25)' },
+  }
+  return (
+    <motion.button
+      onClick={onClick}
+      disabled={loading}
+      whileTap={loading ? undefined : { scale: 0.95 }}
+      whileHover={loading ? undefined : { scale: 1.02 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30, mass: 0.6 }}
+      style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 16px', fontSize: 15, fontWeight: 600, borderRadius: 'var(--r-full)', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1, fontFamily: 'inherit', ...styles[color] }}
+    >
+      {children}
+    </motion.button>
+  )
+}

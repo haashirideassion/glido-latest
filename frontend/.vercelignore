@@ -1,0 +1,6 @@
+# Exclude the local dev entry point — only api/index.ts is the Vercel function.
+src/app.ts
+
+# Exclude any stale esbuild artifacts so they don't get registered as extra functions.
+api/bundle.js
+api/bundle.cjs
