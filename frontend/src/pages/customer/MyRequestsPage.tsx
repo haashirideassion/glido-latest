@@ -1,13 +1,25 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
 import { getServiceRequests } from '@/lib/db/service-requests'
-import { RequestDetailsPanel } from '@/components/customer/RequestDetailsPanel'
+import { BackButton } from '@/components/ui/BackButton'
 import { fetcher } from '@/lib/fetcher'
 import type { ServiceRequest, ServiceCategory, RequestStage, RequestStatus } from '@/data/types'
 
 const STAGES: RequestStage[] = ['received', 'in_transit', 'arrived', 'completed']
+const STAGE_LABEL: Record<RequestStage, string> = { received: 'Received', in_transit: 'In Transit', arrived: 'Arrived', completed: 'Completed' }
+
+// "3 days ago" reads faster than a date when scanning a list. Falls back to an absolute date
+// past a month, where "47 days ago" stops being useful.
+function relativeDay(iso: string): string {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
+  if (!Number.isFinite(days) || days < 0) return '—'
+  if (days === 0) return 'today'
+  if (days === 1) return 'yesterday'
+  if (days < 31)  return `${days} days ago`
+  return new Date(iso).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' })
+}
 
 // FR 2.3 — Status badge, distinct from the progress-stage dots above.
 const STATUS_STYLE: Record<RequestStatus, React.CSSProperties> = {
@@ -43,9 +55,7 @@ export default function MyRequestsPage() {
   const [sortOpen, setSortOpen] = useState(false)
   const [requests, setRequests] = useState<ServiceRequest[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [actionsMenuId, setActionsMenuId] = useState<string | null>(null)
-  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true))
   const [preset, setPreset] = useState<Preset>('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -67,12 +77,6 @@ export default function MyRequestsPage() {
   }, [])
 
   useEffect(() => {
-    const onResize = () => setIsWide(window.innerWidth >= 1024)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  useEffect(() => {
     let cancelled = false
     setIsLoading(true)
     getServiceRequests({ category: tab, search: search.trim() || undefined, sort, from: dateFrom || undefined, to: dateTo || undefined })
@@ -81,22 +85,18 @@ export default function MyRequestsPage() {
     return () => { cancelled = true }
   }, [tab, search, sort, dateFrom, dateTo])
 
-  const selected = useMemo(() => requests.find(r => r.id === selectedId) ?? null, [requests, selectedId])
-
   return (
     <div>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
 
-      {/* Back — history-back when there's somewhere in-app to return to (e.g. a request's detail
-          view or a filtered link), falling back to the Dashboard for direct/bookmarked entry. */}
-      <button type="button" onClick={() => { if (window.history.state?.idx > 0) navigate(-1); else navigate('/customer') }}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 4px', marginBottom: 12, fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2.5L4.5 7l4 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        Back
-      </button>
-
       {/* Tabs + search + sort + date filters — single wrapping row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {/* FR 2.0 — Back returns to the previous page. Inline in the toolbar so it costs no
+            vertical space; unlike Planner Vessels the FRD says "previous page" here, not a
+            named destination, so this one goes back in history. */}
+        <BackButton to={-1} />
+        <span style={{ width: 1, height: 24, background: 'rgba(0,0,0,0.08)', flexShrink: 0 }} />
+
         <div style={{ display: 'flex', gap: 6, background: '#F0F0EF', padding: 4, borderRadius: 'var(--r-full)', width: 'fit-content', flexShrink: 0 }}>
           {(['import', 'export'] as ServiceCategory[]).map(t => (
             <button key={t} type="button" onClick={() => setTab(t)}
@@ -108,7 +108,9 @@ export default function MyRequestsPage() {
 
         <div style={{ position: 'relative', width: 220, flexShrink: 0 }}>
           <Icon name={ICONS.search} size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-          <input type="text" placeholder="Search by request, service or vessel" value={search} onChange={e => setSearch(e.target.value)}
+          {/* FR 2.2.1 names this field "Search requests". It matches request ID, container,
+              vessel and the selected services, plus container prefix + last 4 digits. */}
+          <input type="text" placeholder="Search requests" title="Search by request ID, container, vessel or service" value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: '100%', height: 38, padding: '0 14px 0 36px', fontSize: 14, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff' }} />
         </div>
 
@@ -158,9 +160,8 @@ export default function MyRequestsPage() {
         )}
       </div>
 
-      {/* List + detail split */}
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {/* Request list — full width now that the detail pane has moved to its own route */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {isLoading ? (
             [0, 1, 2].map(i => <div key={i} style={{ height: 120, borderRadius: 'var(--r-md)', background: '#F3F3F2', animation: 'pulse 1.5s ease-in-out infinite' }} />)
           ) : requests.length === 0 ? (
@@ -190,11 +191,12 @@ export default function MyRequestsPage() {
             </div>
           ) : requests.map(r => {
             const stageIdx = STAGES.indexOf(r.stage)
-            const isSel = selectedId === r.id
             const containerValue = r.containerNumber ? `${r.containerNumber}${r.containerType ? ` - ${r.containerType}` : ''}` : ''
             return (
-              <div key={r.id} onClick={() => setSelectedId(r.id)}
-                style={{ background: isSel ? 'rgba(var(--brand-rgb),0.04)' : '#FFFFFF', border: `1px solid ${isSel ? 'rgba(var(--brand-rgb),0.45)' : 'rgba(0,0,0,0.07)'}`, borderRadius: 'var(--r-md)', padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s ease' }}>
+              <div key={r.id} onClick={() => navigate(`/customer/requests/${r.id}`)}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(var(--brand-rgb),0.45)' }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.07)' }}
+                style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-md)', padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s ease' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
                   <p style={{ fontFamily: 'ui-monospace,monospace', fontSize: 15, fontWeight: 700, color: '#1C1917' }}>#{r.requestId}</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -202,7 +204,7 @@ export default function MyRequestsPage() {
                     <span style={{ fontSize: 12.5, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--r-full)', whiteSpace: 'nowrap', ...STATUS_STYLE[r.status] }}>
                       {STATUS_LABEL[r.status]}
                     </span>
-                    {/* '...' actions menu — placeholder for now, no actions wired up yet */}
+                    {/* '...' actions menu — Edit is offered only while the request is Pending */}
                     <div style={{ position: 'relative' }}>
                       <button type="button" onClick={e => { e.stopPropagation(); setActionsMenuId(v => v === r.id ? null : r.id) }} aria-label="Request actions" aria-haspopup="true" aria-expanded={actionsMenuId === r.id}
                         style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', border: 'none', background: actionsMenuId === r.id ? 'rgba(0,0,0,0.06)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }}>
@@ -212,61 +214,85 @@ export default function MyRequestsPage() {
                         <>
                           <div style={{ position: 'fixed', inset: 0, zIndex: 100 }} onClick={e => { e.stopPropagation(); setActionsMenuId(null) }} />
                           <div onClick={e => e.stopPropagation()}
-                            style={{ position: 'absolute', top: 30, right: 0, zIndex: 101, width: 190, background: '#fff', border: '1px solid rgba(0,0,0,0.09)', borderRadius: 'var(--r-md)', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', padding: '10px 14px' }}>
-                            <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0 }}>No actions available yet</p>
+                            style={{ position: 'absolute', top: 30, right: 0, zIndex: 101, width: 216, background: '#fff', border: '1px solid rgba(0,0,0,0.09)', borderRadius: 'var(--r-md)', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', padding: 6, overflow: 'hidden' }}>
+                            {r.status === 'pending' ? (
+                              <button type="button"
+                                onClick={e => { e.stopPropagation(); setActionsMenuId(null); navigate(`/customer/requests/${r.id}/edit`) }}
+                                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', fontSize: 14, fontWeight: 500, color: '#1C1917', background: 'transparent', border: 'none', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                                <Icon name={ICONS.edit} size={15} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+                                Edit request
+                              </button>
+                            ) : (
+                              <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0, padding: '6px 8px', lineHeight: 1.4 }}>
+                                Can't be edited — this request is already {STATUS_LABEL[r.status].toLowerCase()}.
+                              </p>
+                            )}
                           </div>
                         </>
                       )}
                     </div>
                     {/* '→' navigate to details */}
-                    <button type="button" onClick={e => { e.stopPropagation(); setSelectedId(r.id) }} aria-label="View request details"
+                    <button type="button" onClick={e => { e.stopPropagation(); navigate(`/customer/requests/${r.id}`) }} aria-label="View request details"
                       style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--brand-color)' }}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                     </button>
                   </div>
                 </div>
 
-                {/* Progress stages */}
-                <div style={{ display: 'flex', alignItems: 'center', maxWidth: 320, marginBottom: 12 }}>
-                  {STAGES.map((s, i) => (
-                    <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < STAGES.length - 1 ? 1 : undefined }}>
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: i <= stageIdx ? 'var(--brand-color)' : 'rgba(0,0,0,0.12)', flexShrink: 0 }} />
-                      {i < STAGES.length - 1 && <div style={{ flex: 1, height: 1.5, margin: '0 3px', background: i < stageIdx ? 'var(--brand-color)' : 'rgba(0,0,0,0.10)' }} />}
-                    </div>
-                  ))}
+                {/* Progress stages — same treatment as the request detail page: full width, a
+                    label under every dot, and a ring on the current stage. The separate stage
+                    name is gone, since each dot now names itself. */}
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+                  {STAGES.map((s, i) => {
+                    const done = i <= stageIdx
+                    return (
+                      <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < STAGES.length - 1 ? 1 : undefined }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                          <div style={{
+                            width: 11, height: 11, borderRadius: '50%', flexShrink: 0,
+                            background: done ? 'var(--brand-color)' : '#fff',
+                            border: done ? 'none' : '2px solid rgba(0,0,0,0.16)',
+                            boxShadow: i === stageIdx ? '0 0 0 4px rgba(var(--brand-rgb),0.15)' : 'none',
+                          }} />
+                          <span style={{ fontSize: 11.5, fontWeight: done ? 600 : 500, color: done ? '#1C1917' : 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                            {STAGE_LABEL[s]}
+                          </span>
+                        </div>
+                        {i < STAGES.length - 1 && <div style={{ flex: 1, height: 2, margin: '0 6px 18px', borderRadius: 2, background: i < stageIdx ? 'var(--brand-color)' : 'rgba(0,0,0,0.08)' }} />}
+                      </div>
+                    )
+                  })}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, max-content))', columnGap: 28, rowGap: 8, fontSize: 13.5 }}>
                   <InfoCell label="Container" value={containerValue} />
-                  <InfoCell label="Vessel" value={r.vesselLine ?? ''} />
-                  <InfoCell label="Voyage" value={r.voyageNumber ?? ''} />
-                  <InfoCell label="Collection Date" value={r.collectionDate ?? ''} />
+                  <InfoCell label="Vessel" value={r.vesselLine} />
+                  <InfoCell label="Voyage" value={r.voyageNumber} />
+                  <InfoCell label="Collection Date" value={r.collectionDate} />
+                  <InfoCell label="Est. Cost" value={r.estimatedCost != null ? `$${r.estimatedCost.toFixed(2)}` : null} />
                   <InfoCell label="OOG" value={r.isOOG ? `Yes — ${r.oogLength || '—'} × ${r.oogWidth || '—'} × ${r.oogHeight || '—'} cm` : 'No'} />
+                  <InfoCell label="Submitted" value={relativeDay(r.createdAt)} />
                 </div>
               </div>
             )
           })}
-        </div>
-
-        {selected && isWide && (
-          <div style={{ width: 440, flexShrink: 0, position: 'sticky', top: 0, alignSelf: 'flex-start', height: 'calc(100vh - 140px)' }}>
-            <RequestDetailsPanel requestId={selected.id} docked onClose={() => setSelectedId(null)} />
-          </div>
-        )}
       </div>
 
-      {selected && !isWide && (
-        <RequestDetailsPanel requestId={selected.id} onClose={() => setSelectedId(null)} />
-      )}
     </div>
   )
 }
 
-function InfoCell({ label, value }: { label: string; value: string }) {
+// FR 2.3 — "Where a value is not available against any of the above fields, then the field label
+// must be displayed with the value left blank." The non-breaking space holds the row's height so
+// the grid doesn't jump; swap it for an em dash if a floating label reads as broken.
+function InfoCell({ label, value }: { label: string; value?: string | null }) {
+  const empty = value == null || value === ''
   return (
     <div style={{ minWidth: 110 }}>
       <p style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0 0 2px' }}>{label}</p>
-      <p style={{ color: '#1C1917', margin: 0 }}>{value}</p>
+      <p style={{ color: '#1C1917', margin: 0 }}>{empty ? ' ' : value}</p>
     </div>
   )
 }

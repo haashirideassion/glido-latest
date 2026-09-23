@@ -1,9 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'motion/react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
-import { getTrips, createTrip, setTripStage } from '@/lib/db/trips'
+import { CustomSelect } from '@/components/ui/CustomSelect'
+import { BackButton } from '@/components/ui/BackButton'
+import { InlineEdit, InlineOOG, INLINE_LABEL } from '@/components/ui/InlineEdit'
+import { Rego } from '@/components/ui/Rego'
+import { getTrips, createTrip, setTripStage, updateTrip } from '@/lib/db/trips'
+import type { UpdateTripPayload } from '@/lib/db/trips'
+import type { TripMilestone } from '@/lib/db/trips'
 import { getVessels } from '@/lib/db/vessels'
 import { getPlannerSettings } from '@/lib/db/planner-settings'
 import { usePlannerPermissions } from '@/lib/usePlannerPermissions'
@@ -19,11 +24,27 @@ const STAGE_STYLE: Record<TripStage, { bg: string; color: string }> = {
   completed:   { bg: 'rgba(34,197,94,0.10)',  color: '#16A34A' },
 }
 
-type SecondaryTab = 'all' | TripServiceType
-const SECONDARY_TABS: Array<{ key: SecondaryTab; label: string }> = [
+// FRD 2.4.2.2 gives the secondary tabs two different shapes. Import filters by where the vessel
+// is — slotted / discharged / arriving — because that is what decides when an import trip can be
+// worked. Export keeps the job-type filter: export vessels load, they never discharge.
+type SecondaryTab = 'all' | TripServiceType | TripMilestone
+
+const MILESTONE_TABS: TripMilestone[] = ['slotted', 'discharged', 'arriving']
+const isMilestone = (t: SecondaryTab): t is TripMilestone => (MILESTONE_TABS as string[]).includes(t)
+
+// 'All Requests' sits last on Import, as the FRD lists it, but is still the default selection.
+const IMPORT_SECONDARY_TABS: Array<{ key: SecondaryTab; label: string }> = [
+  { key: 'slotted', label: 'Slotted' }, { key: 'discharged', label: 'Discharged' },
+  { key: 'arriving', label: 'Arriving' }, { key: 'all', label: 'All Requests' },
+]
+const EXPORT_SECONDARY_TABS: Array<{ key: SecondaryTab; label: string }> = [
   { key: 'all', label: 'All Requests' }, { key: 'collection', label: 'Collection' },
   { key: 'delivery', label: 'Delivery' }, { key: 'dehire', label: 'Dehire' },
 ]
+const NEXT_STAGE: Record<TripStage, TripStage | null> = {
+  planned: 'assigned', assigned: 'in_progress', in_progress: 'completed', completed: null,
+}
+
 type SortKey = 'newest' | 'oldest' | 'trip_ref'
 
 export default function TripsPage() {
@@ -36,27 +57,25 @@ export default function TripsPage() {
   const [sort, setSort] = useState<SortKey>('newest')
   const [sortOpen, setSortOpen] = useState(false)
   const [trips, setTrips] = useState<Trip[]>([])
+  const [vessels, setVessels] = useState<Vessel[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [actionsMenuId, setActionsMenuId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null)
   const [stageFilter, setStageFilter] = useState<'all' | TripStage>('all')
   const [filterOpen, setFilterOpen] = useState(false)
   const [settings, setSettings] = useState<PlannerSettings | null>(null)
   const [page, setPage] = useState(1)
-  const [isWide, setIsWide] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true))
-  useEffect(() => {
-    const onResize = () => setIsWide(window.innerWidth >= 1024)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
   useEffect(() => { getPlannerSettings().then(setSettings).catch(() => {}) }, [])
+  // Lifted to the page so the inline Vessel cell on every card can offer the list.
+  useEffect(() => { getVessels().then(setVessels).catch(() => {}) }, [])
 
   const load = () => {
     setIsLoading(true)
     getTrips({
-      category, serviceType: secondary === 'all' ? undefined : secondary, search: search.trim() || undefined, sort,
+      category,
+      // One tab set or the other, never both — Import sends a milestone, Export a service type.
+      serviceType: isMilestone(secondary) || secondary === 'all' ? undefined : secondary,
+      milestone:   isMilestone(secondary) ? secondary : undefined,
+      search: search.trim() || undefined, sort,
       stage: stageFilter === 'all' ? undefined : stageFilter,
       // Planner Settings → "Show completed items by default" — only applies when the user
       // hasn't explicitly filtered to a specific stage (an explicit filter always wins).
@@ -68,6 +87,44 @@ export default function TripsPage() {
 
   useEffect(load, [category, secondary, search, sort, stageFilter, settings]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setPage(1) }, [category, secondary, search, sort, stageFilter])
+  // The two tab sets share no keys beyond 'all', so switching primary tab has to reset the
+  // secondary — otherwise 'Collection' would stay selected on Import, where it does not exist.
+  useEffect(() => { setSecondary('all') }, [category])
+
+  const secondaryTabs = category === 'import' ? IMPORT_SECONDARY_TABS : EXPORT_SECONDARY_TABS
+
+  // FRD 2.4.2.2 — "Action available on card without clicking on more options". Advancing is the
+  // repeated one-click action a planner works through a list with, so it sits on the card face;
+  // the rarer actions stay behind the '...'.
+  const [advancingId, setAdvancingId] = useState<string | null>(null)
+
+  // Cards are edited in place — no menu, no panel. Each cell saves itself and patches the row,
+  // so the list keeps its scroll position, tab and filters instead of refetching.
+  const saveField = async (trip: Trip, patch: UpdateTripPayload): Promise<boolean> => {
+    try {
+      const updated = await updateTrip(trip.id, patch)
+      if (!updated) { toast('Could not save changes', 'error'); return false }
+      setTrips(prev => prev.map(r => (r.id === updated.id ? { ...r, ...updated } : r)))
+      return true
+    } catch (err: any) {
+      toast(err?.message ?? 'Could not save changes', 'error')
+      return false
+    }
+  }
+  const advanceTrip = async (trip: Trip) => {
+    const next = NEXT_STAGE[trip.stage]
+    if (!next) return
+    setAdvancingId(trip.id)
+    try {
+      const result = await setTripStage(trip.id, next)
+      if (result) { toast(`Trip ${trip.tripRef} advanced to ${STAGE_LABEL[next]}`, 'success'); load() }
+      else toast('Could not update trip', 'error')
+    } catch (err: any) {
+      toast(err?.message ?? 'Could not update trip', 'error')
+    } finally {
+      setAdvancingId(null)
+    }
+  }
 
   const itemsPerPage = settings?.itemsPerPage ?? 10
   const pageCount = Math.max(1, Math.ceil(trips.length / itemsPerPage))
@@ -77,40 +134,43 @@ export default function TripsPage() {
     <>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
 
-      <button type="button" onClick={() => navigate('/planner')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 4px', marginBottom: 12, fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2.5L4.5 7l4 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        Back
-      </button>
+      {/* Scope row — Back, then Import/Export (what am I looking at), then service type (which
+          slice of it). Back sits inline rather than on a row of its own: FRD 2.4.2.2 requires the
+          control, not a band of chrome for it. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10, flexWrap: 'wrap' }}>
+        <BackButton to="/planner" />
+        <span style={{ width: 1, height: 24, background: 'rgba(0,0,0,0.08)', flexShrink: 0 }} />
 
-      {/* Primary tabs */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12, background: '#F0F0EF', padding: 4, borderRadius: 'var(--r-full)', width: 'fit-content' }}>
-        {(['import', 'export'] as TripCategory[]).map(t => (
-          <button key={t} type="button" onClick={() => setCategory(t)}
-            style={{ padding: '8px 20px', borderRadius: 'var(--r-full)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', textTransform: 'capitalize', background: category === t ? '#fff' : 'transparent', color: category === t ? '#1C1917' : 'var(--text-secondary)', boxShadow: category === t ? '0 1px 3px rgba(0,0,0,0.10)' : 'none' }}>
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* Secondary tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {SECONDARY_TABS.map(t => {
-          const active = secondary === t.key
-          return (
-            <button key={t.key} type="button" onClick={() => setSecondary(t.key)}
-              style={{ height: 36, padding: '0 14px', fontSize: 13.5, fontWeight: active ? 700 : 500, borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit',
-                background: active ? 'rgba(var(--brand-rgb),0.10)' : '#F7F6F5',
-                border: `1px solid ${active ? 'rgba(var(--brand-rgb),0.28)' : 'rgba(0,0,0,0.08)'}`,
-                color: active ? 'var(--brand-color)' : 'var(--text-secondary)' }}>
-              {t.label}
+        <div style={{ display: 'flex', gap: 6, background: '#F0F0EF', padding: 4, borderRadius: 'var(--r-full)', width: 'fit-content', flexShrink: 0 }}>
+          {(['import', 'export'] as TripCategory[]).map(t => (
+            <button key={t} type="button" onClick={() => setCategory(t)}
+              style={{ padding: '8px 20px', borderRadius: 'var(--r-full)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', textTransform: 'capitalize', background: category === t ? '#fff' : 'transparent', color: category === t ? '#1C1917' : 'var(--text-secondary)', boxShadow: category === t ? '0 1px 3px rgba(0,0,0,0.10)' : 'none' }}>
+              {t}
             </button>
-          )
-        })}
+          ))}
+        </div>
+
+        <span aria-hidden style={{ width: 1, height: 26, background: 'rgba(0,0,0,0.10)', flexShrink: 0 }} />
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {secondaryTabs.map(t => {
+            const active = secondary === t.key
+            return (
+              <button key={t.key} type="button" onClick={() => setSecondary(t.key)}
+                style={{ height: 34, padding: '0 14px', fontSize: 13.5, fontWeight: active ? 700 : 500, borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit',
+                  background: active ? 'rgba(var(--brand-rgb),0.10)' : '#F7F6F5',
+                  border: `1px solid ${active ? 'rgba(var(--brand-rgb),0.28)' : 'rgba(0,0,0,0.08)'}`,
+                  color: active ? 'var(--brand-color)' : 'var(--text-secondary)' }}>
+                {t.label}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
-      {/* Search + sort + create */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* Toolbar — sticks to the top of the scroll area so filters stay reachable down a long list.
+          Background must be opaque (matches PlannerLayout's #f9f9f9) since cards pass behind it. */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, flexWrap: 'wrap', background: '#f9f9f9', paddingTop: 8, paddingBottom: 10 }}>
         <div style={{ position: 'relative', width: 280, flexShrink: 0 }}>
           <Icon name={ICONS.search} size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input type="text" placeholder="Search trips by container number, vessel" value={search} onChange={e => setSearch(e.target.value)}
@@ -169,9 +229,6 @@ export default function TripsPage() {
         )}
       </div>
 
-      {/* Split view: list (left) + docked detail pane (right) on wide screens */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {isLoading ? (
           [0, 1, 2].map(i => <div key={i} style={{ height: 110, borderRadius: 'var(--r-md)', background: '#F3F3F2', animation: 'pulse 1.5s ease-in-out infinite' }} />)
@@ -185,52 +242,97 @@ export default function TripsPage() {
         ) : pagedTrips.map(t => {
           const stageIdx = STAGES.indexOf(t.stage)
           const s = STAGE_STYLE[t.stage]
+          // A completed trip is history the Allocator reports on — the API 409s on edits to it.
+          const locked = t.stage === 'completed'
           return (
-            <div key={t.id} style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-md)', padding: '14px 16px' }}>
+            <div key={t.id} onClick={() => navigate(`/planner/trips/${t.id}`)}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(var(--brand-rgb),0.45)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,0,0,0.07)' }}
+              style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-md)', padding: '14px 16px', cursor: 'pointer', transition: 'border-color 0.15s ease' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
                 <p style={{ fontFamily: 'ui-monospace,monospace', fontSize: 15, fontWeight: 700, color: '#1C1917' }}>#{t.tripRef}</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: 12.5, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--r-full)', background: s.bg, color: s.color, whiteSpace: 'nowrap' }}>
                     {STAGE_LABEL[t.stage]}
                   </span>
-                  <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-                    <button type="button" onClick={() => setActionsMenuId(v => v === t.id ? null : t.id)}
-                      aria-label="Actions" style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', border: 'none', background: actionsMenuId === t.id ? 'rgba(0,0,0,0.06)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                      <svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><circle cx="4" cy="10" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="16" cy="10" r="1.6"/></svg>
+
+                  {NEXT_STAGE[t.stage] && (
+                    <button type="button" disabled={advancingId === t.id}
+                      onClick={e => { e.stopPropagation(); advanceTrip(t) }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 26, padding: '0 11px', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap', color: 'var(--brand-color)', background: 'rgba(var(--brand-rgb),0.08)', border: '1px solid rgba(var(--brand-rgb),0.24)', borderRadius: 'var(--r-full)', cursor: advancingId === t.id ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: advancingId === t.id ? 0.6 : 1 }}>
+                      <Icon name={ICONS.arrowRight} size={12} />
+                      {advancingId === t.id ? 'Updating…' : `Advance to ${STAGE_LABEL[NEXT_STAGE[t.stage]!]}`}
                     </button>
-                    {actionsMenuId === t.id && (
-                      <>
-                        <div style={{ position: 'fixed', inset: 0, zIndex: 100 }} onClick={() => setActionsMenuId(null)} />
-                        <div style={{ position: 'absolute', top: 30, right: 0, zIndex: 101, width: 170, background: '#fff', border: '1px solid rgba(0,0,0,0.09)', borderRadius: 'var(--r-md)', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', overflow: 'hidden' }}>
-                          <ActionsMenuContent trip={t} onDone={() => { setActionsMenuId(null); load() }} />
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <button type="button" onClick={e => { e.stopPropagation(); setSelectedTrip(t) }} aria-label="View trip details"
+                  )}
+
+                  <button type="button" onClick={e => { e.stopPropagation(); navigate(`/planner/trips/${t.id}`) }} aria-label="View trip details"
                     style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--brand-color)' }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                   </button>
                 </div>
               </div>
 
-              {/* Progress stages */}
-              <div style={{ display: 'flex', alignItems: 'center', maxWidth: 360, marginBottom: 12 }}>
-                {STAGES.map((st, i) => (
-                  <div key={st} style={{ display: 'flex', alignItems: 'center', flex: i < STAGES.length - 1 ? 1 : undefined }}>
-                    <div style={{ width: 7, height: 7, borderRadius: '50%', background: i <= stageIdx ? 'var(--brand-color)' : 'rgba(0,0,0,0.12)', flexShrink: 0 }} />
-                    {i < STAGES.length - 1 && <div style={{ flex: 1, height: 1.5, margin: '0 3px', background: i < stageIdx ? 'var(--brand-color)' : 'rgba(0,0,0,0.10)' }} />}
-                  </div>
-                ))}
+              {/* Progress stages — the FRD names all four, so each dot carries its label. Same
+                  treatment as the Customer Portal request cards and the request detail page. */}
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+                {STAGES.map((st, i) => {
+                  const done = i <= stageIdx
+                  return (
+                    <div key={st} style={{ display: 'flex', alignItems: 'center', flex: i < STAGES.length - 1 ? 1 : undefined }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                        <div style={{
+                          width: 11, height: 11, borderRadius: '50%', flexShrink: 0,
+                          background: done ? 'var(--brand-color)' : '#fff',
+                          border: done ? 'none' : '2px solid rgba(0,0,0,0.16)',
+                          boxShadow: i === stageIdx ? '0 0 0 4px rgba(var(--brand-rgb),0.15)' : 'none',
+                        }} />
+                        <span style={{ fontSize: 11.5, fontWeight: done ? 600 : 500, color: done ? '#1C1917' : 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+                          {STAGE_LABEL[st]}
+                        </span>
+                      </div>
+                      {i < STAGES.length - 1 && <div style={{ flex: 1, height: 2, margin: '0 6px 18px', borderRadius: 2, background: i < stageIdx ? 'var(--brand-color)' : 'rgba(0,0,0,0.08)' }} />}
+                    </div>
+                  )
+                })}
               </div>
 
               <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', fontSize: 13.5 }}>
-                <InfoCell label="Container" value={t.containerNumber ?? '—'} />
-                <InfoCell label="Vessel" value={t.vesselName ?? '—'} />
-                <InfoCell label="Date" value={t.tripDate ?? '—'} />
-                <InfoCell label="Vehicle" value={t.vehicle ?? ''} />
-                <InfoCell label="Driver" value={t.driver ?? ''} />
-                <InfoCell label="OOG" value={t.isOOG ? `Yes — ${t.oogLength || '—'} × ${t.oogWidth || '—'} × ${t.oogHeight || '—'} cm` : 'No'} />
+                <Cell label="Container">
+                  <InlineEdit value={t.containerNumber} mono locked={locked}
+                    onSave={v => saveField(t, { container_number: v || null })} />
+                </Cell>
+                <Cell label="Vessel">
+                  <InlineEdit type="select" value={t.vesselId ?? ''} display={t.vesselName} locked={locked}
+                    options={vessels.map(v => ({ value: v.id, label: v.vesselName }))}
+                    onSave={v => saveField(t, { vessel_id: v || null, vessel_name: vessels.find(x => x.id === v)?.vesselName ?? null })} />
+                </Cell>
+                <Cell label="Date">
+                  <InlineEdit type="date" value={t.tripDate} locked={locked}
+                    onSave={v => saveField(t, { trip_date: v || null })} />
+                </Cell>
+                {/* FRD: vehicle and driver stay blank until assigned, not dashed. */}
+                <Cell label="Vehicle">
+                  <InlineEdit value={t.vehicle} placeholder="" locked={locked}
+                    onSave={v => saveField(t, { vehicle: v || null })} />
+                </Cell>
+                <Cell label="Driver" minWidth={170}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+                    <InlineEdit value={t.driver} placeholder="" locked={locked}
+                      onSave={v => saveField(t, { driver: v || null })} />
+                    {/* Rego of the allocated truck — a driver is identified at the gate by the
+                        plate they arrive on, so the two are always shown together. */}
+                    <Rego value={t.vehicleRego} />
+                  </div>
+                </Cell>
+                {/* Hazardous and Weight are written by the Allocator's operational endpoint, not
+                    the one this page calls — read-only here rather than silently unsaveable. */}
+                <InfoCell label="Haz" value={t.isHazardous ? 'Yes' : 'No'} />
+                <InfoCell label="Weight" value={t.weight ?? '—'} />
+                <Cell label="OOG" minWidth={220}>
+                  <InlineOOG locked={locked}
+                    value={{ isOOG: t.isOOG, length: t.oogLength, width: t.oogWidth, height: t.oogHeight }}
+                    onSave={v => saveField(t, { is_oog: v.isOOG, oog_length: v.length, oog_width: v.width, oog_height: v.height })} />
+                </Cell>
               </div>
             </div>
           )
@@ -252,25 +354,36 @@ export default function TripsPage() {
         </div>
       )}
 
-      </div>{/* end list column */}
-
-      {/* Docked detail pane — split view (wide screens) */}
-      {selectedTrip && isWide && (
-        <div style={{ width: 480, flexShrink: 0, position: 'sticky', top: 12, height: 'calc(100vh - var(--dash-header-h) - 24px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <TripDetailSlideOver key={selectedTrip.id} trip={selectedTrip} docked onClose={() => setSelectedTrip(null)} />
-        </div>
-      )}
-      </div>{/* end split row */}
-
       {createOpen && (
-        <CreateTripModal onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); load() }} />
+        <CreateTripModal
+          defaultCategory={category}
+          onClose={() => setCreateOpen(false)}
+          onCreated={trip => {
+            setCreateOpen(false)
+            // FRD 2.4.2.2 — "the newly created trip must be displayed within the trip list".
+            // A new trip is always Planned, so it would be hidden by a milestone tab, a
+            // service-type tab it doesn't match, or a stage filter. Clear those so it is visible.
+            const alreadyVisible = trip.serviceCategory === category && secondary === 'all' && stageFilter === 'all'
+            setCategory(trip.serviceCategory)
+            setSecondary('all')
+            setStageFilter('all')
+            if (alreadyVisible) load()   // no state changed, so the load effect won't fire
+          }}
+        />
       )}
 
-      {/* Detail overlay — narrow screens */}
-      {selectedTrip && !isWide && (
-        <TripDetailSlideOver key={selectedTrip.id} trip={selectedTrip} onClose={() => setSelectedTrip(null)} />
-      )}
+
+
     </>
+  )
+}
+
+function Cell({ label, children, minWidth = 130 }: { label: string; children: React.ReactNode; minWidth?: number }) {
+  return (
+    <div style={{ minWidth }}>
+      <p style={INLINE_LABEL}>{label}</p>
+      {children}
+    </div>
   )
 }
 
@@ -283,106 +396,14 @@ function InfoCell({ label, value }: { label: string; value: string }) {
   )
 }
 
-function TripDetailSlideOver({ trip, onClose, docked = false }: { trip: Trip; onClose: () => void; docked?: boolean }) {
-  const stageIdx = STAGES.indexOf(trip.stage)
-  const s = STAGE_STYLE[trip.stage]
-
-  const panelStyle: React.CSSProperties = docked
-    ? { position: 'relative', height: '100%', width: '100%', background: '#fff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', boxShadow: '0 1px 3px rgba(0,0,0,0.04),0 6px 24px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
-    : { position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 9011, width: 'min(480px, 100vw)', background: '#fff', boxShadow: '-8px 0 40px rgba(0,0,0,0.14)', display: 'flex', flexDirection: 'column', overflowY: 'auto' }
-
-  return (
-    <>
-      {!docked && (
-        <motion.div onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.16 }}
-          style={{ position: 'fixed', inset: 0, zIndex: 9010, background: 'rgba(0,0,0,0.38)', backdropFilter: 'blur(2px)' }} />
-      )}
-      <motion.div style={panelStyle}
-        initial={docked ? { opacity: 0, x: 16 } : { x: '100%' }} animate={docked ? { opacity: 1, x: 0 } : { x: 0 }}
-        transition={docked ? { duration: 0.24, ease: [0.16, 1, 0.3, 1] } : { type: 'spring', stiffness: 400, damping: 40 }}>
-
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid rgba(0,0,0,0.07)', position: 'sticky', top: 0, background: '#fff', zIndex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <p style={{ fontSize: 16, fontWeight: 700, color: '#1C1917' }}>
-              Trip <span style={{ fontFamily: 'ui-monospace,monospace' }}>#{trip.tripRef}</span>
-            </p>
-            <span style={{ fontSize: 12.5, fontWeight: 600, padding: '3px 9px', borderRadius: 'var(--r-full)', background: s.bg, color: s.color, whiteSpace: 'nowrap' }}>
-              {STAGE_LABEL[trip.stage]}
-            </span>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close"
-            style={{ width: 34, height: 34, borderRadius: 'var(--r-full)', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: 'var(--text-secondary)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          </button>
-        </div>
-
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22, flex: 1, overflowY: 'auto', minHeight: 0 }}>
-
-          {/* Progress stages */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            {STAGES.map((st, i) => (
-              <div key={st} style={{ display: 'flex', alignItems: 'center', flex: i < STAGES.length - 1 ? 1 : undefined }}>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: i <= stageIdx ? 'var(--brand-color)' : 'rgba(0,0,0,0.12)' }} />
-                  <span style={{ fontSize: 11, fontWeight: 600, color: i <= stageIdx ? '#1C1917' : 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{STAGE_LABEL[st]}</span>
-                </div>
-                {i < STAGES.length - 1 && <div style={{ flex: 1, height: 2, margin: '0 4px 16px', background: i < stageIdx ? 'var(--brand-color)' : 'rgba(0,0,0,0.08)' }} />}
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <DetailRow label="Service" value={`${trip.serviceCategory} · ${trip.serviceType}`} />
-            <DetailRow label="Container" value={trip.containerNumber ?? '—'} />
-            <DetailRow label="Vessel" value={trip.vesselName ?? '—'} />
-            <DetailRow label="Trip Date" value={trip.tripDate ?? '—'} />
-            <DetailRow label="Vehicle" value={trip.vehicle ?? '—'} />
-            <DetailRow label="Driver" value={trip.driver ?? '—'} />
-            <DetailRow label="OOG" value={trip.isOOG ? `Yes — ${trip.oogLength || '—'} × ${trip.oogWidth || '—'} × ${trip.oogHeight || '—'} cm` : 'No'} />
-            <DetailRow label="Created" value={new Date(trip.createdAt).toLocaleString('en-AU')} />
-            <DetailRow label="Last Updated" value={new Date(trip.updatedAt).toLocaleString('en-AU')} />
-          </div>
-        </div>
-      </motion.div>
-    </>
-  )
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-      <span style={{ fontSize: 13.5, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1917', textAlign: 'right' }}>{value}</span>
-    </div>
-  )
-}
-
-function ActionsMenuContent({ trip, onDone }: { trip: Trip; onDone: () => void }) {
-  const nextStage: Record<TripStage, TripStage | null> = { planned: 'assigned', assigned: 'in_progress', in_progress: 'completed', completed: null }
-  const next = nextStage[trip.stage]
-  const advance = async () => {
-    if (!next) return
-    const result = await setTripStage(trip.id, next)
-    if (result) { toast(`Trip advanced to ${next.replace('_', ' ')}`, 'success'); onDone() }
-    else { toast('Could not update trip', 'error') }
-  }
-  return (
-    <button type="button" onClick={advance} disabled={!next}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '9px 12px', fontSize: 13.5, fontWeight: 500, color: next ? '#374151' : 'var(--text-tertiary)', background: 'none', border: 'none', cursor: next ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}>
-      <Icon name={ICONS.arrowRight} size={13} />{next ? `Advance to ${STAGE_LABEL[next]}` : 'Trip completed'}
-    </button>
-  )
-}
-
-function CreateTripModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [category, setCategory] = useState<TripCategory>('import')
+function CreateTripModal({ defaultCategory, onClose, onCreated }: { defaultCategory: TripCategory; onClose: () => void; onCreated: (trip: Trip) => void }) {
+  // Opens on the tab you were looking at. Defaulting to Import regardless meant creating an
+  // export trip from the Export tab silently produced an import one.
+  const [category, setCategory] = useState<TripCategory>(defaultCategory)
   const [serviceType, setServiceType] = useState<TripServiceType>('collection')
   const [containerNumber, setContainerNumber] = useState('')
   const [vesselId, setVesselId] = useState('')
   const [tripDate, setTripDate] = useState('')
-  const [vehicle, setVehicle] = useState('')
-  const [driver, setDriver] = useState('')
   const [vessels, setVessels] = useState<Vessel[]>([])
   const [submitting, setSubmitting] = useState(false)
 
@@ -399,12 +420,10 @@ function CreateTripModal({ onClose, onCreated }: { onClose: () => void; onCreate
         vessel_id: vesselId || undefined,
         vessel_name: vessel?.vesselName,
         trip_date: tripDate || undefined,
-        vehicle: vehicle.trim() || undefined,
-        driver: driver.trim() || undefined,
       })
       if (!result) { toast('Could not create trip. Please try again.', 'error'); return }
       toast('Trip created', 'success')
-      onCreated()
+      onCreated(result)
     } catch {
       toast('Could not create trip. Please try again.', 'error')
     } finally {
@@ -419,47 +438,58 @@ function CreateTripModal({ onClose, onCreated }: { onClose: () => void; onCreate
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
             <Field label="Category">
-              <select value={category} onChange={e => setCategory(e.target.value as TripCategory)} style={INPUT}>
-                <option value="import">Import</option>
-                <option value="export">Export</option>
-              </select>
+              <CustomSelect
+                neutral
+                value={category}
+                onChange={v => setCategory(v as TripCategory)}
+                options={[
+                  { value: 'import', label: 'Import' },
+                  { value: 'export', label: 'Export' },
+                ]}
+              />
             </Field>
             <Field label="Service Type">
-              <select value={serviceType} onChange={e => setServiceType(e.target.value as TripServiceType)} style={INPUT}>
-                <option value="collection">Collection</option>
-                <option value="delivery">Delivery</option>
-                <option value="dehire">Dehire</option>
-              </select>
+              <CustomSelect
+                neutral
+                value={serviceType}
+                onChange={v => setServiceType(v as TripServiceType)}
+                options={[
+                  { value: 'collection', label: 'Collection' },
+                  { value: 'delivery',   label: 'Delivery' },
+                  { value: 'dehire',     label: 'Dehire' },
+                ]}
+              />
             </Field>
           </div>
           <Field label="Container Number">
             <input value={containerNumber} onChange={e => setContainerNumber(e.target.value)} placeholder="CONT29523" style={INPUT} />
           </Field>
           <Field label="Vessel">
-            <select value={vesselId} onChange={e => setVesselId(e.target.value)} style={INPUT}>
-              <option value="">Select vessel…</option>
-              {vessels.map(v => <option key={v.id} value={v.id}>{v.vesselName}</option>)}
-            </select>
+            <CustomSelect
+              neutral
+              placeholder="Select vessel…"
+              value={vesselId}
+              onChange={setVesselId}
+              options={vessels.map(v => ({ value: v.id, label: v.vesselName }))}
+            />
           </Field>
           <Field label="Trip Date">
             <input type="date" value={tripDate} onChange={e => setTripDate(e.target.value)} style={INPUT} />
           </Field>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <Field label="Vehicle (optional)">
-              <input value={vehicle} onChange={e => setVehicle(e.target.value)} placeholder="ABC-123" style={INPUT} />
-            </Field>
-            <Field label="Driver (optional)">
-              <input value={driver} onChange={e => setDriver(e.target.value)} placeholder="Driver name" style={INPUT} />
-            </Field>
-          </div>
+          {/* Vehicle and Driver are not captured here. They are display mirrors of a real truck
+              and driver, written when the Allocator allocates the trip — typing them as free text
+              produced trips naming people who do not exist in Resource Management. */}
+          <p style={{ fontSize: 12.5, color: 'var(--text-tertiary)', lineHeight: 1.45, margin: 0 }}>
+            Vehicle and driver are assigned in the Allocator module once the trip is planned.
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
           <button type="button" onClick={onClose} disabled={submitting}
-            style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
             Cancel
           </button>
           <button type="button" onClick={submit} disabled={submitting}
-            style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-sm)', cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.6 : 1 }}>
+            style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.6 : 1 }}>
             {submitting ? 'Creating…' : 'Create Trip'}
           </button>
         </div>
@@ -478,3 +508,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   )
 }
+

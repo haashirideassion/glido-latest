@@ -13,10 +13,12 @@ const OPTIONS: Array<{ value: ShipmentMode; label: string; description: string; 
 export function StepModeSelect() {
   const { state, dispatch } = useServiceRequestWizard()
 
+  // Same auto-advance pattern as Service Type — ADVANCE_FROM so a pending timer can't pull the
+  // user forward after they have navigated away.
   const selectMode = (value: ShipmentMode) => {
     dispatch({ type: 'SET', field: 'mode', value })
     setTimeout(() => {
-      dispatch({ type: 'SET', field: 'step', value: 2 })
+      dispatch({ type: 'ADVANCE_FROM', from: 1, to: 2 })
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }, 280)
   }

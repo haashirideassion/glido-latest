@@ -1,37 +1,127 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { getPlannerSettings, updatePlannerSettings } from '@/lib/db/planner-settings'
+import { CustomSelect } from '@/components/ui/CustomSelect'
 import { toast } from '@/lib/toast'
 import type { PlannerSettings } from '@/data/types'
 
-const CARD: React.CSSProperties = { background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.02), 0 4px 20px rgba(0,0,0,0.04)', marginBottom: 16 }
+// ─── Shared settings chrome ───────────────────────────────────────────────────
+// Tokens and primitives copied verbatim from reception/SettingsPage so every Settings surface
+// in the app reads as one system. Worth extracting into a shared module next time either page
+// is touched — CustomerSettingsPage carries the same copy.
+
+const LABEL: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase', marginBottom: 8 }
+const INPUT: React.CSSProperties = { width: '100%', padding: '9px 12px', fontSize: 15, color: '#1C1917', background: '#FFFFFF', border: '1px solid #E2E0DD', borderRadius: 'var(--r-sm)', outline: 'none', transition: 'border-color 0.15s ease, box-shadow 0.15s ease', boxSizing: 'border-box' }
+const CARD: React.CSSProperties  = { background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.02),0 4px 20px rgba(0,0,0,0.04)', marginBottom: 12 }
+const SAVE: React.CSSProperties  = { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '11px 24px', background: 'var(--brand-color)', color: 'var(--brand-text)', border: 'none', borderRadius: 'var(--r-full)', fontSize: 15, fontWeight: 600, cursor: 'pointer', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.22),0 4px 14px rgba(var(--brand-rgb),0.40)', marginTop: 20, transition: 'box-shadow 0.15s ease' }
+
+// FRD 2.4.2.3 names a heading and a line of sub-text for each tab. They sit above the cards so
+// the planner reads what the tab is for before the first control.
+function TabHead({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div style={{ margin: '10px 0 14px' }}>
+      <h2 style={{ fontSize: 19, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.02em', marginBottom: 4 }}>{title}</h2>
+      <p style={{ fontSize: 15, color: 'var(--text-secondary)' }}>{desc}</p>
+    </div>
+  )
+}
+
+function SectionHead({ title, desc }: { title: string; desc?: string }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <h3 style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', letterSpacing: '-0.02em', marginBottom: desc ? 4 : 0 }}>{title}</h3>
+      {desc && <p style={{ fontSize: 15, color: 'var(--text-secondary)' }}>{desc}</p>}
+    </div>
+  )
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={LABEL}>{label}</label>
+      {children}
+      {hint && <p style={{ fontSize: 13, color: 'var(--text-tertiary)', marginTop: 5, lineHeight: 1.4 }}>{hint}</p>}
+    </div>
+  )
+}
+
+function FocusInput({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input {...props} style={{ ...INPUT, ...props.style as React.CSSProperties }}
+      onFocus={e => { e.target.style.borderColor = 'rgba(var(--brand-rgb),0.50)'; e.target.style.boxShadow = '0 0 0 3px rgba(var(--brand-rgb),0.12)' }}
+      onBlur={e  => { e.target.style.borderColor = 'rgba(0,0,0,0.10)'; e.target.style.boxShadow = 'none' }}
+    />
+  )
+}
+
+function SaveBtn({ loading, dirty }: { loading?: boolean; dirty?: boolean }) {
+  const disabled = loading || !dirty
+  return (
+    <button type="submit" disabled={disabled} style={{ ...SAVE, opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
+      {loading ? 'Saving…' : 'Save changes'}
+    </button>
+  )
+}
+
+// Reception's toggle geometry (42×24, #D1D5DB when off) — the planner page previously used a
+// 44×24 switch with a different off-state grey.
+function Switch({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <div onClick={onToggle}
+      style={{ width: 42, height: 24, borderRadius: 'var(--r-full)', background: on ? 'var(--brand-color)' : '#D1D5DB', position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}>
+      <div style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left 0.2s' }} />
+    </div>
+  )
+}
+
+// Reception's PermPanel layout — a label+description table with a switch per row.
+function TogglePanel<K extends string>({ title, desc, items, values, onToggle }: {
+  title: string; desc: string
+  items: Array<{ key: K; label: string; desc: string }>
+  values: Record<K, boolean>
+  onToggle: (key: K) => void
+}) {
+  return (
+    <div style={CARD}>
+      <SectionHead title={title} desc={desc} />
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <tbody>
+          {items.map((item, ii) => (
+            <tr key={item.key} style={{ borderTop: ii === 0 ? '1px solid rgba(0,0,0,0.06)' : 'none' }}>
+              <td style={{ padding: '14px 0', paddingRight: 24, verticalAlign: 'middle' }}>
+                <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', margin: 0 }}>{item.label}</p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0', lineHeight: 1.4 }}>{item.desc}</p>
+              </td>
+              <td style={{ padding: '14px 0', verticalAlign: 'middle', width: 1, paddingLeft: 24 }}>
+                <Switch on={values[item.key]} onToggle={() => onToggle(item.key)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── Page data ────────────────────────────────────────────────────────────────
 
 type Tab = 'general' | 'notifications' | 'integrations'
 const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'general', label: 'General' }, { key: 'notifications', label: 'Notifications' }, { key: 'integrations', label: 'Integrations' },
 ]
 
-const NOTIF_EVENTS: Array<{ key: 'vessel_arrival' | 'trip_scheduled' | 'trip_completed'; label: string }> = [
-  { key: 'vessel_arrival',  label: 'Vessel arrival' },
-  { key: 'trip_scheduled',  label: 'Trip scheduled' },
-  { key: 'trip_completed',  label: 'Trip completed' },
+type NotifKey = 'vessel_arrival' | 'trip_scheduled' | 'trip_completed'
+const NOTIF_EVENTS: Array<{ key: NotifKey; label: string; desc: string }> = [
+  { key: 'vessel_arrival',  label: 'Vessel arrival',  desc: 'When a vessel you are tracking berths at the terminal.' },
+  { key: 'trip_scheduled',  label: 'Trip scheduled',  desc: 'When a new trip is created against one of your vessels.' },
+  { key: 'trip_completed',  label: 'Trip completed',  desc: 'When a trip reaches its final stage.' },
 ]
 
 const INTEGRATIONS = [
-  { name: 'Vessel Tracking API', description: 'Connect to real-time vessel tracking services' },
+  { name: 'Vessel Tracking API',   description: 'Connect to real-time vessel tracking services' },
   { name: 'Port Authority System', description: 'Sync with port management systems' },
-  { name: 'Weather API', description: 'Get weather forecasts for trip planning' },
+  { name: 'Weather API',           description: 'Get weather forecasts for trip planning' },
 ]
-
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button type="button" onClick={onToggle}
-      style={{ width: 44, height: 24, borderRadius: 'var(--r-full)', flexShrink: 0, border: 'none', cursor: 'pointer',
-        background: on ? 'var(--brand-color)' : 'rgba(0,0,0,0.15)', position: 'relative', transition: 'background 0.2s ease' }}>
-      <span style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 18, height: 18, borderRadius: 'var(--r-full)', background: '#fff', transition: 'left 0.2s ease', boxShadow: '0 1px 3px rgba(0,0,0,0.20)' }} />
-    </button>
-  )
-}
 
 export default function PlannerSettingsPage() {
   usePageTitle('Glido | Planner Settings')
@@ -79,7 +169,8 @@ export default function PlannerSettingsPage() {
     if (pendingTab) { setTab(pendingTab); setPendingTab(null) }
   }
 
-  const saveGeneral = async () => {
+  const saveGeneral = async (e: React.FormEvent) => {
+    e.preventDefault()
     const n = Number(itemsPerPage)
     if (!Number.isInteger(n) || n < 5 || n > 100) { toast('Items per page must be between 5 and 100', 'error'); return }
     setSaving(true)
@@ -93,7 +184,8 @@ export default function PlannerSettingsPage() {
     } finally { setSaving(false) }
   }
 
-  const saveNotifications = async () => {
+  const saveNotifications = async (e: React.FormEvent) => {
+    e.preventDefault()
     setSaving(true)
     try {
       const result = await updatePlannerSettings({ email_notifications: emailNotif, system_notifications: systemNotif })
@@ -104,14 +196,18 @@ export default function PlannerSettingsPage() {
   }
 
   if (isLoading) {
-    return <div style={{ height: 200, borderRadius: 'var(--r-lg)', background: '#F3F3F2', animation: 'pulse 1.5s ease-in-out infinite' }} />
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {[0, 1].map(i => <div key={i} style={{ height: 160, borderRadius: 'var(--r-lg)', background: '#F3F3F2', animation: 'pulse 1.5s ease-in-out infinite' }} />)}
+      </div>
+    )
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: 84 }}>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20, background: '#F0F0EF', padding: 4, borderRadius: 'var(--r-full)', width: 'fit-content' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6, background: '#F0F0EF', padding: 4, borderRadius: 'var(--r-full)', width: 'fit-content' }}>
         {TABS.map(t => (
           <button key={t.key} type="button" onClick={() => requestTabChange(t.key)}
             style={{ padding: '8px 20px', borderRadius: 'var(--r-full)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, fontFamily: 'inherit', background: tab === t.key ? '#fff' : 'transparent', color: tab === t.key ? '#1C1917' : 'var(--text-secondary)', boxShadow: tab === t.key ? '0 1px 3px rgba(0,0,0,0.10)' : 'none' }}>
@@ -121,114 +217,112 @@ export default function PlannerSettingsPage() {
       </div>
 
       {tab === 'general' && (
-        <>
-          <p style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', marginBottom: 2 }}>General Settings</p>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 18 }}>Manage your planner general preferences</p>
+        <form onSubmit={saveGeneral}>
+          <TabHead title="General Settings" desc="Manage your planner general preferences" />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 16 }}>
-            <div style={{ ...CARD, marginBottom: 0 }}>
-              <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 12 }}>Default View</p>
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Default Landing Page</p>
-              <select value={defaultLandingPage} onChange={e => { setDefaultLandingPage(e.target.value); setDirty(true) }}
-                style={{ width: '100%', height: 38, padding: '0 12px', fontSize: 14, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', outline: 'none', fontFamily: 'inherit', background: '#fff' }}>
-                <option value="vessels">Vessels</option>
-                <option value="trips">Trips</option>
-                <option value="reports">Reports</option>
-              </select>
-            </div>
-
-            <div style={{ ...CARD, marginBottom: 0 }}>
-              <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 14 }}>Display Settings</p>
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Items per page</p>
-                <input type="number" min={5} max={100} value={itemsPerPage} onChange={e => { setItemsPerPage(e.target.value); setDirty(true) }}
-                  style={{ width: 120, height: 38, padding: '0 12px', fontSize: 14, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', outline: 'none', fontFamily: 'inherit' }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <p style={{ fontSize: 14.5, color: '#1C1917' }}>Show completed items by default</p>
-                <Toggle on={showCompletedDefault} onToggle={() => { setShowCompletedDefault(v => !v); setDirty(true) }} />
-              </div>
+          <div style={CARD}>
+            <SectionHead title="Default View" desc="Where the Planner module opens when you sign in." />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
+              <Field label="Default Landing Page" hint="Where /planner takes you after you sign in.">
+                <CustomSelect
+                  neutral
+                  value={defaultLandingPage}
+                  onChange={v => { setDefaultLandingPage(v); setDirty(true) }}
+                  options={[
+                    { value: 'dashboard', label: 'Dashboard' },
+                    { value: 'vessels',   label: 'Vessels' },
+                    { value: 'trips',     label: 'Trips' },
+                    { value: 'reports',   label: 'Reports' },
+                  ]}
+                />
+              </Field>
             </div>
           </div>
 
-          <button type="button" onClick={saveGeneral} disabled={saving}
-            style={{ padding: '10px 22px', fontSize: 14.5, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
-        </>
+          <div style={CARD}>
+            <SectionHead title="Display Settings" desc="How lists are paginated and filtered by default." />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
+              <Field label="Items Per Page" hint="Between 5 and 100.">
+                <FocusInput type="number" min={5} max={100} value={itemsPerPage}
+                  onChange={e => { setItemsPerPage(e.target.value); setDirty(true) }} />
+              </Field>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6 }}>
+              <tbody>
+                <tr style={{ borderTop: '1px solid rgba(0,0,0,0.06)' }}>
+                  <td style={{ padding: '14px 0', paddingRight: 24, verticalAlign: 'middle' }}>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', margin: 0 }}>Show completed items by default</p>
+                    <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0', lineHeight: 1.4 }}>
+                      When off, completed trips are hidden until you filter for them.
+                    </p>
+                  </td>
+                  <td style={{ padding: '14px 0', verticalAlign: 'middle', width: 1, paddingLeft: 24 }}>
+                    <Switch on={showCompletedDefault} onToggle={() => { setShowCompletedDefault(v => !v); setDirty(true) }} />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <SaveBtn loading={saving} dirty={dirty} />
+        </form>
       )}
 
       {tab === 'notifications' && (
-        <>
-          <p style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', marginBottom: 2 }}>Notification Settings</p>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 18 }}>Customize when and how you receive notifications</p>
+        <form onSubmit={saveNotifications}>
+          <TabHead title="Notification Settings" desc="Customize when and how you receive notifications" />
 
-          <div style={CARD}>
-            <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 14 }}>Email Notifications</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {NOTIF_EVENTS.map(ev => (
-                <div key={ev.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <p style={{ fontSize: 14.5, color: '#1C1917' }}>{ev.label}</p>
-                  <Toggle on={emailNotif[ev.key]} onToggle={() => { setEmailNotif(prev => ({ ...prev, [ev.key]: !prev[ev.key] })); setDirty(true) }} />
-                </div>
-              ))}
-            </div>
-          </div>
+          <TogglePanel
+            title="Email Notifications"
+            desc="Sent to the address on your account."
+            items={NOTIF_EVENTS}
+            values={emailNotif}
+            onToggle={key => { setEmailNotif(prev => ({ ...prev, [key]: !prev[key] })); setDirty(true) }}
+          />
 
-          <div style={CARD}>
-            <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 14 }}>System Notifications</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {NOTIF_EVENTS.map(ev => (
-                <div key={ev.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <p style={{ fontSize: 14.5, color: '#1C1917' }}>{ev.label}</p>
-                  <Toggle on={systemNotif[ev.key]} onToggle={() => { setSystemNotif(prev => ({ ...prev, [ev.key]: !prev[ev.key] })); setDirty(true) }} />
-                </div>
-              ))}
-            </div>
-          </div>
+          <TogglePanel
+            title="System Notifications"
+            desc="Shown in the notification bell inside Glido."
+            items={NOTIF_EVENTS}
+            values={systemNotif}
+            onToggle={key => { setSystemNotif(prev => ({ ...prev, [key]: !prev[key] })); setDirty(true) }}
+          />
 
-          <button type="button" onClick={saveNotifications} disabled={saving}
-            style={{ padding: '10px 22px', fontSize: 14.5, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
-        </>
+          <SaveBtn loading={saving} dirty={dirty} />
+        </form>
       )}
 
       {tab === 'integrations' && (
-        <>
-          <p style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', marginBottom: 2 }}>Integrations</p>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 18 }}>Connect with external systems and APIs</p>
+        <div>
+          <TabHead title="Integrations" desc="Connect with external systems and APIs" />
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {INTEGRATIONS.map(intg => (
-              <div key={intg.name} style={{ ...CARD, margin: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
-                <div>
-                  <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 3 }}>{intg.name}</p>
-                  <p style={{ fontSize: 13.5, color: 'var(--text-secondary)' }}>{intg.description}</p>
-                </div>
-                <button type="button" onClick={() => setConfigureIntegration(intg.name)}
-                  style={{ height: 36, padding: '0 16px', fontSize: 13.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
-                  Configure
-                </button>
+          {INTEGRATIONS.map(intg => (
+            <div key={intg.name} style={{ ...CARD, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14 }}>
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', margin: 0 }}>{intg.name}</p>
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0', lineHeight: 1.4 }}>{intg.description}</p>
               </div>
-            ))}
-          </div>
-        </>
+              <button type="button" onClick={() => setConfigureIntegration(intg.name)}
+                style={{ padding: '9px 18px', fontSize: 14, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+                Configure
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Unsaved-changes confirm */}
       {pendingTab && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(0,0,0,0.45)' }}>
           <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', padding: 24, maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.20)' }}>
-            <p style={{ fontSize: 17, fontWeight: 700, color: '#1C1917', marginBottom: 8 }}>Discard unsaved changes?</p>
-            <p style={{ fontSize: 14.5, color: 'var(--text-secondary)', marginBottom: 20 }}>You have unsaved changes on this tab. Switching tabs will discard them.</p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <SectionHead title="Discard unsaved changes?" desc="You have unsaved changes on this tab. Switching tabs will discard them." />
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 6 }}>
               <button type="button" onClick={() => setPendingTab(null)}
-                style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ padding: '9px 18px', fontSize: 14, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
                 Stay
               </button>
               <button type="button" onClick={discardAndSwitch}
-                style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: '#fff', background: '#DC2626', border: 'none', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                style={{ padding: '9px 18px', fontSize: 14, fontWeight: 600, color: '#fff', background: '#DC2626', border: 'none', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
                 Discard
               </button>
             </div>
@@ -240,12 +334,10 @@ export default function PlannerSettingsPage() {
       {configureIntegration && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(0,0,0,0.45)' }} onClick={() => setConfigureIntegration(null)}>
           <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', padding: 24, maxWidth: 400, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.20)' }} onClick={e => e.stopPropagation()}>
-            <p style={{ fontSize: 17, fontWeight: 700, color: '#1C1917', marginBottom: 8 }}>{configureIntegration}</p>
-            <p style={{ fontSize: 14.5, color: 'var(--text-secondary)', marginBottom: 20 }}>
-              This integration is not yet connected. Contact your system administrator to set up API credentials for {configureIntegration}.
-            </p>
+            <SectionHead title={configureIntegration}
+              desc={`This integration is not yet connected. Contact your system administrator to set up API credentials for ${configureIntegration}.`} />
             <button type="button" onClick={() => setConfigureIntegration(null)}
-              style={{ width: '100%', height: 38, fontSize: 14, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+              style={{ width: '100%', padding: '10px 18px', marginTop: 6, fontSize: 14, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
               Close
             </button>
           </div>

@@ -6,11 +6,30 @@ import { logPlannerActivity } from '../lib/plannerActivity'
 const router = Router()
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 
+/**
+ * FRD 2.4.2.4: "The user must be displayed only with the report data pertaining to the vessels
+ * and trips falling within the access rights assigned to the logged-in user."
+ *
+ * Every endpoint in this file was previously requireAuth only, so any authenticated account —
+ * a customer, a compliance officer — could read the CFS's vessel counts, trip counts and
+ * on-time figures by calling the API directly. Mirrors PlannerGuard on the frontend.
+ */
+const PLANNER_READ_ROLES = ['planner', 'super_admin']
+
+function denyUnlessPlanner(req: Request, res: Response): boolean {
+  if (!req.user || !PLANNER_READ_ROLES.includes(req.user.role)) {
+    res.status(403).json({ success: false, error: { message: 'Forbidden' } })
+    return true
+  }
+  return false
+}
+
 // GET /api/planner/reports — Performance tab metrics (FRD 2.4.2.4)
 // Query params: from, to (YYYY-MM-DD), category (import|export — the FRD's "Filter" control).
 // category only affects trip-derived metrics — vessels aren't categorized import/export, so
 // Total Vessels is intentionally unaffected by it.
 router.get('/reports', requireAuth, async (req: Request, res: Response) => {
+  if (denyUnlessPlanner(req, res)) return
   try {
     const { from, to, category } = req.query as { from?: string; to?: string; category?: string }
     const dateFrom = from || null
@@ -44,14 +63,35 @@ router.get('/reports', requireAuth, async (req: Request, res: Response) => {
     const onTimeDeliveryPct = onTimeTotal > 0 ? (onTime.rows[0].on_time / onTimeTotal) * 100 : null
 
     // Monthly Container Activity — one trip == one container (no per-trip container quantity field).
+    // FRD: "The months displayed on the chart must be as per the period selected in the Date
+    // Range option." Grouping the trips alone drops any month with no trips, so a six-month
+    // range with activity in two months drew two bars. The series is generated from the period
+    // and the trips are LEFT JOINed onto it, so quiet months render as a zero-height gap.
+    // With no range given the period spans the data itself, capped at the most recent 24 months
+    // so an old dataset can't produce a chart with hundreds of bars.
     const monthly = await pool.query(
-      `SELECT to_char(date_trunc('month', trip_date), 'YYYY-MM') AS month,
-              COUNT(*) FILTER (WHERE service_category = 'import')::int AS imports,
-              COUNT(*) FILTER (WHERE service_category = 'export')::int AS exports
-       FROM trips
-       WHERE tenant_id = $1 AND trip_date IS NOT NULL AND ($4::text IS NULL OR service_category = $4)
-         AND ($2::date IS NULL OR trip_date >= $2::date) AND ($3::date IS NULL OR trip_date < ($3::date + INTERVAL '1 day'))
-       GROUP BY 1 ORDER BY 1`,
+      `WITH bounds AS (
+         SELECT COALESCE($2::date, (SELECT MIN(trip_date) FROM trips WHERE tenant_id = $1 AND trip_date IS NOT NULL), CURRENT_DATE) AS lo,
+                COALESCE($3::date, (SELECT MAX(trip_date) FROM trips WHERE tenant_id = $1 AND trip_date IS NOT NULL), CURRENT_DATE) AS hi
+       ),
+       months AS (
+         SELECT generate_series(
+                  GREATEST(date_trunc('month', lo), date_trunc('month', hi) - INTERVAL '23 months'),
+                  date_trunc('month', hi),
+                  INTERVAL '1 month'
+                ) AS m
+         FROM bounds WHERE lo <= hi
+       )
+       SELECT to_char(months.m, 'YYYY-MM') AS month,
+              COUNT(*) FILTER (WHERE t.service_category = 'import')::int AS imports,
+              COUNT(*) FILTER (WHERE t.service_category = 'export')::int AS exports
+       FROM months
+       LEFT JOIN trips t
+         ON t.tenant_id = $1
+        AND t.trip_date IS NOT NULL
+        AND date_trunc('month', t.trip_date) = months.m
+        AND ($4::text IS NULL OR t.service_category = $4)
+       GROUP BY months.m ORDER BY months.m`,
       [DEFAULT_TENANT_ID, dateFrom, dateTo, categoryFilter]
     )
 
@@ -66,7 +106,9 @@ router.get('/reports', requireAuth, async (req: Request, res: Response) => {
     const utilization = await pool.query(
       `SELECT
          COUNT(*)::int AS total,
-         COUNT(*) FILTER (WHERE vehicle IS NOT NULL AND driver IS NOT NULL)::int AS assigned
+         -- truck_id/driver_id, not the free-text vehicle/driver mirrors: a trip carrying a
+         -- typed-in driver name with no allocated resource is NOT a utilised resource.
+         COUNT(*) FILTER (WHERE truck_id IS NOT NULL AND driver_id IS NOT NULL)::int AS assigned
        FROM trips
        WHERE tenant_id = $1 AND ($4::text IS NULL OR service_category = $4)
          AND ($2::date IS NULL OR trip_date >= $2::date) AND ($3::date IS NULL OR trip_date < ($3::date + INTERVAL '1 day'))`,
@@ -100,6 +142,7 @@ router.get('/reports', requireAuth, async (req: Request, res: Response) => {
 
 // GET /api/planner/activity — Recent Activity feed for the Planner Dashboard (FRD 2.4.2)
 router.get('/activity', requireAuth, async (req: Request, res: Response) => {
+  if (denyUnlessPlanner(req, res)) return
   try {
     const result = await pool.query(
       `SELECT * FROM planner_activity WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 10`,
@@ -115,6 +158,7 @@ router.get('/activity', requireAuth, async (req: Request, res: Response) => {
 // POST /api/planner/reports/export-log — records a "report generated" activity entry.
 // Fired by the frontend when the Export button on Reports is clicked.
 router.post('/reports/export-log', requireAuth, async (req: Request, res: Response) => {
+  if (denyUnlessPlanner(req, res)) return
   logPlannerActivity('report', 'Report exported', DEFAULT_TENANT_ID, req.user!.id)
   return res.json({ success: true })
 })

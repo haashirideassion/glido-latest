@@ -154,7 +154,9 @@ export function Step3DocumentUpload() {
           <Icon name={ICONS.upload} size={22} style={{ color: 'var(--text-secondary)' }} />
         </div>
         <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 3 }}>Drop your document here</p>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 14 }}>Upload HTML, HTM, word, png, jpeg or PDF files for document processing</p>
+        {/* FR 1.1.3.2 verbatim. The FRD's own wording names more formats than its next line — and
+            than the validator — allows; kept as specified rather than silently corrected. */}
+        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 14 }}>Upload HTML, HTM, word, png, jpeg or PDF files for inspection document processing</p>
         <p style={{ fontSize: 13, color: 'var(--text-tertiary)', marginBottom: 14 }}>Supported formats: HTML, HTM, PDF</p>
         <label className="btn-ghost" onClick={e => e.stopPropagation()}>
           <Icon name={ICONS.upload} size={13} />Select Document

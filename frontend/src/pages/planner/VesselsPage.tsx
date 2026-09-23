@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'motion/react'
-import { useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
 import { getVessels, createVessel, setVesselStatus } from '@/lib/db/vessels'
 import { getTrips } from '@/lib/db/trips'
 import { CustomSelect } from '@/components/ui/CustomSelect'
+import { BackButton } from '@/components/ui/BackButton'
 import { getPlannerSettings } from '@/lib/db/planner-settings'
 import { usePlannerPermissions } from '@/lib/usePlannerPermissions'
 import { toast } from '@/lib/toast'
@@ -24,6 +24,7 @@ const STATUS_STYLE: Record<VesselStatus, { bg: string; color: string; label: str
   arrived:    { bg: 'rgba(34,197,94,0.10)',  color: '#16A34A', label: 'Arrived'    },
 }
 
+// FRD 2.4.2.1 pins the timestamp format to YYYY-MM-DD HH:MM.
 function fmtEta(iso?: string): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -31,9 +32,10 @@ function fmtEta(iso?: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+const fmtCapacity = (n?: number) => (n == null ? '—' : n.toLocaleString())
+
 export default function VesselsPage() {
   usePageTitle('Glido | Vessels')
-  const navigate = useNavigate()
   const perms = usePlannerPermissions()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<VesselStatus | ''>('')
@@ -72,16 +74,16 @@ export default function VesselsPage() {
     <>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
 
-      <button type="button" onClick={() => navigate('/planner')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 4px', marginBottom: 12, fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2.5L4.5 7l4 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        Back
-      </button>
-
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {/* FRD 2.4.2.1: Back returns to the Planner Dashboard. Inline in the toolbar rather than
+            on a row of its own, so it costs no vertical space. */}
+        <BackButton to="/planner" />
+        <span style={{ width: 1, height: 24, background: 'rgba(0,0,0,0.08)', flexShrink: 0 }} />
+
         <div style={{ position: 'relative', width: 260, flexShrink: 0 }}>
           <Icon name={ICONS.search} size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-          <input type="text" placeholder="Search vessel" value={search} onChange={e => setSearch(e.target.value)}
+          {/* Matches name, ID, voyage and Lloyd number server-side (FRD 2.4.2.1). */}
+          <input type="text" placeholder="Search vessel" title="Search by vessel name, ID, voyage or Lloyd number" value={search} onChange={e => setSearch(e.target.value)}
             style={{ width: '100%', height: 38, padding: '0 14px 0 36px', fontSize: 14, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff' }} />
         </div>
 
@@ -132,7 +134,17 @@ export default function VesselsPage() {
                 <div style={{ width: 48, height: 48, borderRadius: 'var(--r-sm)', background: '#EBEBEA', border: '1px solid rgba(0,0,0,0.09)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
                   <Icon name={ICONS.ship} size={22} style={{ color: 'var(--text-tertiary)' }} />
                 </div>
-                <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917' }}>{search ? 'No results found' : 'No vessels found'}</p>
+                {/* The FRD separates the two cases: a search or filter that matched nothing is
+                    'no results found'; an empty list with nothing applied is 'no vessels found'.
+                    Keying off hasFilters rather than search alone matters — a status filter that
+                    excludes everything used to claim there were no vessels at all. */}
+                <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917' }}>{hasFilters ? 'No results found' : 'No vessels found'}</p>
+                {hasFilters && (
+                  <button type="button" onClick={() => { setSearch(''); setStatusFilter('') }}
+                    style={{ marginTop: 8, fontSize: 14, fontWeight: 600, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
+                    Clear filters
+                  </button>
+                )}
               </div>
             ) : pagedVessels.map(v => {
               const s = STATUS_STYLE[v.status]
@@ -151,9 +163,10 @@ export default function VesselsPage() {
                     <InfoCell label="ETA" value={fmtEta(v.eta)} />
                     <InfoCell label="Port" value={v.port ?? '—'} />
                     <InfoCell label="Containers" value={String(v.containerCount)} />
+                    <InfoCell label="Capacity" value={fmtCapacity(v.capacity)} />
                   </div>
                   <button type="button" onClick={e => { e.stopPropagation(); setSelectedVessel(v) }}
-                    style={{ width: '100%', height: 34, fontSize: 13.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    style={{ width: '100%', height: 34, fontSize: 13.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
                     View Details
                   </button>
                 </div>
@@ -265,13 +278,20 @@ function VesselDetailPanel({ vessel, onClose, onUpdated, docked = false }: { ves
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <DetailRow label="ETA" value={fmtEta(vessel.eta)} />
+            <DetailRow label="ETD" value={fmtEta(vessel.etd)} />
             <DetailRow label="Port" value={vessel.port ?? '—'} />
+            <DetailRow label="Voyage" value={vessel.voyageNumber ?? '—'} mono />
+            <DetailRow label="Lloyd No." value={vessel.lloydNumber ?? '—'} mono />
+            <DetailRow label="Capacity" value={fmtCapacity(vessel.capacity)} />
             <DetailRow label="Containers" value={String(vessel.containerCount)} />
+            {/* Milestones drive the list sort order; shown only once they have been recorded. */}
+            {vessel.slottedAt    && <DetailRow label="Slotted"    value={fmtEta(vessel.slottedAt)} />}
+            {vessel.dischargedAt && <DetailRow label="Discharged" value={fmtEta(vessel.dischargedAt)} />}
           </div>
 
           {next && (
             <button type="button" onClick={advance} disabled={advancing}
-              style={{ height: 38, fontSize: 14, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-sm)', cursor: advancing ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: advancing ? 0.6 : 1 }}>
+              style={{ height: 38, fontSize: 14, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: advancing ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: advancing ? 0.6 : 1 }}>
               {advancing ? 'Updating…' : `Mark ${STATUS_STYLE[next].label}`}
             </button>
           )}
@@ -311,37 +331,53 @@ function VesselDetailPanel({ vessel, onClose, onUpdated, docked = false }: { ves
   )
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
+function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const empty = value === '—'
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
-      <span style={{ fontSize: 13.5, color: 'var(--text-secondary)' }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1917' }}>{value}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, padding: '4px 0', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+      <span style={{ fontSize: 13.5, color: 'var(--text-secondary)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: empty ? 'var(--text-tertiary)' : '#1C1917', fontFamily: mono && !empty ? 'ui-monospace,monospace' : 'inherit', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{value}</span>
     </div>
   )
 }
 
 function AddVesselModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [vesselName, setVesselName] = useState('')
+  const [vesselCode, setVesselCode] = useState('')
+  const [voyage, setVoyage] = useState('')
+  const [lloyd, setLloyd] = useState('')
   const [port, setPort] = useState('')
   const [eta, setEta] = useState('')
+  const [etd, setEtd] = useState('')
+  const [capacity, setCapacity] = useState('')
   const [status, setStatus] = useState<VesselStatus>('scheduled')
   const [submitting, setSubmitting] = useState(false)
 
   const submit = async () => {
     if (!vesselName.trim()) { toast('Vessel name is required', 'error'); return }
+    // Capacity is optional, but if it's filled in it has to be a whole number of containers —
+    // catching it here avoids a round trip to the same check on the server.
+    if (capacity.trim() && !/^\d+$/.test(capacity.trim())) {
+      toast('Capacity must be a whole number of containers', 'error'); return
+    }
     setSubmitting(true)
     try {
       const result = await createVessel({
-        vessel_name: vesselName.trim(),
-        port: port.trim() || undefined,
-        eta: eta || undefined,
+        vessel_name:   vesselName.trim(),
+        vessel_code:   vesselCode.trim() || undefined,   // server allocates one when blank
+        voyage_number: voyage.trim() || undefined,
+        lloyd_number:  lloyd.trim() || undefined,
+        port:          port.trim() || undefined,
+        eta:           eta || undefined,
+        etd:           etd || undefined,
+        capacity:      capacity.trim() ? Number(capacity.trim()) : undefined,
         status,
       })
       if (!result) { toast('Could not create vessel. Please try again.', 'error'); return }
       toast('Vessel added', 'success')
       onCreated()
-    } catch {
-      toast('Could not create vessel. Please try again.', 'error')
+    } catch (err: any) {
+      toast(err?.message ?? 'Could not create vessel. Please try again.', 'error')
     } finally {
       setSubmitting(false)
     }
@@ -349,17 +385,34 @@ function AddVesselModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'rgba(0,0,0,0.45)' }} onClick={onClose}>
-      <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', padding: 24, maxWidth: 420, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.20)' }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', padding: 24, maxWidth: 560, width: '100%', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.20)' }} onClick={e => e.stopPropagation()}>
         <p style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', marginBottom: 16 }}>Add Vessel</p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <Field label="Vessel Name">
+
+        {/* Two columns — nine fields in a single stack made the modal taller than the viewport. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+          <Field label="Vessel Name" full>
             <input value={vesselName} onChange={e => setVesselName(e.target.value)} placeholder="MSC Anna" style={INPUT} />
+          </Field>
+          <Field label="Vessel ID">
+            <input value={vesselCode} onChange={e => setVesselCode(e.target.value)} placeholder="Auto-generated if blank" style={INPUT} />
+          </Field>
+          <Field label="Voyage">
+            <input value={voyage} onChange={e => setVoyage(e.target.value)} placeholder="044W" style={INPUT} />
+          </Field>
+          <Field label="Lloyd No.">
+            <input value={lloyd} onChange={e => setLloyd(e.target.value)} placeholder="9876543" style={INPUT} />
           </Field>
           <Field label="Port">
             <input value={port} onChange={e => setPort(e.target.value)} placeholder="Sydney" style={INPUT} />
           </Field>
           <Field label="ETA">
             <input type="datetime-local" value={eta} onChange={e => setEta(e.target.value)} style={INPUT} />
+          </Field>
+          <Field label="ETD">
+            <input type="datetime-local" value={etd} onChange={e => setEtd(e.target.value)} style={INPUT} />
+          </Field>
+          <Field label="Capacity (containers)">
+            <input type="number" min={0} step={1} inputMode="numeric" value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="2400" style={INPUT} />
           </Field>
           <Field label="Status">
             <CustomSelect
@@ -373,13 +426,14 @@ function AddVesselModal({ onClose, onCreated }: { onClose: () => void; onCreated
             />
           </Field>
         </div>
+
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 20 }}>
           <button type="button" onClick={onClose} disabled={submitting}
-            style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+            style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-full)', cursor: 'pointer', fontFamily: 'inherit' }}>
             Cancel
           </button>
           <button type="button" onClick={submit} disabled={submitting}
-            style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-sm)', cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.6 : 1 }}>
+            style={{ padding: '9px 18px', fontSize: 14.5, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: submitting ? 0.6 : 1 }}>
             {submitting ? 'Adding…' : 'Add Vessel'}
           </button>
         </div>
@@ -390,9 +444,9 @@ function AddVesselModal({ onClose, onCreated }: { onClose: () => void; onCreated
 
 const INPUT: React.CSSProperties = { width: '100%', height: 38, padding: '0 12px', fontSize: 14, border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box', background: '#fff' }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
   return (
-    <div>
+    <div style={full ? { gridColumn: '1 / -1' } : undefined}>
       <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>{label}</p>
       {children}
     </div>

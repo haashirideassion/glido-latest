@@ -85,9 +85,9 @@ router.post('/trucks', requireAuth, async (req: Request, res: Response) => {
   const b = req.body
   try {
     const result = await pool.query(
-      `INSERT INTO trucks (resource_code, truck_type, capacity, location, status, last_service_date, custom_field_value, tenant_id, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [b.resource_code?.trim() || generateResourceCode('TRK'), b.truck_type ?? null, b.capacity ?? null, b.location ?? null, b.status ?? 'available', b.last_service_date ?? null, b.custom_field_value ?? null, DEFAULT_TENANT_ID, req.user!.id]
+      `INSERT INTO trucks (resource_code, vehicle_registration, truck_type, capacity, location, status, last_service_date, custom_field_value, tenant_id, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [b.resource_code?.trim() || generateResourceCode('TRK'), b.vehicle_registration?.trim() || null, b.truck_type ?? null, b.capacity ?? null, b.location ?? null, b.status ?? 'available', b.last_service_date ?? null, b.custom_field_value ?? null, DEFAULT_TENANT_ID, req.user!.id]
     )
     logAllocatorActivity('resource', `Truck ${result.rows[0].resource_code} added to fleet`, DEFAULT_TENANT_ID, req.user!.id)
     return res.status(201).json({ success: true, data: result.rows[0] })
@@ -128,11 +128,20 @@ router.patch('/trucks/:id', requireAuth, async (req: Request, res: Response) => 
          status = COALESCE($4, status),
          last_service_date = COALESCE($5, last_service_date),
          custom_field_value = CASE WHEN $6::text IS NULL THEN custom_field_value WHEN $6 = '' THEN NULL ELSE $6 END,
+         vehicle_registration = CASE WHEN $7::text IS NULL THEN vehicle_registration WHEN $7 = '' THEN NULL ELSE $7 END,
          updated_at = NOW()
-       WHERE id = $7 AND tenant_id = $8 RETURNING *`,
-      [b.truck_type ?? null, b.capacity ?? null, b.location ?? null, b.status ?? null, b.last_service_date ?? null, b.custom_field_value ?? null, req.params.id, DEFAULT_TENANT_ID]
+       WHERE id = $8 AND tenant_id = $9 RETURNING *`,
+      [b.truck_type ?? null, b.capacity ?? null, b.location ?? null, b.status ?? null, b.last_service_date ?? null, b.custom_field_value ?? null, b.vehicle_registration ?? null, req.params.id, DEFAULT_TENANT_ID]
     )
     if (!result.rows[0]) return res.status(404).json({ success: false, error: { message: 'Not found' } })
+    // trips.vehicle_rego is a mirror — re-point it at any trip still allocated to this truck so a
+    // corrected plate does not leave stale regos on open trips.
+    if (b.vehicle_registration !== undefined) {
+      await pool.query(
+        `UPDATE trips SET vehicle_rego = $1, updated_at = NOW() WHERE truck_id = $2 AND stage <> 'completed'`,
+        [result.rows[0].vehicle_registration, result.rows[0].id]
+      )
+    }
     return res.json({ success: true, data: result.rows[0] })
   } catch (err) {
     console.error('[resources PATCH /trucks/:id]', err)

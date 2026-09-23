@@ -190,9 +190,19 @@ export interface Vessel {
   vesselName: string
   vesselCode: string
   eta?: string
+  /** Estimated time of departure. Third in the list sort chain (slotted → discharged → etd → eta). */
+  etd?: string
   port?: string
   status: VesselStatus
+  /** Live count of containers assigned via created business requests — derived, never stored. */
   containerCount: number
+  /** Vessel capacity, in containers. */
+  capacity?: number
+  voyageNumber?: string
+  /** Lloyd's Register / IMO identifier. Matched by the vessel search alongside name and ID. */
+  lloydNumber?: string
+  slottedAt?: string
+  dischargedAt?: string
   tenantId: string
   createdAt: string
   updatedAt: string
@@ -210,6 +220,13 @@ export interface Trip {
   vehicle?: string
   driver?: string
   stage: TripStage
+  // FR — "Haz y/n" and "Weight" on the Planner Trips card (FRD §2.4.2.2). Both are columns on
+  // trips and are set by the Allocator; optional here and required on AllocatorTrip, the same
+  // relationship isOOG already has.
+  isHazardous?: boolean
+  weight?: string
+  /** Rego of the allocated truck, mirrored on allocation — shown beside the driver. */
+  vehicleRego?: string
   // FR — "OOG y/N if Y w/l/h in cm" (Planner Trips card/detail, FRD §2.4.2.2).
   isOOG?: boolean
   oogLength?: string
@@ -253,6 +270,8 @@ export type MaintenanceTab = 'current' | 'scheduled' | 'history'
 export interface Truck {
   id: string
   resourceCode: string
+  /** Registration plate. resourceCode (TRK-004) is an internal asset reference, not a plate. */
+  vehicleRegistration?: string
   truckType?: string
   capacity?: string
   location?: string

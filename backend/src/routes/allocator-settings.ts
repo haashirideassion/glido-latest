@@ -4,6 +4,9 @@ import { requireAuth } from '../middleware/auth'
 
 const router = Router()
 
+/** The four screens a Default View may point at (FRD 2.4.3.4). */
+const ALLOWED_DEFAULT_VIEWS = ['dashboard', 'resources', 'trips', 'maintenance']
+
 // GET /api/allocator-settings — get-or-create the logged-in allocator's own settings row.
 // Settings apply only to the logged-in user's profile (FRD 2.4.3.4) — never shared.
 router.get('/', requireAuth, async (req: Request, res: Response) => {
@@ -29,7 +32,12 @@ router.patch('/', requireAuth, async (req: Request, res: Response) => {
   const params: unknown[] = []
   let i = 1
 
-  if (b.default_view !== undefined)             { sets.push(`default_view = $${i++}`);             params.push(b.default_view) }
+  if (b.default_view !== undefined) {
+    if (!ALLOWED_DEFAULT_VIEWS.includes(b.default_view)) {
+      return res.status(400).json({ success: false, error: { message: 'Invalid default view' } })
+    }
+    sets.push(`default_view = $${i++}`); params.push(b.default_view)
+  }
   if (b.automated_allocation !== undefined)      { sets.push(`automated_allocation = $${i++}`);      params.push(!!b.automated_allocation) }
   if (b.operation_start_time !== undefined && b.operation_end_time !== undefined) {
     if (b.operation_end_time <= b.operation_start_time) {

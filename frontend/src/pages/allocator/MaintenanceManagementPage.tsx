@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'motion/react'
-import { useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
 import { getMaintenanceRecords, scheduleMaintenance, rescheduleMaintenance, startMaintenance, completeMaintenance } from '@/lib/db/maintenance'
@@ -29,7 +28,6 @@ function fmtDate(iso?: string | null): string {
 
 export default function MaintenanceManagementPage() {
   usePageTitle('Glido | Maintenance Management')
-  const navigate = useNavigate()
   const perms = useAllocatorPermissions()
   const [tab, setTab] = useState<MaintenanceTab>('current')
   const [search, setSearch] = useState('')
@@ -81,12 +79,6 @@ export default function MaintenanceManagementPage() {
   return (
     <>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
-
-      <button type="button" onClick={() => navigate('/allocator')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 4px', marginBottom: 12, fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2.5L4.5 7l4 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        Back
-      </button>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, background: '#F0F0EF', padding: 4, borderRadius: 'var(--r-full)', width: 'fit-content' }}>
         {TABS.map(t => (

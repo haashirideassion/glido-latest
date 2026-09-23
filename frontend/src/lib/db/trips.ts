@@ -16,6 +16,11 @@ function rowToTrip(row: any): Trip {
     vehicle:         row.vehicle ?? undefined,
     driver:          row.driver ?? undefined,
     stage:           row.stage,
+    // Set by the Allocator, displayed on the Planner Trips card. These were missing from the
+    // mapper, so Haz read "No" and Weight read "—" on every trip whatever the stored value.
+    isHazardous:     !!row.is_hazardous,
+    weight:          row.weight ?? undefined,
+    vehicleRego:     row.vehicle_rego ?? undefined,
     isOOG:           !!row.is_oog,
     oogLength:       row.oog_length ?? undefined,
     oogWidth:        row.oog_width ?? undefined,
@@ -26,9 +31,13 @@ function rowToTrip(row: any): Trip {
   }
 }
 
+/** Import secondary tabs — where the trip's vessel is, as opposed to what kind of job it is. */
+export type TripMilestone = 'slotted' | 'discharged' | 'arriving'
+
 export interface TripListParams {
   category?: TripCategory
   serviceType?: TripServiceType
+  milestone?: TripMilestone
   search?: string
   sort?: 'newest' | 'oldest' | 'trip_ref'
   stage?: TripStage
@@ -40,6 +49,7 @@ export async function getTrips(params: TripListParams = {}): Promise<Trip[]> {
   const qs = new URLSearchParams()
   if (params.category)    qs.set('category', params.category)
   if (params.serviceType) qs.set('serviceType', params.serviceType)
+  if (params.milestone)   qs.set('milestone', params.milestone)
   if (params.search)      qs.set('search', params.search)
   if (params.sort)        qs.set('sort', params.sort)
   if (params.stage)       qs.set('stage', params.stage)
@@ -62,12 +72,31 @@ export interface CreateTripPayload {
   vessel_id?: string
   vessel_name?: string
   trip_date?: string
-  vehicle?: string
-  driver?: string
+  // vehicle/driver are not set at creation — they mirror a real truck and driver, written when
+  // the Allocator allocates the trip.
 }
 
 export async function createTrip(payload: CreateTripPayload): Promise<Trip | null> {
   const res = await postFetcher(BASE, payload)
+  return res?.data ? rowToTrip(res.data) : null
+}
+
+// Core booking fields a planner may correct while the trip is not yet completed.
+export interface UpdateTripPayload {
+  container_number?: string | null
+  vessel_id?: string | null
+  vessel_name?: string | null
+  trip_date?: string | null
+  vehicle?: string | null
+  driver?: string | null
+  is_oog?: boolean
+  oog_length?: string | null
+  oog_width?: string | null
+  oog_height?: string | null
+}
+
+export async function updateTrip(idOrRef: string, payload: UpdateTripPayload): Promise<Trip | null> {
+  const res = await patchFetcher(`${BASE}/${idOrRef}`, payload)
   return res?.data ? rowToTrip(res.data) : null
 }
 

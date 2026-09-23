@@ -28,20 +28,33 @@ const TILES = [
   },
 ]
 
-const CATEGORY_ICON: Record<AllocatorActivityItem['category'], { icon: string; color: string }> = {
+type CategoryMeta = { icon: string; color: string }
+
+const CATEGORY_ICON: Record<AllocatorActivityItem['category'], CategoryMeta> = {
   resource:    { icon: ICONS.truck,   color: '#2563EB' },
   trip:        { icon: ICONS.container, color: '#7C3AED' },
   maintenance: { icon: ICONS.wrench,  color: '#EA580C' },
   driver:      { icon: ICONS.driver,  color: '#16A34A' },
 }
 
+// A row whose category isn't one of the four — an older entry, or a category added server-side
+// later — used to read `meta.color` off undefined and take the whole dashboard down with it.
+const CATEGORY_FALLBACK: CategoryMeta = { icon: ICONS.bell, color: '#57534E' }
+
+// Day boundaries are calendar days in the depot's timezone, not 24-hour blocks: an entry from
+// 11pm read "Yesterday" for a further 48 hours under the old elapsed-seconds arithmetic.
+const dayKey = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'Australia/Sydney' })
+
 function relativeTime(iso: string): string {
-  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  const then = new Date(iso)
+  const now = new Date()
+  const s = Math.floor((now.getTime() - then.getTime()) / 1000)
   if (s < 60) return 'Just now'
   if (s < 3600) { const m = Math.floor(s / 60); return `${m} minute${m === 1 ? '' : 's'} ago` }
-  if (s < 86400) { const h = Math.floor(s / 3600); return `${h} hour${h === 1 ? '' : 's'} ago` }
-  if (s < 172800) return 'Yesterday'
-  const d = Math.floor(s / 86400)
+  if (dayKey(then) === dayKey(now)) { const h = Math.floor(s / 3600); return `${h} hour${h === 1 ? '' : 's'} ago` }
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1)
+  if (dayKey(then) === dayKey(yesterday)) return 'Yesterday'
+  const d = Math.max(1, Math.floor(s / 86400))
   return `${d} day${d === 1 ? '' : 's'} ago`
 }
 
@@ -66,6 +79,8 @@ export default function AllocatorDashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--card-gap)', marginBottom: 24 }}>
         {TILES.map(t => (
           <div key={t.label} onClick={() => navigate(t.route)}
+            role="button" tabIndex={0} aria-label={`${t.label} — ${t.description}`}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(t.route) } }}
             style={{
               background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)',
               padding: 'var(--card-pad)', boxShadow: '0 1px 3px rgba(0,0,0,0.02), 0 4px 20px rgba(0,0,0,0.04)',
@@ -97,7 +112,7 @@ export default function AllocatorDashboardPage() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {activity.map(a => {
-              const meta = CATEGORY_ICON[a.category]
+              const meta = CATEGORY_ICON[a.category] ?? CATEGORY_FALLBACK
               return (
                 <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 'var(--r-sm)', background: `${meta.color}0A` }}>
                   <div style={{ width: 32, height: 32, borderRadius: 'var(--r-sm)', background: `${meta.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'motion/react'
-import { useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
+import { Rego } from '@/components/ui/Rego'
 import { getAllocatorTrips, allocateResources, updateTripDetails } from '@/lib/db/allocator-trips'
 import { setTripStage } from '@/lib/db/trips'
 import { getTrucks, getTrailers, getDrivers } from '@/lib/db/resources'
@@ -34,7 +34,6 @@ const PRIORITY_STYLE: Record<TripPriority, { bg: string; color: string }> = {
 
 export default function TripAllocationPage() {
   usePageTitle('Glido | Trip Allocation')
-  const navigate = useNavigate()
   const [tab, setTab] = useState<AllocTab>('pending')
   const [search, setSearch] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<TripPriority | ''>('')
@@ -99,12 +98,6 @@ export default function TripAllocationPage() {
   return (
     <>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
-
-      <button type="button" onClick={() => navigate('/allocator')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 4px', marginBottom: 12, fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2.5L4.5 7l4 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        Back
-      </button>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, background: '#F0F0EF', padding: 4, borderRadius: 'var(--r-full)', width: 'fit-content' }}>
         {TABS.map(t => (
@@ -206,7 +199,14 @@ export default function TripAllocationPage() {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
                   {truckById(t.truckId) && <ResourcePill icon={ICONS.truck} color="#2563EB" label={truckById(t.truckId)!.resourceCode} onClick={() => setDetailResource({ kind: 'truck', id: t.truckId! })} />}
                   {trailerById(t.trailerId) && <ResourcePill icon={ICONS.trailer} color="#7C3AED" label={trailerById(t.trailerId)!.resourceCode} onClick={() => setDetailResource({ kind: 'trailer', id: t.trailerId! })} />}
-                  {driverById(t.driverId) && <ResourcePill icon={ICONS.driver} color="#16A34A" label={driverById(t.driverId)!.driverName} onClick={() => setDetailResource({ kind: 'driver', id: t.driverId! })} />}
+                  {driverById(t.driverId) && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                      <ResourcePill icon={ICONS.driver} color="#16A34A" label={driverById(t.driverId)!.driverName} onClick={() => setDetailResource({ kind: 'driver', id: t.driverId! })} />
+                      {/* Rego of the truck on this same trip — a driver is identified by the
+                          plate they arrive on. */}
+                      <Rego value={truckById(t.truckId)?.vehicleRegistration} />
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -403,7 +403,7 @@ function AllocateModal({ trip, trucks, trailers, drivers, onClose, onDone, tripF
             <Field label="Driver">
               <CustomSelect
                 value={driverId} onChange={setDriverId} placeholder="Select driver…"
-                options={availableDrivers.map(d => ({ value: d.id, label: `${d.driverName} — ${d.licenseClass ?? ''}` }))}
+                options={availableDrivers.map(d => ({ value: d.id, label: `${d.driverName}${d.licenseClass ? ` — ${d.licenseClass}` : ''}` }))}
               />
             </Field>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

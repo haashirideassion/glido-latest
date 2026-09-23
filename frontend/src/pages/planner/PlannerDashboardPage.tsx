@@ -62,9 +62,15 @@ export default function PlannerDashboardPage() {
 
   return (
     <>
-      <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
+      <style>{`
+        @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }
+        /* Four fixed columns squashed the tiles below ~900px. Same breakpoints the Customer
+           Portal dashboard already uses, so the two modules behave alike. */
+        @media (max-width: 900px) { .plan-tiles { grid-template-columns: repeat(2,1fr) !important; } }
+        @media (max-width: 560px) { .plan-tiles { grid-template-columns: 1fr !important; } }
+      `}</style>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--card-gap)', marginBottom: 24 }}>
+      <div className="plan-tiles" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--card-gap)', marginBottom: 24 }}>
         {TILES.map(t => (
           <div key={t.label} onClick={() => navigate(t.route)}
             style={{
@@ -85,7 +91,8 @@ export default function PlannerDashboardPage() {
       </div>
 
       <div style={{ background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-lg)', padding: 'var(--card-pad)', boxShadow: '0 1px 3px rgba(0,0,0,0.02), 0 4px 20px rgba(0,0,0,0.04)' }}>
-        <p style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', marginBottom: 14 }}>Recent Activity</p>
+        {/* FRD names this section "Recent Activity & update". */}
+        <p style={{ fontSize: 15, fontWeight: 700, color: '#1C1917', marginBottom: 14 }}>Recent Activity &amp; update</p>
         {isLoading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {[0, 1, 2].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: '#F3F3F2', animation: 'pulse 1.5s ease-in-out infinite' }} />)}

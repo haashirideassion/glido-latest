@@ -38,7 +38,7 @@ export default function AllocatorSettingsPage() {
   const [saving, setSaving] = useState(false)
 
   // General
-  const [defaultView, setDefaultView] = useState('resources')
+  const [defaultView, setDefaultView] = useState('dashboard')
   const [automatedAllocation, setAutomatedAllocation] = useState(false)
   const [opStart, setOpStart] = useState('06:00')
   const [opEnd, setOpEnd] = useState('18:00')
@@ -170,6 +170,7 @@ export default function AllocatorSettingsPage() {
               <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 6 }}>Default View</p>
               <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Choose the default view when you open the allocator dashboard</p>
               <select value={defaultView} onChange={e => { setDefaultView(e.target.value); setDirty(true) }} style={INPUT}>
+                <option value="dashboard">Dashboard</option>
                 <option value="resources">Resources</option>
                 <option value="trips">Trips</option>
                 <option value="maintenance">Maintenance</option>

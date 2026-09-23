@@ -1,4 +1,4 @@
-import { fetcher, postFetcher } from '../fetcher'
+import { fetcher, postFetcher, patchFetcher } from '../fetcher'
 import type { ServiceRequest, ServiceRequestService, ServiceRequestDocument, ServiceCategory } from '@/data/types'
 
 const BASE = '/api/service-requests'
@@ -105,6 +105,26 @@ export interface CreateServiceRequestPayload {
 
 export async function createServiceRequest(payload: CreateServiceRequestPayload): Promise<ServiceRequest | null> {
   const res = await postFetcher(BASE, payload)
+  return res?.data ? rowToServiceRequest(res.data) : null
+}
+
+// Shipment-detail corrections a customer may make while their request is still `pending`.
+// Services and documents are not editable — see EditRequestModal for the reasoning.
+export interface UpdateServiceRequestPayload {
+  container_number?: string | null
+  container_type?: string | null
+  container_size?: string | null
+  vessel_line?: string | null
+  voyage_number?: string | null
+  collection_date?: string | null
+  is_oog?: boolean
+  oog_length?: string | null
+  oog_width?: string | null
+  oog_height?: string | null
+}
+
+export async function updateServiceRequest(idOrRequestId: string, payload: UpdateServiceRequestPayload): Promise<ServiceRequest | null> {
+  const res = await patchFetcher(`${BASE}/${idOrRequestId}`, payload)
   return res?.data ? rowToServiceRequest(res.data) : null
 }
 

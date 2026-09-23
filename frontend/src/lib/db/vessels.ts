@@ -9,9 +9,15 @@ function rowToVessel(row: any): Vessel {
     vesselName:     row.vessel_name,
     vesselCode:     row.vessel_code,
     eta:            row.eta ?? undefined,
+    etd:            row.etd ?? undefined,
     port:           row.port ?? undefined,
     status:         row.status,
     containerCount: Number(row.container_count ?? 0),
+    capacity:       row.capacity == null ? undefined : Number(row.capacity),
+    voyageNumber:   row.voyage_number ?? undefined,
+    lloydNumber:    row.lloyd_number ?? undefined,
+    slottedAt:      row.slotted_at ?? undefined,
+    dischargedAt:   row.discharged_at ?? undefined,
     tenantId:       row.tenant_id,
     createdAt:      row.created_at,
     updatedAt:      row.updated_at,
@@ -39,11 +45,17 @@ export async function getVessel(idOrCode: string): Promise<Vessel | null> {
 
 export interface CreateVesselPayload {
   vessel_name: string
+  /** Optional — the server allocates a unique VSL-###### code when this is omitted. */
   vessel_code?: string
   eta?: string
+  etd?: string
   port?: string
   status?: VesselStatus
-  container_count?: number
+  capacity?: number
+  voyage_number?: string
+  lloyd_number?: string
+  slotted_at?: string
+  discharged_at?: string
 }
 
 export async function createVessel(payload: CreateVesselPayload): Promise<Vessel | null> {

@@ -16,16 +16,95 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'trips', label: 'Trips' }, { key: 'custom', label: 'Custom' },
 ]
 
+// The whole module reads dates in the depot's local day, not the browser's.
+const isoDate = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'Australia/Sydney' })
+
 function monthLabel(ym: string): string {
   const [, m] = ym.split('-')
   const months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   return months[parseInt(m, 10)] ?? ym
 }
 
+// FRD writes the variance as "+8% from last month" — a whole number when the change is whole,
+// so 8 reads "+8%" and 8.3 still reads "+8.3%".
 function pctDelta(curr: number, prev: number): string | null {
   if (prev === 0) return null
   const delta = ((curr - prev) / prev) * 100
-  return (delta >= 0 ? '+' : '') + delta.toFixed(1) + '%'
+  return (delta >= 0 ? '+' : '') + delta.toFixed(1).replace(/\.0$/, '') + '%'
+}
+
+function Skeleton({ height, radius = 'var(--r-md)' }: { height: number; radius?: string }) {
+  return <div style={{ height, borderRadius: radius, background: '#F3F3F2', animation: 'pulse 1.5s ease-in-out infinite' }} />
+}
+
+// ─── Date Range ───────────────────────────────────────────────────────────────
+// FRD calls for a single "Date Range" control that opens a period picker, rather than two bare
+// date inputs sitting in the toolbar.
+
+type Preset = { label: string; range: () => [string, string] }
+const PRESETS: Preset[] = [
+  { label: 'Last 7 days',    range: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 6);  return [isoDate(from), isoDate(to)] } },
+  { label: 'Last 30 days',   range: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 29); return [isoDate(from), isoDate(to)] } },
+  { label: 'This month',     range: () => { const to = new Date(); const from = new Date(); from.setDate(1);                   return [isoDate(from), isoDate(to)] } },
+  { label: 'Last 3 months',  range: () => { const to = new Date(); const from = new Date(); from.setMonth(from.getMonth() - 3); return [isoDate(from), isoDate(to)] } },
+  { label: 'Last 12 months', range: () => { const to = new Date(); const from = new Date(); from.setMonth(from.getMonth() - 12); return [isoDate(from), isoDate(to)] } },
+]
+
+const shortDate = (iso: string) => {
+  const [y, m, d] = iso.split('-')
+  return `${parseInt(d, 10)} ${monthLabel(`${y}-${m}`)}`
+}
+
+function DateRangeControl({ from, to, onChange }: { from: string; to: string; onChange: (from: string, to: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const active = !!(from || to)
+  const label = !active ? 'Date Range'
+    : from && to ? `${shortDate(from)} – ${shortDate(to)}`
+    : from ? `From ${shortDate(from)}` : `Until ${shortDate(to)}`
+
+  const DATE_INPUT: React.CSSProperties = {
+    width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid rgba(0,0,0,0.10)',
+    borderRadius: 'var(--r-sm)', background: '#F7F6F5', color: '#1C1917', outline: 'none',
+    fontFamily: 'inherit', boxSizing: 'border-box',
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button type="button" onClick={() => setOpen(v => !v)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 14px', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--r-sm)',
+          background: active ? 'rgba(var(--brand-rgb),0.10)' : '#fff',
+          border: `1px solid ${active ? 'rgba(var(--brand-rgb),0.28)' : 'rgba(0,0,0,0.12)'}`,
+          color: active ? 'var(--brand-color)' : '#374151' }}>
+        <Icon name={ICONS.calendar} size={14} />{label}
+      </button>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 100 }} onClick={() => setOpen(false)} />
+          <div style={{ position: 'absolute', top: 44, right: 0, zIndex: 101, width: 260, background: '#fff', border: '1px solid rgba(0,0,0,0.09)', borderRadius: 'var(--r-md)', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', padding: 12 }}>
+            {PRESETS.map(p => (
+              <button key={p.label} type="button" onClick={() => { const [f, t] = p.range(); onChange(f, t); setOpen(false) }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', fontSize: 14, fontWeight: 500, color: '#374151', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', borderRadius: 'var(--r-sm)' }}>
+                {p.label}
+              </button>
+            ))}
+            <div style={{ height: 1, background: 'rgba(0,0,0,0.07)', margin: '10px 0' }} />
+            <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase' }}>From</label>
+              <input type="date" value={from} max={to || undefined} onChange={e => onChange(e.target.value, to)} style={DATE_INPUT} />
+              <label style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.09em', textTransform: 'uppercase' }}>To</label>
+              <input type="date" value={to} min={from || undefined} onChange={e => onChange(from, e.target.value)} style={DATE_INPUT} />
+            </div>
+            {active && (
+              <button type="button" onClick={() => { onChange('', ''); setOpen(false) }}
+                style={{ width: '100%', marginTop: 10, padding: '8px 10px', fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                Clear date range
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 // Monthly Container Activity — grouped bar chart (imports vs exports)
@@ -96,36 +175,17 @@ export default function PlannerReportsPage() {
     const thisMonthFrom = new Date(); thisMonthFrom.setDate(1)
     const lastMonthFrom = new Date(thisMonthFrom); lastMonthFrom.setMonth(lastMonthFrom.getMonth() - 1)
     const lastMonthTo = new Date(thisMonthFrom); lastMonthTo.setDate(0)
-    const iso = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'Australia/Sydney' })
     const categoryFilter = category === 'all' ? undefined : category
 
     Promise.all([
       getPlannerReports({ from: dateFrom || undefined, to: dateTo || undefined, category: categoryFilter }),
-      getPlannerReports({ from: iso(lastMonthFrom), to: iso(lastMonthTo), category: categoryFilter }),
+      getPlannerReports({ from: isoDate(lastMonthFrom), to: isoDate(lastMonthTo), category: categoryFilter }),
     ]).then(([curr, prev]) => {
       if (cancelled) return
       setCurrent(curr); setPrevious(prev); setIsLoading(false)
     }).catch(() => { if (!cancelled) setIsLoading(false) })
     return () => { cancelled = true }
   }, [dateFrom, dateTo, category])
-
-  const exportCsv = () => {
-    if (!current) return
-    logReportExport()
-    const lines = [
-      'Metric,Value',
-      `Total Vessels,${current.totalVessels}`,
-      `Active Trips,${current.activeTrips}`,
-      `On-Time Delivery,${current.onTimeDeliveryPct != null ? current.onTimeDeliveryPct.toFixed(1) + '%' : 'N/A'}`,
-      '', 'Month,Imports,Exports',
-      ...current.monthlyContainerActivity.map(m => `${m.month},${m.imports},${m.exports}`),
-    ]
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `planner-reports-${dateFrom || 'all'}-to-${dateTo || 'now'}.csv`
-    a.click()
-  }
 
   const metrics = useMemo(() => {
     if (!current) return null
@@ -136,6 +196,52 @@ export default function PlannerReportsPage() {
         delta: previous?.onTimeDeliveryPct != null && current.onTimeDeliveryPct != null ? pctDelta(current.onTimeDeliveryPct, previous.onTimeDeliveryPct) : null },
     ]
   }, [current, previous])
+
+  // Derived once and reused by both the on-screen grid and the export, so the CSV can never
+  // drift from what the planner is looking at.
+  const perfRows = useMemo(() => {
+    const p = current?.performanceMetrics
+    return [
+      { label: 'Average Turnaround Time', value: p?.avgTurnaroundHours     != null ? `${p.avgTurnaroundHours.toFixed(1)} hrs` : null },
+      { label: 'Resource Utilization',    value: p?.resourceUtilizationPct != null ? `${p.resourceUtilizationPct.toFixed(0)}%` : null },
+      { label: 'Planning Accuracy',       value: p?.planningAccuracyPct    != null ? `${p.planningAccuracyPct.toFixed(0)}%`    : null },
+      { label: 'Cost Per Trip',           value: p?.costPerTrip            != null ? `$${p.costPerTrip.toFixed(2)}`            : null },
+    ]
+  }, [current])
+
+  const rangeLabel = dateFrom || dateTo ? `${dateFrom || 'Earliest'} to ${dateTo || 'Today'}` : 'All time'
+  const categoryLabel = category === 'all' ? 'All categories' : category === 'import' ? 'Import' : 'Export'
+
+  const exportCsv = () => {
+    if (!current) return
+    logReportExport()
+    // FRD: the export must reflect the filters and the date range applied at the time of export —
+    // so the file states them, and carries every metric on the tab, not just the summary cards.
+    const lines = [
+      'Glido — Planner Reports (Performance)',
+      `Generated,${new Date().toLocaleString('en-AU', { timeZone: 'Australia/Sydney' })}`,
+      `Date range,${rangeLabel}`,
+      `Category filter,${categoryLabel}`,
+      '',
+      'Summary metric,Value',
+      `Total Vessels,${current.totalVessels}`,
+      `Active Trips,${current.activeTrips}`,
+      `On-Time Delivery,${current.onTimeDeliveryPct != null ? current.onTimeDeliveryPct.toFixed(1) + '%' : 'No data available'}`,
+      '',
+      'Performance metric,Value',
+      ...perfRows.map(r => `${r.label},${r.value ?? 'No data available'}`),
+      '',
+      'Month,Imports,Exports',
+      ...current.monthlyContainerActivity.map(m => `${m.month},${m.imports},${m.exports}`),
+    ]
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `planner-reports-${dateFrom || 'all'}-to-${dateTo || 'now'}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -174,11 +280,9 @@ export default function PlannerReportsPage() {
               </>
             )}
           </div>
-          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-            style={{ padding: '9px 12px', height: 38, fontSize: 14, border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', background: '#F7F6F5', color: '#1C1917', outline: 'none', fontFamily: 'inherit' }} />
-          <span style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>→</span>
-          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-            style={{ padding: '9px 12px', height: 38, fontSize: 14, border: '1px solid rgba(0,0,0,0.10)', borderRadius: 'var(--r-sm)', background: '#F7F6F5', color: '#1C1917', outline: 'none', fontFamily: 'inherit' }} />
+
+          <DateRangeControl from={dateFrom} to={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t) }} />
+
           {(dateFrom || dateTo || category !== 'all') && (
             <button onClick={() => { setDateFrom(''); setDateTo(''); setCategory('all') }}
               style={{ height: 38, padding: '0 12px', fontSize: 14, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -186,8 +290,8 @@ export default function PlannerReportsPage() {
             </button>
           )}
           {perms.can_export_reports && (
-            <button onClick={exportCsv} disabled={!current}
-              style={{ height: 38, padding: '0 16px', fontSize: 14, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', cursor: current ? 'pointer' : 'not-allowed', opacity: current ? 1 : 0.5, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'inherit' }}>
+            <button onClick={exportCsv} disabled={!current || isLoading}
+              style={{ height: 38, padding: '0 16px', fontSize: 14, fontWeight: 600, color: '#374151', background: '#fff', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', cursor: current && !isLoading ? 'pointer' : 'not-allowed', opacity: current && !isLoading ? 1 : 0.5, display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: 'inherit' }}>
               <Icon name={ICONS.download} size={15} /> Export
             </button>
           )}
@@ -195,34 +299,32 @@ export default function PlannerReportsPage() {
       </div>
 
       {tab === 'performance' && (
-        isLoading ? (
+        <>
+          {/* Each metric and each chart carries its own loading indicator (FRD) — the card
+              chrome and headings stay put and only the data area pulses, rather than the whole
+              tab disappearing and popping back in. */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-            {[0, 1, 2].map(i => <div key={i} style={{ height: 120, borderRadius: 'var(--r-lg)', background: '#F3F3F2', animation: 'pulse 1.5s ease-in-out infinite' }} />)}
+            {isLoading || !metrics
+              ? [0, 1, 2].map(i => <Skeleton key={i} height={120} radius="var(--r-lg)" />)
+              : metrics.map(m => <MetricCard key={m.label} {...m} />)}
           </div>
-        ) : (
-          <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-              {metrics?.map(m => <MetricCard key={m.label} {...m} />)}
-            </div>
 
-            <div style={CARD}>
-              <p style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: '0 0 4px' }}>Monthly Container Activity</p>
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 20px' }}>Import vs Export trends over time</p>
-              <MonthlyBarChart data={current?.monthlyContainerActivity ?? []} />
-            </div>
+          <div style={CARD}>
+            <p style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: '0 0 4px' }}>Monthly Container Activity</p>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 20px' }}>Import vs Export trends over time</p>
+            {isLoading ? <Skeleton height={190} /> : <MonthlyBarChart data={current?.monthlyContainerActivity ?? []} />}
+          </div>
 
-            <div style={CARD}>
-              <p style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: '0 0 4px' }}>Performance Metrics</p>
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 20px' }}>Key performance indicators for planning operations</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px 24px' }}>
-                <PerfMetric label="Average Turnaround Time" value={current?.performanceMetrics.avgTurnaroundHours != null ? `${current.performanceMetrics.avgTurnaroundHours.toFixed(1)} hrs` : null} />
-                <PerfMetric label="Resource Utilization" value={current?.performanceMetrics.resourceUtilizationPct != null ? `${current.performanceMetrics.resourceUtilizationPct.toFixed(0)}%` : null} />
-                <PerfMetric label="Planning Accuracy" value={current?.performanceMetrics.planningAccuracyPct != null ? `${current.performanceMetrics.planningAccuracyPct.toFixed(0)}%` : null} />
-                <PerfMetric label="Cost Per Trip" value={current?.performanceMetrics.costPerTrip != null ? `$${current.performanceMetrics.costPerTrip.toFixed(2)}` : null} />
-              </div>
+          <div style={CARD}>
+            <p style={{ fontSize: 16, fontWeight: 700, color: '#1C1917', margin: '0 0 4px' }}>Performance Metrics</p>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 20px' }}>Key performance indicators for planning operations</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px 24px' }}>
+              {isLoading
+                ? [0, 1, 2, 3].map(i => <Skeleton key={i} height={46} />)
+                : perfRows.map(r => <PerfMetric key={r.label} label={r.label} value={r.value} />)}
             </div>
-          </>
-        )
+          </div>
+        </>
       )}
 
       {tab !== 'performance' && (

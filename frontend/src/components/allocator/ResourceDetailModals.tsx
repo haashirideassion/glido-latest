@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { Icon, ICONS } from '@/lib/Icon'
 import {
@@ -8,6 +8,7 @@ import {
 import { getTruckCustomField, customFieldInputType, type CustomFieldConfig } from '@/lib/db/truck-custom-field'
 import { toast } from '@/lib/toast'
 import { CustomSelect } from '@/components/ui/CustomSelect'
+import { Rego } from '@/components/ui/Rego'
 import type { Truck, Trailer, Driver, ResourceStatus, DriverStatus } from '@/data/types'
 
 export const RESOURCE_STATUS_STYLE: Record<ResourceStatus, { bg: string; color: string; label: string; icon: string }> = {
@@ -39,22 +40,69 @@ export function StatusBadge({ status, driver }: { status: string; driver?: boole
   )
 }
 
+const fmtDay = (iso?: string) =>
+  iso ? new Date(iso).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+
+/** One label/value pair inside an assigned-resource block. */
+function MiniField({ label, value, mono }: { label: string; value?: string | number | null; mono?: boolean }) {
+  const empty = value == null || value === ''
+  return (
+    <div style={{ minWidth: 0 }}>
+      <p style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 1px' }}>{label}</p>
+      <p style={{ fontSize: 12.5, fontWeight: 600, color: empty ? 'var(--text-tertiary)' : '#1C1917', margin: 0, fontFamily: mono && !empty ? 'ui-monospace,monospace' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {empty ? '—' : value}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Every stored field on the trailer and driver attached to a truck, rather than a one-line
+ * summary. These blocks were `CODE · type, capacity` and `Name · class, Ny exp`, which dropped
+ * status, service dates and the record's own timestamps — the things you actually check before
+ * committing a vehicle to a job.
+ */
 export function AssignedResourcesSection({ trailer, driver }: { trailer?: Trailer; driver?: Driver }) {
   if (!trailer && !driver) {
     return <p style={{ fontSize: 12.5, color: 'var(--text-tertiary)', margin: '8px 0 0' }}>No resources assigned</p>
   }
+  const grid: React.CSSProperties = {
+    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: '8px 14px', marginTop: 8,
+  }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
       {trailer && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, background: 'rgba(124,58,237,0.06)', padding: '6px 9px', borderRadius: 'var(--r-sm)' }}>
-          <Icon name={ICONS.trailer} size={13} style={{ color: '#7C3AED', flexShrink: 0 }} />
-          <span style={{ color: '#1C1917' }}>{trailer.resourceCode} · {trailer.trailerType ?? '—'}{trailer.capacity ? `, ${trailer.capacity}` : ''}</span>
+        <div style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.14)', padding: '9px 11px', borderRadius: 'var(--r-sm)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name={ICONS.trailer} size={13} style={{ color: '#7C3AED', flexShrink: 0 }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1C1917', fontFamily: 'ui-monospace,monospace' }}>{trailer.resourceCode}</span>
+            <StatusBadge status={trailer.status} />
+          </div>
+          <div style={grid}>
+            <MiniField label="Type"         value={trailer.trailerType} />
+            <MiniField label="Capacity"     value={trailer.capacity} />
+            <MiniField label="Last Service" value={fmtDay(trailer.lastServiceDate)} />
+            <MiniField label="Attached"     value={trailer.attachedTruckId ? 'Yes' : 'No'} />
+            <MiniField label="Added"        value={fmtDay(trailer.createdAt)} />
+            <MiniField label="Updated"      value={fmtDay(trailer.updatedAt)} />
+          </div>
         </div>
       )}
       {driver && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, background: 'rgba(34,197,94,0.06)', padding: '6px 9px', borderRadius: 'var(--r-sm)' }}>
-          <Icon name={ICONS.driver} size={13} style={{ color: '#16A34A', flexShrink: 0 }} />
-          <span style={{ color: '#1C1917' }}>{driver.driverName}{driver.licenseClass ? ` · ${driver.licenseClass}` : ''}{driver.experienceYears != null ? `, ${driver.experienceYears}y exp` : ''}</span>
+        <div style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.14)', padding: '9px 11px', borderRadius: 'var(--r-sm)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name={ICONS.driver} size={13} style={{ color: '#16A34A', flexShrink: 0 }} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1C1917' }}>{driver.driverName}</span>
+            <StatusBadge status={driver.status} driver />
+          </div>
+          <div style={grid}>
+            <MiniField label="ID"         value={driver.resourceCode} mono />
+            <MiniField label="Licence"    value={driver.licenseClass} />
+            <MiniField label="Experience" value={driver.experienceYears != null ? `${driver.experienceYears}y` : undefined} />
+            <MiniField label="Assigned"   value={driver.assignedTruckId ? 'Yes' : 'No'} />
+            <MiniField label="Added"      value={fmtDay(driver.createdAt)} />
+            <MiniField label="Updated"    value={fmtDay(driver.updatedAt)} />
+          </div>
         </div>
       )}
     </div>
@@ -126,6 +174,18 @@ function EditField({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
+/** Jump to the truck a driver or trailer is attached to. Kept inside the edit form so the link
+ *  survives now that these two panels open straight into editing and have no read-only view. */
+function ViewTruckLink({ truckId, onViewTruck }: { truckId?: string | null; onViewTruck: (id: string) => void }) {
+  if (!truckId) return null
+  return (
+    <button type="button" onClick={() => onViewTruck(truckId)}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13.5, fontFamily: 'inherit', fontWeight: 600 }}>
+      <Icon name={ICONS.truck} size={12} />View Truck
+    </button>
+  )
+}
+
 function EditFooter({ onCancel, onSave, saving }: { onCancel: () => void; onSave: () => void; saving: boolean }) {
   return (
     <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', padding: '16px 24px', borderTop: '1px solid rgba(0,0,0,0.06)', flexShrink: 0 }}>
@@ -159,6 +219,7 @@ export function TruckDetailPanel({ truckId, onClose, onUpdated, docked = false }
   const [saving, setSaving] = useState(false)
   const [fieldConfig, setFieldConfig] = useState<CustomFieldConfig>({ label: null, type: 'text' })
 
+  const [rego, setRego] = useState('')
   const [type, setType] = useState('')
   const [capacity, setCapacity] = useState('')
   const [location, setLocation] = useState('')
@@ -173,6 +234,7 @@ export function TruckDetailPanel({ truckId, onClose, onUpdated, docked = false }
 
   const startEdit = () => {
     if (!truck) return
+    setRego(truck.vehicleRegistration ?? '')
     setType(truck.truckType ?? ''); setCapacity(truck.capacity ?? ''); setLocation(truck.location ?? ''); setStatus(truck.status)
     setCustomFieldValue(truck.customFieldValue ?? '')
     setTrailerId(truck.assignedTrailer?.id ?? ''); setDriverId(truck.assignedDriver?.id ?? '')
@@ -183,7 +245,7 @@ export function TruckDetailPanel({ truckId, onClose, onUpdated, docked = false }
   const save = async () => {
     setSaving(true)
     try {
-      const result = await updateTruck(truckId, { truck_type: type.trim() || undefined, capacity: capacity.trim() || undefined, location: location.trim() || undefined, status, custom_field_value: customFieldValue.trim() || '' })
+      const result = await updateTruck(truckId, { vehicle_registration: rego.trim(), truck_type: type.trim() || undefined, capacity: capacity.trim() || undefined, location: location.trim() || undefined, status, custom_field_value: customFieldValue.trim() || '' })
       if (!result) { toast('Could not save changes. Please try again.', 'error'); return }
       await assignTruckResources(truckId, { trailerId: trailerId || '', driverId: driverId || '' })
       toast('Truck updated', 'success')
@@ -199,12 +261,15 @@ export function TruckDetailPanel({ truckId, onClose, onUpdated, docked = false }
 
   return (
     <DetailSlideOver docked={docked} onClose={onClose}>
-      <SlideOverHeader title={truck?.resourceCode ?? 'Truck'} status={truck?.status} onEdit={!editing ? startEdit : undefined} onClose={onClose} />
+      <SlideOverHeader
+        title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{truck?.resourceCode ?? 'Truck'}<Rego value={truck?.vehicleRegistration} /></span>}
+        status={truck?.status} onEdit={!editing ? startEdit : undefined} onClose={onClose} />
       {!truck ? (
         <div style={{ padding: '40px 24px' }}><p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Loading…</p></div>
       ) : editing ? (
         <>
           <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            <EditField label="Rego"><input value={rego} onChange={e => setRego(e.target.value)} placeholder="ABC-123" style={EDIT_INPUT} /></EditField>
             <EditField label="Type"><input value={type} onChange={e => setType(e.target.value)} style={EDIT_INPUT} /></EditField>
             <EditField label="Capacity"><input value={capacity} onChange={e => setCapacity(e.target.value)} style={EDIT_INPUT} /></EditField>
             {fieldConfig.label && (
@@ -226,6 +291,7 @@ export function TruckDetailPanel({ truckId, onClose, onUpdated, docked = false }
       ) : (
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18, flex: 1, overflowY: 'auto', minHeight: 0 }}>
           <div>
+            <DetailRow label="Rego" value={truck.vehicleRegistration ?? '—'} />
             <DetailRow label="Type" value={truck.truckType ?? '—'} />
             <DetailRow label="Capacity" value={truck.capacity ?? '—'} />
             {fieldConfig.label && <DetailRow label={fieldConfig.label} value={truck.customFieldValue ?? '—'} />}
@@ -244,7 +310,6 @@ export function TruckDetailPanel({ truckId, onClose, onUpdated, docked = false }
 
 export function TrailerDetailPanel({ trailerId, onClose, onViewTruck, onUpdated, docked = false }: { trailerId: string; onClose: () => void; onViewTruck: (id: string) => void; onUpdated?: () => void; docked?: boolean }) {
   const [trailer, setTrailer] = useState<Trailer | null>(null)
-  const [editing, setEditing] = useState(false)
   const [trucks, setTrucks] = useState<Truck[]>([])
   const [saving, setSaving] = useState(false)
 
@@ -255,13 +320,15 @@ export function TrailerDetailPanel({ trailerId, onClose, onViewTruck, onUpdated,
 
   const load = () => { getTrailer(trailerId).then(setTrailer).catch(() => {}) }
   useEffect(load, [trailerId])
+  useEffect(() => { getTrucks().then(setTrucks).catch(() => {}) }, [])
 
-  const startEdit = () => {
+  // This panel IS the form — there is no read-only view to toggle out of, so the fields are
+  // seeded whenever the record arrives, including after a save refetches it.
+  useEffect(() => {
     if (!trailer) return
-    setType(trailer.trailerType ?? ''); setCapacity(trailer.capacity ?? ''); setStatus(trailer.status); setAttachedTruckId(trailer.attachedTruckId ?? '')
-    getTrucks().then(setTrucks).catch(() => {})
-    setEditing(true)
-  }
+    setType(trailer.trailerType ?? ''); setCapacity(trailer.capacity ?? '')
+    setStatus(trailer.status); setAttachedTruckId(trailer.attachedTruckId ?? '')
+  }, [trailer])
 
   const save = async () => {
     setSaving(true)
@@ -269,7 +336,6 @@ export function TrailerDetailPanel({ trailerId, onClose, onViewTruck, onUpdated,
       const result = await updateTrailer(trailerId, { trailer_type: type.trim() || undefined, capacity: capacity.trim() || undefined, status, attached_truck_id: attachedTruckId || '' })
       if (!result) { toast('Could not save changes. Please try again.', 'error'); return }
       toast('Trailer updated', 'success')
-      setEditing(false)
       load()
       onUpdated?.()
     } catch {
@@ -281,10 +347,10 @@ export function TrailerDetailPanel({ trailerId, onClose, onViewTruck, onUpdated,
 
   return (
     <DetailSlideOver docked={docked} onClose={onClose}>
-      <SlideOverHeader title={trailer?.resourceCode ?? 'Trailer'} status={trailer?.status} onEdit={!editing ? startEdit : undefined} onClose={onClose} />
+      <SlideOverHeader title={trailer?.resourceCode ?? 'Trailer'} status={trailer?.status} onClose={onClose} />
       {!trailer ? (
         <div style={{ padding: '40px 24px' }}><p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Loading…</p></div>
-      ) : editing ? (
+      ) : (
         <>
           <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, overflowY: 'auto', minHeight: 0 }}>
             <EditField label="Type"><input value={type} onChange={e => setType(e.target.value)} style={EDIT_INPUT} /></EditField>
@@ -294,21 +360,13 @@ export function TrailerDetailPanel({ trailerId, onClose, onViewTruck, onUpdated,
             </EditField>
             <EditField label="Attached Truck">
               <CustomSelect value={attachedTruckId} onChange={setAttachedTruckId} placeholder="None" options={trucks.map(t => ({ value: t.id, label: t.resourceCode }))} />
+              <ViewTruckLink truckId={trailer.attachedTruckId} onViewTruck={onViewTruck} />
             </EditField>
+            {/* Not editable here — shown so the record still reads whole. */}
+            <DetailRow label="Last Service" value={fmtResourceDate(trailer.lastServiceDate)} />
           </div>
-          <EditFooter onCancel={() => setEditing(false)} onSave={save} saving={saving} />
+          <EditFooter onCancel={onClose} onSave={save} saving={saving} />
         </>
-      ) : (
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1, overflowY: 'auto', minHeight: 0 }}>
-          <DetailRow label="Type" value={trailer.trailerType ?? '—'} />
-          <DetailRow label="Capacity" value={trailer.capacity ?? '—'} />
-          <DetailRow label="Attached To" value={trailer.attachedTruckId ? (
-            <button type="button" onClick={() => onViewTruck(trailer.attachedTruckId!)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 14, fontFamily: 'inherit', fontWeight: 600 }}>
-              <Icon name={ICONS.truck} size={12} />View Truck
-            </button>
-          ) : 'None'} />
-          <DetailRow label="Last Service" value={fmtResourceDate(trailer.lastServiceDate)} />
-        </div>
       )}
     </DetailSlideOver>
   )
@@ -316,7 +374,6 @@ export function TrailerDetailPanel({ trailerId, onClose, onViewTruck, onUpdated,
 
 export function DriverDetailPanel({ driverId, onClose, onViewTruck, onUpdated, docked = false }: { driverId: string; onClose: () => void; onViewTruck: (id: string) => void; onUpdated?: () => void; docked?: boolean }) {
   const [driver, setDriver] = useState<Driver | null>(null)
-  const [editing, setEditing] = useState(false)
   const [trucks, setTrucks] = useState<Truck[]>([])
   const [saving, setSaving] = useState(false)
 
@@ -328,14 +385,17 @@ export function DriverDetailPanel({ driverId, onClose, onViewTruck, onUpdated, d
 
   const load = () => { getDriver(driverId).then(setDriver).catch(() => {}) }
   useEffect(load, [driverId])
+  useEffect(() => { getTrucks().then(setTrucks).catch(() => {}) }, [])
 
-  const startEdit = () => {
+  // This panel IS the form — there is no read-only view to toggle out of, so the fields are
+  // seeded whenever the record arrives, including after a save refetches it.
+  useEffect(() => {
     if (!driver) return
-    setName(driver.driverName); setLicenseClass(driver.licenseClass ?? ''); setExperienceYears(driver.experienceYears != null ? String(driver.experienceYears) : '')
+    setName(driver.driverName)
+    setLicenseClass(driver.licenseClass ?? '')
+    setExperienceYears(driver.experienceYears != null ? String(driver.experienceYears) : '')
     setStatus(driver.status); setAssignedTruckId(driver.assignedTruckId ?? '')
-    getTrucks().then(setTrucks).catch(() => {})
-    setEditing(true)
-  }
+  }, [driver])
 
   const save = async () => {
     if (!name.trim()) { toast('Driver name is required', 'error'); return }
@@ -347,7 +407,6 @@ export function DriverDetailPanel({ driverId, onClose, onViewTruck, onUpdated, d
       })
       if (!result) { toast('Could not save changes. Please try again.', 'error'); return }
       toast('Driver updated', 'success')
-      setEditing(false)
       load()
       onUpdated?.()
     } catch {
@@ -359,10 +418,10 @@ export function DriverDetailPanel({ driverId, onClose, onViewTruck, onUpdated, d
 
   return (
     <DetailSlideOver docked={docked} onClose={onClose}>
-      <SlideOverHeader title={driver?.driverName ?? 'Driver'} status={driver?.status} driver onEdit={!editing ? startEdit : undefined} onClose={onClose} />
+      <SlideOverHeader title={driver?.driverName ?? 'Driver'} status={driver?.status} driver onClose={onClose} />
       {!driver ? (
         <div style={{ padding: '40px 24px' }}><p style={{ fontSize: 14, color: 'var(--text-tertiary)' }}>Loading…</p></div>
-      ) : editing ? (
+      ) : (
         <>
           <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12, flex: 1, overflowY: 'auto', minHeight: 0 }}>
             <EditField label="Driver Name"><input value={name} onChange={e => setName(e.target.value)} style={EDIT_INPUT} /></EditField>
@@ -373,21 +432,14 @@ export function DriverDetailPanel({ driverId, onClose, onViewTruck, onUpdated, d
             </EditField>
             <EditField label="Assigned Vehicle">
               <CustomSelect value={assignedTruckId} onChange={setAssignedTruckId} placeholder="None" options={trucks.map(t => ({ value: t.id, label: t.resourceCode }))} />
+              {/* Kept from the old read-only view — the jump to the attached truck. */}
+              <ViewTruckLink truckId={driver.assignedTruckId} onViewTruck={onViewTruck} />
             </EditField>
+            {/* Not editable — the resource code is system-assigned. */}
+            <DetailRow label="ID" value={driver.resourceCode} />
           </div>
-          <EditFooter onCancel={() => setEditing(false)} onSave={save} saving={saving} />
+          <EditFooter onCancel={onClose} onSave={save} saving={saving} />
         </>
-      ) : (
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10, flex: 1, overflowY: 'auto', minHeight: 0 }}>
-          <DetailRow label="ID" value={driver.resourceCode} />
-          <DetailRow label="License" value={driver.licenseClass ?? '—'} />
-          <DetailRow label="Experience" value={driver.experienceYears != null ? `${driver.experienceYears}y` : '—'} />
-          <DetailRow label="Assigned Vehicle" value={driver.assignedTruckId ? (
-            <button type="button" onClick={() => onViewTruck(driver.assignedTruckId!)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 14, fontFamily: 'inherit', fontWeight: 600 }}>
-              <Icon name={ICONS.truck} size={12} />View Truck
-            </button>
-          ) : 'None'} />
-        </div>
       )}
     </DetailSlideOver>
   )

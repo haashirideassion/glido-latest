@@ -15,7 +15,7 @@ const PLANNER_NOTIF_ICON: Record<string, { icon: string; color: string }> = {
 }
 
 const NAV = [
-  { to: '/planner',          label: 'Dashboard', icon: ICONS.home },
+  { to: '/planner/dashboard', label: 'Dashboard', icon: ICONS.home },
   { to: '/planner/vessels',  label: 'Vessels',   icon: ICONS.ship },
   { to: '/planner/trips',    label: 'Trips',     icon: ICONS.truck },
   { to: '/planner/reports',  label: 'Reports',   icon: ICONS.reports },
@@ -57,16 +57,18 @@ export default function PlannerLayout() {
     document.documentElement.style.setProperty('--brand-text', contrastWithBlack >= contrastWithWhite ? '#000000' : '#ffffff')
   }, [tenant?.primaryColor])
 
-  const activeNav = NAV.find(n => pathname === n.to || (n.to !== '/planner' && pathname.startsWith(n.to)))
+  const activeNav = NAV.find(n => pathname === n.to || pathname.startsWith(n.to + '/'))
   // FRD gives the Dashboard and Settings screens longer literal headings than their nav labels
   // ("Planner Dashboard", "Planner Settings") — Vessels/Trips/Reports match their nav label as-is.
   const PAGE_TITLE_OVERRIDE: Record<string, string> = {
-    '/planner':          'Planner Dashboard',
-    '/planner/settings': 'Planner Settings',
+    '/planner':           'Planner Dashboard',
+    '/planner/dashboard': 'Planner Dashboard',
+    '/planner/settings':  'Planner Settings',
   }
   const title = PAGE_TITLE_OVERRIDE[pathname] ?? activeNav?.label ?? 'Dashboard'
   const PAGE_SUBTITLE: Record<string, string> = {
-    '/planner':          'Manage vessels, plan trips and optimize logistics operations',
+    '/planner':           'Manage vessels, plan trips and optimize logistics operations',
+    '/planner/dashboard': 'Manage vessels, plan trips and optimize logistics operations',
     '/planner/vessels':  'Track and manage vessel arrivals',
     '/planner/trips':    'Plan and manage import/export trips',
     '/planner/settings': 'Configure your planner preferences and system settings',

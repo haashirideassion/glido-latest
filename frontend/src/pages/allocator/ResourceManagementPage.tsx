@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
+import { Rego } from '@/components/ui/Rego'
 import {
   getTrucks, getTrailers, getDrivers,
   createTruck, createTrailer, createDriver, assignTruckResources,
@@ -27,7 +27,6 @@ const TABS: Array<{ key: ResourceTab; label: string }> = [
 
 export default function ResourceManagementPage() {
   usePageTitle('Glido | Resources Management')
-  const navigate = useNavigate()
   const perms = useAllocatorPermissions()
   const [tab, setTab] = useState<ResourceTab>('all')
   const [view, setView] = useState<ViewMode>('grid')
@@ -100,12 +99,6 @@ export default function ResourceManagementPage() {
   return (
     <>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
-
-      <button type="button" onClick={() => navigate('/allocator')}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 4px', marginBottom: 12, fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M8.5 2.5L4.5 7l4 4.5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        Back
-      </button>
 
       {/* Tabs + Grid/Table toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -281,6 +274,8 @@ function TruckCard({ truck, trailer, driver, onView, fieldLabel, isDragOver, onD
             <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 15, fontWeight: 700, color: 'var(--brand-color)' }}>
               {truck.resourceCode}
             </span>
+            {/* resourceCode is an internal asset reference; the rego is the plate on the vehicle. */}
+            <Rego value={truck.vehicleRegistration} />
             <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--r-full)', background: 'rgba(37,99,235,0.08)', color: '#2563EB' }}>Truck</span>
           </div>
           <p style={{ fontSize: 13.5, color: 'var(--text-secondary)' }}>{truck.truckType ?? '—'}</p>
@@ -288,6 +283,7 @@ function TruckCard({ truck, trailer, driver, onView, fieldLabel, isDragOver, onD
         <StatusBadge status={truck.status} />
       </div>
       <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', fontSize: 13.5, marginBottom: 10 }}>
+        <InfoCell label="Rego" value={truck.vehicleRegistration ?? '—'} />
         <InfoCell label="Capacity" value={truck.capacity ?? '—'} />
         {fieldLabel && <InfoCell label={fieldLabel} value={truck.customFieldValue ?? '—'} />}
         <InfoCell label="Location" value={truck.location ?? '—'} />
@@ -342,6 +338,7 @@ function DriverCard({ driver, truck, onView, onViewTruck }: { driver: Driver; tr
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
             <DragHandle />
             <span style={{ fontSize: 15, fontWeight: 700, color: '#1C1917' }}>{driver.driverName}</span>
+            <Rego value={truck?.vehicleRegistration} />
             <span style={{ fontSize: 11.5, fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--r-full)', background: 'rgba(34,197,94,0.08)', color: '#16A34A' }}>Driver</span>
           </div>
           <p style={{ fontFamily: 'ui-monospace,monospace', fontSize: 13.5, color: 'var(--text-secondary)' }}>{driver.resourceCode}</p>
@@ -381,11 +378,12 @@ function TruckTable({ trucks, onView, fieldLabel }: { trucks: Truck[]; onView: (
   return (
     <div style={{ overflowX: 'auto', background: '#fff', border: '1px solid rgba(0,0,0,0.07)', borderRadius: 'var(--r-md)', marginBottom: 16 }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr><th style={TH}>ID</th><th style={TH}>Type</th><th style={TH}>Capacity</th>{fieldLabel && <th style={TH}>{fieldLabel}</th>}<th style={TH}>Location</th><th style={TH}>Last Service</th><th style={TH}>Status</th></tr></thead>
+        <thead><tr><th style={TH}>ID</th><th style={TH}>Rego</th><th style={TH}>Type</th><th style={TH}>Capacity</th>{fieldLabel && <th style={TH}>{fieldLabel}</th>}<th style={TH}>Location</th><th style={TH}>Last Service</th><th style={TH}>Status</th></tr></thead>
         <tbody>
           {trucks.map(t => (
             <tr key={t.id}>
               <td style={TD}><button type="button" onClick={() => onView(t.id)} style={{ fontFamily: 'ui-monospace,monospace', color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}>{t.resourceCode}</button></td>
+              <td style={{ ...TD, fontFamily: 'ui-monospace,monospace' }}>{t.vehicleRegistration ?? '—'}</td>
               <td style={TD}>{t.truckType ?? '—'}</td>
               <td style={TD}>{t.capacity ?? '—'}</td>
               {fieldLabel && <td style={TD}>{t.customFieldValue ?? '—'}</td>}
@@ -454,6 +452,7 @@ function DriverTable({ drivers, trucks, onView, onViewTruck }: { drivers: Driver
 
 function AddResourceModal({ onClose, onCreated, trucks, truckFieldLabel, truckFieldType }: { onClose: () => void; onCreated: () => void; trucks: Truck[]; truckFieldLabel?: string | null; truckFieldType?: CustomFieldType }) {
   const [kind, setKind] = useState<'truck' | 'trailer' | 'driver'>('truck')
+  const [rego, setRego] = useState('')
   const [type, setType] = useState('')
   const [capacity, setCapacity] = useState('')
   const [location, setLocation] = useState('')
@@ -469,7 +468,7 @@ function AddResourceModal({ onClose, onCreated, trucks, truckFieldLabel, truckFi
     setSubmitting(true)
     try {
       if (kind === 'truck') {
-        const result = await createTruck({ truck_type: type.trim() || undefined, capacity: capacity.trim() || undefined, location: location.trim() || undefined, custom_field_value: customFieldValue.trim() || undefined })
+        const result = await createTruck({ vehicle_registration: rego.trim() || undefined, truck_type: type.trim() || undefined, capacity: capacity.trim() || undefined, location: location.trim() || undefined, custom_field_value: customFieldValue.trim() || undefined })
         if (!result) { toast('Could not add truck. Please try again.', 'error'); return }
         toast('Truck added', 'success')
       } else if (kind === 'trailer') {
@@ -508,6 +507,7 @@ function AddResourceModal({ onClose, onCreated, trucks, truckFieldLabel, truckFi
 
           {kind === 'truck' && (
             <>
+              <Field label="Rego"><input value={rego} onChange={e => setRego(e.target.value)} placeholder="ABC-123" style={INPUT} /></Field>
               <Field label="Type"><input value={type} onChange={e => setType(e.target.value)} placeholder="Semi-Trailer" style={INPUT} /></Field>
               <Field label="Capacity"><input value={capacity} onChange={e => setCapacity(e.target.value)} placeholder="40T" style={INPUT} /></Field>
               {truckFieldLabel && (

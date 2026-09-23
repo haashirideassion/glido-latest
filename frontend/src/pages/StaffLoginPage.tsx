@@ -106,11 +106,18 @@ export default function StaffLoginPage() {
         return
       }
       if (role === 'allocator') {
-        // Settings → General → "Default View" (FRD 2.4.3.4) — the selected view is shown on
-        // every subsequent login, so route straight there instead of the tile dashboard.
+        // Two FRD clauses meet here: 2.4.3 says login lands on the Resource Allocator Dashboard,
+        // 2.4.3.4 says Settings → General → "Default View" is applied on every login. They only
+        // both hold if the dashboard is itself a selectable Default View — so it is, and it is
+        // the default. Anything unrecognised also falls through to the dashboard.
         const settings = await getAllocatorSettings().catch(() => null)
         const view = settings?.defaultView
-        navigate(view === 'trips' ? '/allocator/trips' : view === 'maintenance' ? '/allocator/maintenance' : '/allocator/resources')
+        navigate(
+          view === 'trips'       ? '/allocator/trips' :
+          view === 'maintenance' ? '/allocator/maintenance' :
+          view === 'resources'   ? '/allocator/resources' :
+          '/allocator'
+        )
         return
       }
       if (role === 'compliance_officer' || role === 'compliance_admin') {

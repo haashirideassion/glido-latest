@@ -48,6 +48,8 @@ export interface ServiceRequestWizardState {
 
 export type ServiceRequestWizardAction =
   | { type: 'SET'; field: keyof ServiceRequestWizardState; value: ServiceRequestWizardState[keyof ServiceRequestWizardState] }
+  // Auto-advance from a tile step, but only if the user is still standing on it — see the reducer.
+  | { type: 'ADVANCE_FROM'; from: number; to: number }
   | { type: 'TOGGLE_SERVICE'; serviceKey: ServiceKey; subType?: StoreSubType; storeDetails?: StoreDetailEntry[] }
   | { type: 'REMOVE_SERVICE'; serviceKey: ServiceKey }
   | { type: 'ADD_DOCUMENT'; doc: RequestDocumentFile }
@@ -82,6 +84,13 @@ function generateClientRequestId(category: ServiceCategory | null): string {
 function reducer(state: ServiceRequestWizardState, action: ServiceRequestWizardAction): ServiceRequestWizardState {
   switch (action.type) {
     case 'SET': {
+      // Switching Import <-> Export invalidates any Request ID already reserved: the prefix is
+      // part of the id (I vs E), and the server rejects a mismatched one and silently substitutes
+      // its own. Without this, going back to Service Type after reaching Confirmation left the
+      // user looking at an id that is not the one their request ends up with.
+      if (action.field === 'serviceCategory' && action.value !== state.serviceCategory) {
+        return { ...state, serviceCategory: action.value as ServiceCategory | null, pendingRequestId: null }
+      }
       // Reserve the Request ID the moment the user reaches Confirmation, so it can be displayed
       // there per FR 1.1.4.2 — generated once and reused for the actual submission.
       if (action.field === 'step' && action.value === 5 && !state.pendingRequestId) {
@@ -89,6 +98,11 @@ function reducer(state: ServiceRequestWizardState, action: ServiceRequestWizardA
       }
       return { ...state, [action.field]: action.value }
     }
+    case 'ADVANCE_FROM':
+      // Mode and Service Type auto-advance on a short delay so the selection animation is visible.
+      // If the user hits Back inside that window the pending timer must not yank them forward
+      // again, so the move only lands while they are still on the step that scheduled it.
+      return state.step === action.from ? { ...state, step: action.to } : state
     case 'TOGGLE_SERVICE': {
       const exists = state.selectedServices.find(s => s.serviceKey === action.serviceKey)
       if (exists) {

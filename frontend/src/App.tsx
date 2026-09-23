@@ -36,13 +36,17 @@ import CustomerPortalLayout  from './layouts/CustomerPortalLayout'
 import CustomerDashboardPage    from './pages/customer/CustomerDashboardPage'
 import MyRequestsPage           from './pages/customer/MyRequestsPage'
 import NewServiceRequestPage    from './pages/customer/NewServiceRequestPage'
+import RequestDetailPage        from './pages/customer/RequestDetailPage'
+import EditRequestPage          from './pages/customer/EditRequestPage'
 import CustomerReportsPage      from './pages/customer/CustomerReportsPage'
 import CustomerSettingsPage     from './pages/customer/CustomerSettingsPage'
 import PlannerGuard          from './components/PlannerGuard'
 import PlannerLayout         from './layouts/PlannerLayout'
+import PlannerLanding           from './pages/planner/PlannerLanding'
 import PlannerDashboardPage     from './pages/planner/PlannerDashboardPage'
 import VesselsPage               from './pages/planner/VesselsPage'
 import TripsPage                 from './pages/planner/TripsPage'
+import TripDetailPage            from './pages/planner/TripDetailPage'
 import PlannerSettingsPage       from './pages/planner/PlannerSettingsPage'
 import PlannerReportsPage        from './pages/planner/PlannerReportsPage'
 import AllocatorGuard        from './components/AllocatorGuard'
@@ -141,6 +145,11 @@ export const router = createBrowserRouter([
           { index: true,           element: <CustomerDashboardPage /> },
           { path: 'requests',      element: <MyRequestsPage /> },
           { path: 'requests/new',  element: <NewServiceRequestPage /> },
+          // Dedicated full screen rather than the docked panel the other modules use. Declared
+          // after 'requests/new' for readability — React Router matches the static segment first
+          // either way, so /requests/new can never be swallowed by :id.
+          { path: 'requests/:id',  element: <RequestDetailPage /> },
+          { path: 'requests/:id/edit', element: <EditRequestPage /> },
           { path: 'reports',       element: <CustomerReportsPage /> },
           { path: 'settings',      element: <CustomerSettingsPage /> },
         ],
@@ -155,9 +164,15 @@ export const router = createBrowserRouter([
       {
         element: <PlannerLayout />,
         children: [
-          { index: true,      element: <PlannerDashboardPage /> },
+          // /planner is a resolver, not a screen: it forwards to whatever the planner chose as
+          // their Default Landing Page (FRD 2.4.2.3). The dashboard keeps its own path so the
+          // nav can link straight to it and it stays reachable when that preference points
+          // somewhere else.
+          { index: true,       element: <PlannerLanding /> },
+          { path: 'dashboard', element: <PlannerDashboardPage /> },
           { path: 'vessels',  element: <VesselsPage /> },
           { path: 'trips',    element: <TripsPage /> },
+          { path: 'trips/:id', element: <TripDetailPage /> },
           { path: 'settings', element: <PlannerSettingsPage /> },
           { path: 'reports',  element: <PlannerReportsPage /> },
         ],

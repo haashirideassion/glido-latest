@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { Icon, ICONS } from '@/lib/Icon'
 import { getServiceRequest } from '@/lib/db/service-requests'
-import type { ServiceRequest, ServiceKey, RequestStage, StoreDetailEntry } from '@/data/types'
+import type { ServiceRequest, ServiceKey, RequestStage, ServiceStatus, StoreDetailEntry } from '@/data/types'
 
 function parseStoreEntries(details: Record<string, string> | undefined): StoreDetailEntry[] {
   if (!details?.entries) return []
@@ -14,8 +14,15 @@ function parseStoreEntries(details: Record<string, string> | undefined): StoreDe
   }
 }
 
+// Request-level progress timeline (service_requests.stage) — the shipment's journey, shown once
+// at the top of the panel.
 const STAGES: RequestStage[] = ['received', 'in_transit', 'arrived', 'completed']
 const STAGE_LABEL: Record<RequestStage, string> = { received: 'Received', in_transit: 'In Transit', arrived: 'Arrived', completed: 'Completed' }
+
+// Each service ALSO carries its own lifecycle (service_request_services.status), rendered inside
+// its own card — a request with three services can legitimately have one completed, one running
+// and one not started, which the request-level stage above cannot express.
+const SERVICE_STAGES: ServiceStatus[] = ['pending', 'in_progress', 'completed']
 
 const SERVICE_META: Record<ServiceKey, { label: string; icon: string; description: string; fields: string[]; duration: string }> = {
   fcl_collection_terminal: { label: 'FCL run into Terminal',        icon: ICONS.truck,      description: 'Full container load collection from port terminal', fields: ['Terminal', 'Slot', 'Time Window', 'Contact'], duration: '2-4 hours' },
@@ -147,10 +154,11 @@ export function RequestDetailsPanel({ requestId, docked, onClose }: Props) {
                         </div>
                         <span style={{ ...statusStyle, padding: '3px 9px', borderRadius: 'var(--r-full)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>{STATUS_LABEL[svc.status]}</span>
                       </div>
+
+                      {/* This service's own timeline */}
+                      <ServiceTimeline status={svc.status} />
+
                       <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 8px' }}>{meta.description}</p>
-                      {svc.status === 'in_progress' && (
-                        <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--brand-color)', margin: '0 0 8px' }}>Currently in progress</p>
-                      )}
                       {parseStoreEntries(svc.details).length > 0 && (
                         <div style={{ background: 'rgba(0,0,0,0.03)', borderRadius: 'var(--r-sm)', padding: '8px 10px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {parseStoreEntries(svc.details).map((entry, i) => (
@@ -190,6 +198,40 @@ export function RequestDetailsPanel({ requestId, docked, onClose }: Props) {
       </motion.div>
       <style>{`@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.5 } }`}</style>
     </>
+  )
+}
+
+// Compact three-step timeline scoped to a single service. Deliberately smaller than the old
+// request-level stepper (8px dots, 10px labels) so several can sit inside stacked cards without
+// the panel turning into a wall of steppers.
+function ServiceTimeline({ status }: { status: ServiceStatus }) {
+  const idx = SERVICE_STAGES.indexOf(status)
+  const last = SERVICE_STAGES.length - 1
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', margin: '2px 0 12px' }}>
+      {SERVICE_STAGES.map((s, i) => {
+        const done = i <= idx
+        return (
+          <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < last ? 1 : undefined }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                background: done ? 'var(--brand-color)' : 'rgba(0,0,0,0.14)',
+              }} />
+              <span style={{
+                fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap',
+                color: done ? '#1C1917' : 'var(--text-tertiary)',
+              }}>
+                {STATUS_LABEL[s]}
+              </span>
+            </div>
+            {i < last && (
+              <div style={{ flex: 1, height: 2, margin: '0 4px 14px', background: i < idx ? 'var(--brand-color)' : 'rgba(0,0,0,0.08)' }} />
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 

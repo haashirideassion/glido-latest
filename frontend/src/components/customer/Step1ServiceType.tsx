@@ -13,11 +13,13 @@ const OPTIONS: Array<{ value: ServiceCategory; label: string; description: strin
 export function Step1ServiceType() {
   const { state, dispatch } = useServiceRequestWizard()
 
-  // FR 1.1.2 — selecting a service type auto-advances to Service Selection.
+  // FR 1.1.2 — selecting a service type auto-advances to Service Selection. The short delay lets
+  // the tile's selected state register first; ADVANCE_FROM makes the move a no-op if the user has
+  // already left this step (hit Back) before the timer fires.
   const selectCategory = (value: ServiceCategory) => {
     dispatch({ type: 'SET', field: 'serviceCategory', value })
     setTimeout(() => {
-      dispatch({ type: 'SET', field: 'step', value: 3 })
+      dispatch({ type: 'ADVANCE_FROM', from: 2, to: 3 })
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }, 280)
   }

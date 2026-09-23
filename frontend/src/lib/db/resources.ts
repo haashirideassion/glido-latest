@@ -5,7 +5,8 @@ const BASE = '/api/resources'
 
 function rowToTruck(row: any): Truck {
   return {
-    id: row.id, resourceCode: row.resource_code, truckType: row.truck_type ?? undefined,
+    id: row.id, resourceCode: row.resource_code, vehicleRegistration: row.vehicle_registration ?? undefined,
+    truckType: row.truck_type ?? undefined,
     capacity: row.capacity ?? undefined, location: row.location ?? undefined, status: row.status,
     lastServiceDate: row.last_service_date ?? undefined, customFieldValue: row.custom_field_value ?? undefined,
     assignedTrailer: row.assignedTrailer ? rowToTrailer(row.assignedTrailer) : (row.assignedTrailer === null ? null : undefined),
@@ -59,7 +60,7 @@ export async function getTruck(idOrCode: string): Promise<Truck | null> {
   const res = await fetcher(`${BASE}/trucks/${idOrCode}`)
   return res?.data ? rowToTruck(res.data) : null
 }
-export interface CreateTruckPayload { resource_code?: string; truck_type?: string; capacity?: string; location?: string; last_service_date?: string; custom_field_value?: string }
+export interface CreateTruckPayload { resource_code?: string; vehicle_registration?: string; truck_type?: string; capacity?: string; location?: string; last_service_date?: string; custom_field_value?: string }
 export async function createTruck(payload: CreateTruckPayload): Promise<Truck | null> {
   const res = await postFetcher(`${BASE}/trucks`, payload)
   return res?.data ? rowToTruck(res.data) : null
@@ -68,7 +69,7 @@ export async function setTruckStatus(id: string, status: ResourceStatus): Promis
   const res = await patchFetcher(`${BASE}/trucks/${id}/status`, { status })
   return res?.data ? rowToTruck(res.data) : null
 }
-export interface UpdateTruckPayload { truck_type?: string; capacity?: string; location?: string; status?: ResourceStatus; last_service_date?: string; custom_field_value?: string }
+export interface UpdateTruckPayload { vehicle_registration?: string; truck_type?: string; capacity?: string; location?: string; status?: ResourceStatus; last_service_date?: string; custom_field_value?: string }
 export async function updateTruck(id: string, payload: UpdateTruckPayload): Promise<Truck | null> {
   const res = await patchFetcher(`${BASE}/trucks/${id}`, payload)
   return res?.data ? rowToTruck(res.data) : null

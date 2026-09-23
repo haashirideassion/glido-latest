@@ -13,8 +13,9 @@ import packageImg from '@/assets/package.png'
 
 interface ServiceDef { key: ServiceKey; label: string; icon: string; image?: string }
 
-// FR 1.1.4.2 "Selected Services" list, matched 1:1 — this is the fixed tile set (no conditional
-// Dehire trigger; Dehire is always one of the 8 options here).
+// FR 1.1.4.2 "Selected Services" list, matched 1:1. Note the FRD names these tiles differently in
+// FR 1.1.2.2 ("FCL Delivery", "Unpack", "Dehire") than in FR 1.1.4.2 ("FCL collection", "Pack",
+// "Empty container collection"); the 1.1.4.2 naming is what ships.
 const BASE_SERVICES: ServiceDef[] = [
   { key: 'fcl_collection_terminal', label: 'FCL run into Terminal',        icon: ICONS.truck,     image: collectionImg },
   { key: 'fcl_storage',             label: 'FCL Storage',                  icon: ICONS.container, image: storeImg },
@@ -27,6 +28,13 @@ const BASE_SERVICES: ServiceDef[] = [
 ]
 
 const STORAGE_KEYS: ServiceKey[] = ['fcl_storage', 'lcl_storage']
+
+// FR 1.1.2.2 — "When the user clicks on the service selection 'FCL Delivery' and/or 'Unpack' then
+// the user will be displayed with another service selection tile card – 'Dehire'." In this naming
+// FCL Delivery is fcl_collection, Unpack is unpack, and Dehire is dehire. The tile stays hidden
+// until one of its triggers is picked, and deselects itself if every trigger is removed.
+const DEHIRE_KEY: ServiceKey = 'dehire'
+const DEHIRE_TRIGGERS: ServiceKey[] = ['fcl_collection', 'unpack']
 
 // Fallback shown only if the CFS admin hasn't configured any Store Types yet (Settings → Store Types).
 const FALLBACK_STORE_SUBTYPES: Array<{ value: StoreSubType; label: string }> = [
@@ -51,10 +59,22 @@ export function Step2ServiceSelection() {
     }).catch(() => {})
   }, [])
 
+  const selectedKeys = state.selectedServices.map(s => s.serviceKey)
+  const dehireUnlocked = DEHIRE_TRIGGERS.some(k => selectedKeys.includes(k))
+
+  // Deselecting every trigger has to take Dehire with it — otherwise a request keeps a service the
+  // customer can no longer see, let alone remove.
+  useEffect(() => {
+    if (!dehireUnlocked && selectedKeys.includes(DEHIRE_KEY)) {
+      dispatch({ type: 'REMOVE_SERVICE', serviceKey: DEHIRE_KEY })
+    }
+  }, [dehireUnlocked]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const services = useMemo(() => {
-    if (!search.trim()) return BASE_SERVICES
-    return BASE_SERVICES.filter(s => s.label.toLowerCase().includes(search.trim().toLowerCase()))
-  }, [search])
+    const visible = dehireUnlocked ? BASE_SERVICES : BASE_SERVICES.filter(s => s.key !== DEHIRE_KEY)
+    if (!search.trim()) return visible
+    return visible.filter(s => s.label.toLowerCase().includes(search.trim().toLowerCase()))
+  }, [search, dehireUnlocked])
 
   const selectedMap = new Map(state.selectedServices.map(s => [s.serviceKey, s]))
 
@@ -183,8 +203,11 @@ export function Step2ServiceSelection() {
                           <input type="text" placeholder="Please specify" value={entry?.note ?? ''} onChange={e => updateType(st.label, { note: e.target.value })}
                             className="wizard-field" style={{ fontSize: 13.5 }} />
                         ) : (
+                          /* resize:none — the vertical-resize affordance renders as a spinner-like
+                             arrow pair in the corner and reads as a number stepper. Height is set
+                             explicitly because .wizard-field pins 40px, which makes rows={2} a no-op. */
                           <textarea placeholder="Note (optional)" value={entry?.note ?? ''} onChange={e => updateType(st.label, { note: e.target.value })}
-                            className="wizard-field" rows={2} style={{ fontSize: 13.5, resize: 'vertical' }} />
+                            className="wizard-field" rows={2} style={{ fontSize: 13.5, resize: 'none', height: 64, paddingTop: 9, paddingBottom: 9, lineHeight: 1.45 }} />
                         )}
                       </div>
                     )}

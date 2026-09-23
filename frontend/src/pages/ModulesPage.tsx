@@ -90,6 +90,14 @@ const MODULES = [
     iconBg:      'rgba(124,58,237,0.09)',
     iconFg:      '#7C3AED',
   },
+  {
+    label:       'Billing & Invoicing',
+    route:       '/login?role=billing',
+    description: 'Raise invoices, record payments and track receivables',
+    icon:        ICONS.walletMoney,
+    iconBg:      'rgba(13,148,136,0.09)',
+    iconFg:      '#0D9488',
+  },
 ]
 
 export default function ModulesPage() {
