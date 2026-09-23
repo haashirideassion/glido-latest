@@ -13,7 +13,7 @@ import { toast } from 'sonner'
  */
 
 const SESSION_KEY = 'glido_auth_token'
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
 
 const inFlightRequests = new Map<string, Promise<any>>()
 
@@ -88,6 +88,7 @@ export async function apiClient<T>(
         !isAuthMeEndpoint &&
         !window.location.pathname.startsWith('/login') &&
         !window.location.pathname.startsWith('/visitor-login') &&
+        !window.location.pathname.startsWith('/customer-login') &&
         !window.location.pathname.startsWith('/kiosk')
       ) {
         window.location.href = '/login'

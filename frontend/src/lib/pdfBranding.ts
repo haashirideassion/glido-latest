@@ -62,8 +62,8 @@ export async function loadLogoDataUrl(src: string): Promise<{ dataUrl: string; w
       // to the bucket's CORS policy and can silently fail even when the signed URL itself
       // is valid (an <img src=presignedUrl> still renders fine, since images aren't
       // CORS-gated for display — only a raw fetch() for bytes is).
-      const { getToken } = await import('./api-client')
-      const res = await fetch(`/api/uploads/proxy?key=${encodeURIComponent(src)}`, {
+      const { getToken, API_BASE } = await import('./api-client')
+      const res = await fetch(`${API_BASE}/api/uploads/proxy?key=${encodeURIComponent(src)}`, {
         headers: { Authorization: `Bearer ${getToken() ?? ''}` },
       })
       if (!res.ok) return null
@@ -79,7 +79,8 @@ export async function loadLogoDataUrl(src: string): Promise<{ dataUrl: string; w
 // GET /api/uploads/logo-proxy in backend/src/routes/uploads.ts for why that's safe here).
 export async function loadPublicTenantLogo(tenantId: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
   try {
-    const res = await fetch(`/api/uploads/logo-proxy?tenantId=${encodeURIComponent(tenantId)}`)
+    const { API_BASE } = await import('./api-client')
+    const res = await fetch(`${API_BASE}/api/uploads/logo-proxy?tenantId=${encodeURIComponent(tenantId)}`)
     if (!res.ok) return null
     const blob = await res.blob()
     return await blobToLogoData(blob)

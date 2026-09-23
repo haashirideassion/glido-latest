@@ -23,6 +23,11 @@ const NAV = [
   ]},
   { to: '/reception/carriers',   label: 'Carriers',   icon: ICONS.truck,    badge: false },
   { to: '/reception/broadcast',  label: 'Broadcast',  icon: ICONS.email,    badge: false },
+  // Billing is its own module with its own layout, so this leaves Reception
+  // entirely rather than nesting. Reception staff land on the surfaces the FRS
+  // puts in front of them (the unbilled queue, dwell monitor, manual charges);
+  // the finance-only screens beyond those are capability-gated, not role-gated.
+  { to: '/billing',              label: 'Billing',    icon: ICONS.walletMoney, badge: false },
   { to: '/reception/settings',   label: 'Settings',   icon: ICONS.settings, badge: false, children: [
     { to: '/reception/settings#general',          label: 'General',        icon: ICONS.info },
     { to: '/reception/settings#working-hours',    label: 'Working Hours',  icon: ICONS.clock },
@@ -30,6 +35,7 @@ const NAV = [
     { to: '/reception/settings#pricing',          label: 'Pricing',        icon: ICONS.percent },
     { to: '/reception/settings#payment',          label: 'Payment',        icon: ICONS.walletMoney },
     { to: '/reception/settings#doc-requirements', label: 'Documents',      icon: ICONS.document },
+    { to: '/reception/settings#store-types',      label: 'Store Types',    icon: ICONS.container },
     { to: '/reception/settings#user-management',  label: 'Team',           icon: ICONS.users },
     { to: '/reception/settings#visiting-persons', label: 'Visiting Persons', icon: ICONS.userCheck },
   ]},

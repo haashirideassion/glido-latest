@@ -6,6 +6,7 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { GlidoLogo } from '@/lib/GlidoLogo'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from '@/lib/toast'
+import { getAllocatorSettings } from '@/lib/db/allocator-settings'
 import staffLoginBgImg from '@/assets/staff-login-bg.jpg'
 
 const FIELD: React.CSSProperties = {
@@ -27,11 +28,53 @@ const blur = (e: React.FocusEvent<HTMLInputElement>) => {
   e.target.style.boxShadow   = 'none'
 }
 
+type RoleView = 'reception' | 'super_admin' | 'planner' | 'allocator' | 'compliance'
+
+const ROLE_COPY: Record<RoleView, { title: string; subtitle: string; placeholder: string; cta: string; tabLabel: string }> = {
+  reception: {
+    title: 'Reception Staff Login',
+    subtitle: "Enter your credentials to access the reception dashboard. Contact your admin if you don't have access.",
+    placeholder: 'you@cfs.com.au',
+    cta: 'Sign in to Reception →',
+    tabLabel: 'Reception Staff',
+  },
+  super_admin: {
+    title: 'Super Admin Login',
+    subtitle: 'Enter your credentials to access the system administration control panel.',
+    placeholder: 'admin@cfs.com.au',
+    cta: 'Sign in to Admin Dashboard →',
+    tabLabel: 'Super Admin',
+  },
+  planner: {
+    title: 'Planner Login',
+    subtitle: 'Enter your credentials to access the planner dashboard — vessels, trips and logistics.',
+    placeholder: 'planner@cfs.com.au',
+    cta: 'Sign in to Planner →',
+    tabLabel: 'Planner',
+  },
+  allocator: {
+    title: 'Allocator Login',
+    subtitle: 'Enter your credentials to access the resource allocator dashboard — resources, trips and maintenance.',
+    placeholder: 'allocator@cfs.com.au',
+    cta: 'Sign in to Allocator →',
+    tabLabel: 'Allocator',
+  },
+  compliance: {
+    title: 'Compliance Login',
+    subtitle: 'Enter your credentials to access the compliance dashboard — activities, inspections and regulatory requirements.',
+    placeholder: 'compliance@cfs.com.au',
+    cta: 'Sign in to Compliance →',
+    tabLabel: 'Compliance',
+  },
+}
+
 export default function StaffLoginPage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const isSuperAdminView = searchParams.get('role') === 'super_admin'
+  const roleParam = searchParams.get('role')
+  const roleView: RoleView = roleParam === 'super_admin' ? 'super_admin' : roleParam === 'planner' ? 'planner' : roleParam === 'allocator' ? 'allocator' : roleParam === 'compliance' ? 'compliance' : 'reception'
+  const copy = ROLE_COPY[roleView]
 
-  usePageTitle(isSuperAdminView ? 'Glido | Super Admin Login' : 'Glido | Staff Login')
+  usePageTitle(`Glido | ${copy.title}`)
   const navigate = useNavigate()
   const { login } = useAuth()
   const reduce = useReducedMotion()
@@ -41,11 +84,11 @@ export default function StaffLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
-  const handleToggleView = (isSuper: boolean) => {
-    if (isSuper) {
-      setSearchParams({ role: 'super_admin' }, { replace: true })
-    } else {
+  const handleToggleView = (view: RoleView) => {
+    if (view === 'reception') {
       setSearchParams({}, { replace: true })
+    } else {
+      setSearchParams({ role: view }, { replace: true })
     }
   }
 
@@ -62,7 +105,26 @@ export default function StaffLoginPage() {
         toast(error ?? 'Sign in failed. Please try again.', 'error')
         return
       }
-      navigate(role === 'super_admin' ? '/superadmin' : '/reception')
+      if (role === 'allocator') {
+        // Two FRD clauses meet here: 2.4.3 says login lands on the Resource Allocator Dashboard,
+        // 2.4.3.4 says Settings → General → "Default View" is applied on every login. They only
+        // both hold if the dashboard is itself a selectable Default View — so it is, and it is
+        // the default. Anything unrecognised also falls through to the dashboard.
+        const settings = await getAllocatorSettings().catch(() => null)
+        const view = settings?.defaultView
+        navigate(
+          view === 'trips'       ? '/allocator/trips' :
+          view === 'maintenance' ? '/allocator/maintenance' :
+          view === 'resources'   ? '/allocator/resources' :
+          '/allocator'
+        )
+        return
+      }
+      if (role === 'compliance_officer' || role === 'compliance_admin') {
+        navigate('/compliance')
+        return
+      }
+      navigate(role === 'super_admin' ? '/superadmin' : role === 'customer' ? '/customer' : role === 'planner' ? '/planner' : '/reception')
     } catch (err: any) {
       toast(err?.message ?? 'Sign in failed. Please try again.', 'error')
     } finally {
@@ -107,61 +169,48 @@ export default function StaffLoginPage() {
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             <h1 style={{ fontSize: 20, fontWeight: 700, color: '#fff', letterSpacing: '-0.03em', marginBottom: 6 }}>
-              {isSuperAdminView ? 'Super Admin Login' : 'Reception Staff Login'}
+              {copy.title}
             </h1>
             <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>
-              {isSuperAdminView 
-                ? 'Enter your credentials to access the system administration control panel.' 
-                : 'Enter your credentials to access the reception dashboard. Contact your admin if you don\'t have access.'}
+              {copy.subtitle}
             </p>
           </div>
 
-          {/* Role Switcher Tab */}
-          <div style={{
-            display: 'flex',
-            background: 'rgba(0, 0, 0, 0.25)',
-            padding: 4,
-            borderRadius: 'var(--r-md)',
-            marginBottom: 24,
-            border: '1px solid rgba(255, 255, 255, 0.05)'
-          }}>
-            <button
-              type="button"
-              onClick={() => handleToggleView(false)}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                fontSize: 13,
-                fontWeight: 600,
-                color: !isSuperAdminView ? '#fff' : 'rgba(255,255,255,0.45)',
-                background: !isSuperAdminView ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                border: 'none',
-                borderRadius: 'calc(var(--r-md) - 2px)',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              Reception Staff
-            </button>
-            <button
-              type="button"
-              onClick={() => handleToggleView(true)}
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                fontSize: 13,
-                fontWeight: 600,
-                color: isSuperAdminView ? '#fff' : 'rgba(255,255,255,0.45)',
-                background: isSuperAdminView ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                border: 'none',
-                borderRadius: 'calc(var(--r-md) - 2px)',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              Super Admin
-            </button>
-          </div>
+          {/* Role Switcher Tab — Planner/Allocator are URL-driven only (no manual picker);
+              Reception Staff and Super Admin can still toggle between each other. */}
+          {(roleView === 'reception' || roleView === 'super_admin') && (
+            <div style={{
+              display: 'flex',
+              background: 'rgba(0, 0, 0, 0.25)',
+              padding: 4,
+              borderRadius: 'var(--r-md)',
+              marginBottom: 24,
+              border: '1px solid rgba(255, 255, 255, 0.05)'
+            }}>
+              {(['reception', 'super_admin'] as RoleView[]).map(view => (
+                <button
+                  key={view}
+                  type="button"
+                  onClick={() => handleToggleView(view)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 10px',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: roleView === view ? '#fff' : 'rgba(255,255,255,0.45)',
+                    background: roleView === view ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+                    border: 'none',
+                    borderRadius: 'calc(var(--r-md) - 2px)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {ROLE_COPY[view].tabLabel}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -169,7 +218,7 @@ export default function StaffLoginPage() {
               <label style={LABEL}>Email</label>
               <input
                 type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder={isSuperAdminView ? "admin@cfs.com.au" : "you@cfs.com.au"} required
+                placeholder={copy.placeholder} required
                 style={FIELD} onFocus={focus} onBlur={blur}
               />
             </div>
@@ -191,7 +240,7 @@ export default function StaffLoginPage() {
               disabled={isSubmitting}
               style={{ width: '100%', padding: '13px 20px', fontSize: 15, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-full)', cursor: isSubmitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 2px 8px rgba(var(--brand-rgb),0.35)', opacity: isSubmitting ? 0.7 : 1, transition: 'opacity 0.15s' }}
             >
-              {isSubmitting ? 'Signing in…' : isSuperAdminView ? 'Sign in to Admin Dashboard →' : 'Sign in to Reception →'}
+              {isSubmitting ? 'Signing in…' : copy.cta}
             </button>
           </form>
 

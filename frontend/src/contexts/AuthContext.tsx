@@ -7,7 +7,7 @@ import { clearAllClientState } from '@/lib/state-cleanup'
  * Bearer-only — no cookies anywhere.
  */
 
-export type UserRole = 'reception_admin' | 'reception_staff' | 'visitor_registered' | 'super_admin'
+export type UserRole = 'reception_admin' | 'reception_staff' | 'visitor_registered' | 'super_admin' | 'customer' | 'planner' | 'allocator' | 'billing' | 'compliance_officer' | 'compliance_admin'
 
 interface User {
   id: string
@@ -134,9 +134,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const logout = () => {
+    const wasCustomer = user?.role === 'customer'
     clearAllClientState()
     setUser(null)
-    window.location.href = '/login'
+    window.location.href = wasCustomer ? '/customer-login' : '/login'
   }
 
   return (
@@ -170,4 +171,8 @@ export function isReceptionRole(role: string) {
 
 export function isVisitorRole(role: string) {
   return role === 'visitor_registered' || role === 'visitor'
+}
+
+export function isCustomerRole(role: string) {
+  return role === 'customer'
 }

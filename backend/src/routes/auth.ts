@@ -51,7 +51,7 @@ router.post('/login', async (req: Request, res: Response) => {
 router.get('/me', requireAuth, async (req: Request, res: Response) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, email, name, role, phone, company_name FROM app_users WHERE id = $1',
+      'SELECT id, email, name, role, phone, company_name, default_requests_tab FROM app_users WHERE id = $1',
       [req.user!.id]
     )
     if (!rows[0]) return res.status(404).json({ success: false, error: { message: 'Not found' } })
@@ -62,26 +62,59 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
   }
 })
 
-// PATCH /api/v2/auth/me — self-service profile update (name, phone, company)
+// PATCH /api/v2/auth/me — self-service profile update (name, phone, company, email)
 router.patch('/me', requireAuth, async (req: Request, res: Response) => {
-  const { name, phone, company_name } = req.body
+  const { name, phone, company_name, email, default_requests_tab } = req.body
+  if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ success: false, error: { message: 'Invalid email format' } })
+  }
+  if (default_requests_tab !== undefined && !['import', 'export'].includes(default_requests_tab)) {
+    return res.status(400).json({ success: false, error: { message: 'default_requests_tab must be import or export' } })
+  }
   const sets: string[] = []
   const params: unknown[] = []
   let i = 1
-  if (name !== undefined)         { sets.push(`name = $${i++}`);         params.push(name) }
-  if (phone !== undefined)        { sets.push(`phone = $${i++}`);        params.push(phone) }
-  if (company_name !== undefined) { sets.push(`company_name = $${i++}`); params.push(company_name) }
+  if (name !== undefined)                 { sets.push(`name = $${i++}`);                 params.push(name) }
+  if (phone !== undefined)                { sets.push(`phone = $${i++}`);                params.push(phone) }
+  if (company_name !== undefined)         { sets.push(`company_name = $${i++}`);         params.push(company_name) }
+  if (email !== undefined)                { sets.push(`email = $${i++}`);                params.push(email) }
+  if (default_requests_tab !== undefined) { sets.push(`default_requests_tab = $${i++}`); params.push(default_requests_tab) }
   if (!sets.length) return res.status(400).json({ success: false, error: { message: 'No fields to update' } })
   sets.push(`updated_at = NOW()`)
   params.push(req.user!.id)
   try {
     const { rows } = await pool.query(
-      `UPDATE app_users SET ${sets.join(', ')} WHERE id = $${i} RETURNING id, email, name, role, phone, company_name`,
+      `UPDATE app_users SET ${sets.join(', ')} WHERE id = $${i} RETURNING id, email, name, role, phone, company_name, default_requests_tab`,
       params
     )
     return res.json({ success: true, data: rows[0] })
-  } catch (err) {
+  } catch (err: any) {
+    if (err.code === '23505') return res.status(409).json({ success: false, error: { message: 'This email is already in use' } })
     console.error('[auth/me PATCH]', err)
+    return res.status(500).json({ success: false, error: { message: 'Server error' } })
+  }
+})
+
+// POST /api/v2/auth/change-password — requires the current password (FRD 2.4.3.4 Account tab)
+router.post('/change-password', requireAuth, async (req: Request, res: Response) => {
+  const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string }
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ success: false, error: { message: 'Current password and new password are required' } })
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ success: false, error: { message: 'New password must be at least 8 characters' } })
+  }
+  try {
+    const { rows } = await pool.query('SELECT password_hash FROM app_users WHERE id = $1', [req.user!.id])
+    const user = rows[0]
+    if (!user?.password_hash || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+      return res.status(401).json({ success: false, error: { message: 'Current password is incorrect' } })
+    }
+    const hash = await bcrypt.hash(newPassword, 12)
+    await pool.query('UPDATE app_users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hash, req.user!.id])
+    return res.json({ success: true })
+  } catch (err) {
+    console.error('[auth/change-password POST]', err)
     return res.status(500).json({ success: false, error: { message: 'Server error' } })
   }
 })

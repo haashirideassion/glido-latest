@@ -58,6 +58,46 @@ const MODULES = [
     iconBg:      'rgba(124,58,237,0.09)',
     iconFg:      '#7C3AED',
   },
+  {
+    label:       'Customer Portal',
+    route:       '/customer-login',
+    description: 'Submit and track import/export service requests',
+    icon:        ICONS.bookings,
+    iconBg:      'rgba(99,102,241,0.09)',
+    iconFg:      '#6366F1',
+  },
+  {
+    label:       'Planner',
+    route:       '/login?role=planner',
+    description: 'Manage vessels, plan trips and optimize logistics',
+    icon:        ICONS.ship,
+    iconBg:      'rgba(37,99,235,0.09)',
+    iconFg:      '#2563EB',
+  },
+  {
+    label:       'Resource Allocator',
+    route:       '/login?role=allocator',
+    description: 'Allocate resources, assign trips and manage maintenance',
+    icon:        ICONS.truck,
+    iconBg:      'rgba(234,88,12,0.09)',
+    iconFg:      '#EA580C',
+  },
+  {
+    label:       'Compliance',
+    route:       '/login?role=compliance',
+    description: 'Manage compliance activities, inspections and regulatory requirements',
+    icon:        ICONS.shield,
+    iconBg:      'rgba(124,58,237,0.09)',
+    iconFg:      '#7C3AED',
+  },
+  {
+    label:       'Billing & Invoicing',
+    route:       '/login?role=billing',
+    description: 'Raise invoices, record payments and track receivables',
+    icon:        ICONS.walletMoney,
+    iconBg:      'rgba(13,148,136,0.09)',
+    iconFg:      '#0D9488',
+  },
 ]
 
 export default function ModulesPage() {

@@ -6,6 +6,7 @@ import { Icon, ICONS } from '@/lib/Icon'
 import { GlidoLogo } from '@/lib/GlidoLogo'
 import { useAuth } from '@/contexts/AuthContext'
 import { toast } from '@/lib/toast'
+import { API_BASE } from '@/lib/api-client'
 import loginBgImg from '@/assets/login-bg.webp'
 
 const FIELD: React.CSSProperties = {
@@ -66,13 +67,13 @@ export default function VisitorLoginPage() {
     }
     setIsSubmitting(true)
     try {
-      const { success, error } = await login(siEmail, siPassword)
+      const { success, error, role } = await login(siEmail, siPassword)
       if (!success) {
         toast(error ?? 'Sign in failed. Please try again.', 'error')
         return
       }
       toast('Welcome back!', 'success')
-      navigate(redirect)
+      navigate(role === 'customer' ? '/customer' : redirect)
     } catch (err: any) {
       toast(err?.message ?? 'Sign in failed. Please try again.', 'error')
     } finally {
@@ -97,7 +98,7 @@ export default function VisitorLoginPage() {
     }
     setIsSubmitting(true)
     try {
-      const res = await fetch('/api/auth/register', {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ firstName: suFirst, lastName: suLast, email: suEmail, password: suPass, companyName: suCompany.trim() || undefined }),
@@ -168,11 +169,15 @@ export default function VisitorLoginPage() {
 
           {/* Header */}
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <h1 style={{ fontSize: 21, fontWeight: 700, color: '#fff', letterSpacing: '-0.03em', marginBottom: 5 }}>Sign in to Glido</h1>
-            <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>Book and manage your visits</p>
+            <h1 style={{ fontSize: 21, fontWeight: 700, color: '#fff', letterSpacing: '-0.03em', marginBottom: 5 }}>
+              Sign in to Glido
+            </h1>
+            <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.55)', lineHeight: 1.6 }}>
+              Book and manage your visits
+            </p>
           </div>
 
-          {/* Tab switcher */}
+          {/* Tab switcher — sign in / create account */}
           <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 'var(--r-full)', padding: 3, marginBottom: 20 }}>
             <button type="button" onClick={() => setTab('signin')} style={PILL_BTN(tab === 'signin')}>Sign In</button>
             <button type="button" onClick={() => setTab('signup')} style={PILL_BTN(tab === 'signup')}>Create Account</button>
@@ -271,6 +276,9 @@ export default function VisitorLoginPage() {
           >Continue as Guest</Link>
 
           <p style={{ textAlign: 'center', fontSize: 14, color: 'rgba(255,255,255,0.35)', marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            Customer?{' '}
+            <Link to="/customer-login" style={{ color: 'rgba(255,255,255,0.65)', textDecoration: 'underline', fontWeight: 500 }}>Sign in here</Link>
+            {' '}·{' '}
             Reception staff?{' '}
             <Link to="/login" style={{ color: 'rgba(255,255,255,0.65)', textDecoration: 'underline', fontWeight: 500 }}>Sign in here</Link>
           </p>

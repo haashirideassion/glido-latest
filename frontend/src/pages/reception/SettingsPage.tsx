@@ -8,6 +8,8 @@ import { getVisitablePersons, addVisitablePerson, updateVisitablePerson, deleteV
 import type { VisitablePerson } from '@/lib/db/visitable-persons'
 import { getVisitReasons, addVisitReason, updateVisitReason, deleteVisitReason } from '@/lib/db/visit-reasons'
 import type { VisitReason } from '@/lib/db/visit-reasons'
+import { getStoreTypes, addStoreType, updateStoreType, deleteStoreType } from '@/lib/db/store-types'
+import type { StoreType } from '@/lib/db/store-types'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { toast } from '@/lib/toast'
@@ -181,7 +183,7 @@ const DEFAULT_DOC_REQUIREMENTS: DocRequirement[] = COMBO_DEFAULTS
 
 const GROUPS = [
   { id: 'General',      label: 'General',      sections: ['General', 'Working Hours'] },
-  { id: 'Bookings',     label: 'Bookings',     sections: ['Slot Config', 'Pricing', 'Payment', 'Document Requirements'] },
+  { id: 'Bookings',     label: 'Bookings',     sections: ['Slot Config', 'Pricing', 'Payment', 'Document Requirements', 'Store Types'] },
   { id: 'Team',         label: 'Team',         sections: ['User Management', 'Visiting Persons'] },
 ] as const
 type GroupId = typeof GROUPS[number]['id']
@@ -189,7 +191,7 @@ type GroupId = typeof GROUPS[number]['id']
 // Sections shown as jump-links in the left rail (labels must match GroupLabel text)
 const RAIL_SECTIONS: Record<string, string[]> = {
   General:      ['Business Profile', 'Working Hours', 'Kiosk Agreement', 'Kiosk Devices'],
-  Bookings:     ['Slot Config', 'Pricing', 'Payment', 'Document Requirements'],
+  Bookings:     ['Slot Config', 'Pricing', 'Payment', 'Document Requirements', 'Store Types'],
   Team:         ['User Management', 'Visiting Persons'],
 }
 
@@ -390,6 +392,45 @@ function SectionHead({ title, desc }: { title: string; desc?: string }) {
   )
 }
 
+// ─── Generic module-permission toggle panel — used for Planner/Allocator/Customer permission
+// blocks in the Team tab, which are otherwise identical single-group toggle tables ───
+function PermPanel<K extends string>({ title, desc, items, values, onToggle }: {
+  title: string; desc: string
+  items: Array<{ key: K; label: string; desc: string }>
+  values: Record<K, boolean>
+  onToggle: (key: K) => void
+}) {
+  const CARD_STYLE: React.CSSProperties = { background: '#FFFFFF', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', padding: '20px 24px', marginTop: 24 }
+  return (
+    <div style={CARD_STYLE}>
+      <SectionHead title={title} desc={desc} />
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <tbody>
+          {items.map((item, ii) => {
+            const val = values[item.key]
+            return (
+              <tr key={item.key} style={{ borderTop: ii === 0 ? '1px solid rgba(0,0,0,0.06)' : 'none' }}>
+                <td style={{ padding: '14px 0', paddingRight: 24, verticalAlign: 'middle' }}>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', margin: 0 }}>{item.label}</p>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '2px 0 0', lineHeight: 1.4 }}>{item.desc}</p>
+                </td>
+                <td style={{ padding: '14px 0', verticalAlign: 'middle', width: 1, paddingLeft: 24 }}>
+                  <div
+                    onClick={() => onToggle(item.key)}
+                    style={{ width: 42, height: 24, borderRadius: 'var(--r-full)', background: val ? 'var(--brand-color)' : '#D1D5DB', position: 'relative', cursor: 'pointer', transition: 'background 0.2s', flexShrink: 0 }}
+                  >
+                    <div style={{ position: 'absolute', top: 3, left: val ? 21 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left 0.2s' }} />
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ─── Generic editable name+active list — used for Visiting Persons and both
 // Reason for Visit categories, which are otherwise identical CRUD-list UIs ───
 interface NamedItem { id: string; name: string; active: boolean }
@@ -474,6 +515,43 @@ function EditableNameListCard<T extends NamedItem>({
         </div>
       )}
     </div>
+  )
+}
+
+// ─── Store Types — the customer portal's Service Request wizard "Store" pop-up options ───
+function StoreTypesSection() {
+  const [storeTypes, setStoreTypes] = useState<StoreType[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    getStoreTypes(DEFAULT_TENANT_ID).then(setStoreTypes).catch(() => setStoreTypes([])).finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <EditableNameListCard
+      title="Store Types"
+      desc="The options a customer sees in the 'Store' pop-up when submitting a service request. Deactivate a type to hide it without losing history on existing requests."
+      placeholder="e.g. Underbond"
+      addLabel="Add Store Type"
+      emptyLabel="No store types added yet."
+      items={storeTypes}
+      loading={loading}
+      onAdd={async name => {
+        const t = await addStoreType(DEFAULT_TENANT_ID, name)
+        if (t) setStoreTypes(prev => [...prev, t].sort((a, b) => a.name.localeCompare(b.name)))
+        toast('Store type added', 'success')
+      }}
+      onToggle={async t => {
+        const updated = await updateStoreType(t.id, { active: !t.active })
+        if (updated) setStoreTypes(prev => prev.map(x => x.id === t.id ? updated : x))
+      }}
+      onRemove={async t => {
+        await deleteStoreType(t.id)
+        setStoreTypes(prev => prev.filter(x => x.id !== t.id))
+        toast('Store type removed', 'success')
+      }}
+    />
   )
 }
 
@@ -612,7 +690,7 @@ export default function SettingsPage() {
   const HASH_TO_GROUP: Record<string, GroupId> = {
     '#general': 'General', '#working-hours': 'General',
     '#slot-config': 'Bookings', '#pricing': 'Bookings', '#payment': 'Bookings',
-    '#doc-requirements': 'Bookings',
+    '#doc-requirements': 'Bookings', '#store-types': 'Bookings',
     '#user-management': 'Team', '#visiting-persons': 'Team',
   }
   const GROUP_TO_HASH: Record<GroupId, string> = {
@@ -627,7 +705,7 @@ export default function SettingsPage() {
   const HASH_TO_SECTION: Record<string, string> = {
     '#general': 'general', '#working-hours': 'working-hours',
     '#slot-config': 'slot-config', '#pricing': 'pricing', '#payment': 'payment',
-    '#doc-requirements': 'doc-requirements',
+    '#doc-requirements': 'doc-requirements', '#store-types': 'store-types',
     '#user-management': 'user-management',
     '#visiting-persons': 'visiting-persons',
   }
@@ -738,6 +816,28 @@ export default function SettingsPage() {
   const [staffPermsSaved, setStaffPermsSaved] = useState(SP_DEFAULTS)
   const [staffPermsSaving, setStaffPermsSaving] = useState(false)
   const staffPermsDirty = JSON.stringify(staffPerms) !== JSON.stringify(staffPermsSaved)
+
+  // Planner / Allocator / Customer Permissions state (Phase 2 modules — same tenant.working_hours pattern)
+  const PP_DEFAULTS = { can_create_vessel: true, can_create_trip: true, can_export_reports: true }
+  type PpKey = keyof typeof PP_DEFAULTS
+  const [plannerPerms,      setPlannerPerms]      = useState(PP_DEFAULTS)
+  const [plannerPermsSaved, setPlannerPermsSaved] = useState(PP_DEFAULTS)
+  const plannerPermsDirty = JSON.stringify(plannerPerms) !== JSON.stringify(plannerPermsSaved)
+
+  const AP_DEFAULTS = { can_create_resource: true, can_schedule_maintenance: true }
+  type ApKey = keyof typeof AP_DEFAULTS
+  const [allocatorPerms,      setAllocatorPerms]      = useState(AP_DEFAULTS)
+  const [allocatorPermsSaved, setAllocatorPermsSaved] = useState(AP_DEFAULTS)
+  const allocatorPermsDirty = JSON.stringify(allocatorPerms) !== JSON.stringify(allocatorPermsSaved)
+
+  const CP_DEFAULTS = { can_create_service_request: true }
+  type CpKey = keyof typeof CP_DEFAULTS
+  const [customerPerms,      setCustomerPerms]      = useState(CP_DEFAULTS)
+  const [customerPermsSaved, setCustomerPermsSaved] = useState(CP_DEFAULTS)
+  const customerPermsDirty = JSON.stringify(customerPerms) !== JSON.stringify(customerPermsSaved)
+
+  const modulePermsDirty  = plannerPermsDirty || allocatorPermsDirty || customerPermsDirty
+  const [modulePermsSaving, setModulePermsSaving] = useState(false)
 
   // Working Hours state
   const [whLoading,  setWhLoading]  = useState(true)
@@ -1302,15 +1402,26 @@ export default function SettingsPage() {
     }
   }, [tab, isAdmin, loadStaffUsers])
 
-  // Load staff permissions when Team tab opens
+  // Load staff + module permissions when Team tab opens
   useEffect(() => {
     if (tab !== 'Team' || !isAdmin) return
     getTenant(DEFAULT_TENANT_ID).then(t => {
-      const sp = (t?.working_hours as any)?.staff_permissions
-      if (sp && typeof sp === 'object') {
-        const merged = { ...SP_DEFAULTS, ...sp }
-        setStaffPerms(merged)
-        setStaffPermsSaved(merged)
+      const wh = (t?.working_hours as any) ?? {}
+      if (wh.staff_permissions && typeof wh.staff_permissions === 'object') {
+        const merged = { ...SP_DEFAULTS, ...wh.staff_permissions }
+        setStaffPerms(merged); setStaffPermsSaved(merged)
+      }
+      if (wh.planner_permissions && typeof wh.planner_permissions === 'object') {
+        const merged = { ...PP_DEFAULTS, ...wh.planner_permissions }
+        setPlannerPerms(merged); setPlannerPermsSaved(merged)
+      }
+      if (wh.allocator_permissions && typeof wh.allocator_permissions === 'object') {
+        const merged = { ...AP_DEFAULTS, ...wh.allocator_permissions }
+        setAllocatorPerms(merged); setAllocatorPermsSaved(merged)
+      }
+      if (wh.customer_permissions && typeof wh.customer_permissions === 'object') {
+        const merged = { ...CP_DEFAULTS, ...wh.customer_permissions }
+        setCustomerPerms(merged); setCustomerPermsSaved(merged)
       }
     }).catch(() => {})
   }, [tab, isAdmin])
@@ -1434,27 +1545,38 @@ export default function SettingsPage() {
       if (stripeDirty) await saveStripe()
       if (compayDirty) await saveCompay()
       if (docDirty) await saveDocRequirements()
-    } else if (tab === 'Team' && staffPermsDirty) {
+    } else if (tab === 'Team' && (staffPermsDirty || modulePermsDirty)) {
       setStaffPermsSaving(true)
+      setModulePermsSaving(true)
       try {
         const tenant = await getTenant(DEFAULT_TENANT_ID)
         const existingWh = (tenant?.working_hours as any) ?? {}
         await updateTenant(DEFAULT_TENANT_ID, {
-          working_hours: { ...existingWh, staff_permissions: staffPerms },
+          working_hours: {
+            ...existingWh,
+            staff_permissions: staffPerms,
+            planner_permissions: plannerPerms,
+            allocator_permissions: allocatorPerms,
+            customer_permissions: customerPerms,
+          },
         })
         setStaffPermsSaved(staffPerms)
+        setPlannerPermsSaved(plannerPerms)
+        setAllocatorPermsSaved(allocatorPerms)
+        setCustomerPermsSaved(customerPerms)
         toast('Permissions saved. Changes will apply on next staff session load.', 'success')
       } catch (err: any) {
         toast(err?.message ?? 'Failed to save permissions. Please try again.', 'error')
       } finally {
         setStaffPermsSaving(false)
+        setModulePermsSaving(false)
       }
     }
   }
   const anyDirty = (
     (generalDirty || whDirty || kioskTermsDirty) ||
     (slotConfigDirty || pricingDirty || eftDirty || stripeDirty || compayDirty || docDirty) ||
-    staffPermsDirty
+    staffPermsDirty || modulePermsDirty
   )
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) =>
@@ -1464,12 +1586,12 @@ export default function SettingsPage() {
   const tabDirty = (
     (tab === 'General'      && (generalDirty || whDirty || kioskTermsDirty)) ||
     (tab === 'Bookings'     && (slotConfigDirty || pricingDirty || eftDirty || stripeDirty || compayDirty || docDirty)) ||
-    (tab === 'Team'         && staffPermsDirty)
+    (tab === 'Team'         && (staffPermsDirty || modulePermsDirty))
   )
   const tabSaving = (
     (tab === 'General'      && (generalSaving || whSaving || kioskTermsSaving)) ||
     (tab === 'Bookings'     && (slotConfigSaving || pricingSaving || eftSaving || stripeSaving || compaySaving || docSaving)) ||
-    (tab === 'Team'         && staffPermsSaving)
+    (tab === 'Team'         && (staffPermsSaving || modulePermsSaving))
   )
 
   const rrLoc = useLocation()
@@ -2515,6 +2637,11 @@ export default function SettingsPage() {
               )}
             </div>
           )}
+
+          {/* Store Types — customer portal Service Request wizard's "Store" pop-up options */}
+          {section === 'store-types' && <GroupLabel first>Store Types</GroupLabel>}
+          {section === 'store-types' && <StoreTypesSection />}
+
           {/* User Management */}
           {section === 'user-management' && (() => {
             return (
@@ -2750,6 +2877,36 @@ export default function SettingsPage() {
                 </div>
               )
             })()}
+
+            {/* Planner / Allocator / Customer module permissions — Phase 2, same tenant-wide pattern */}
+            {isAdmin && (
+              <>
+                <PermPanel
+                  title="Planner Permissions" desc="Control what your planner staff can create and export."
+                  items={[
+                    { key: 'can_create_vessel' as PpKey,  label: 'Create Vessel',   desc: 'Allow planner staff to add new vessels.' },
+                    { key: 'can_create_trip' as PpKey,     label: 'Create Trip',     desc: 'Allow planner staff to create new trips.' },
+                    { key: 'can_export_reports' as PpKey,  label: 'Export Reports',  desc: 'Allow planner staff to export report data.' },
+                  ]}
+                  values={plannerPerms} onToggle={key => setPlannerPerms(prev => ({ ...prev, [key]: !prev[key] }))}
+                />
+                <PermPanel
+                  title="Allocator Permissions" desc="Control what your allocator staff can create."
+                  items={[
+                    { key: 'can_create_resource' as ApKey,      label: 'Add Resource',          desc: 'Allow allocator staff to add trucks, trailers and drivers.' },
+                    { key: 'can_schedule_maintenance' as ApKey, label: 'Schedule Maintenance',   desc: 'Allow allocator staff to schedule maintenance activities.' },
+                  ]}
+                  values={allocatorPerms} onToggle={key => setAllocatorPerms(prev => ({ ...prev, [key]: !prev[key] }))}
+                />
+                <PermPanel
+                  title="Customer Permissions" desc="Control what your customer portal users can do."
+                  items={[
+                    { key: 'can_create_service_request' as CpKey, label: 'Create Service Request', desc: 'Allow customers to submit new service requests.' },
+                  ]}
+                  values={customerPerms} onToggle={key => setCustomerPerms(prev => ({ ...prev, [key]: !prev[key] }))}
+                />
+              </>
+            )}
 
             {/* Setup link modal */}
             {setupLink && (

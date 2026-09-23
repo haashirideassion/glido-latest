@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "migrate": "tsx scripts/migrate.ts",
+    "verify:rating": "tsx scripts/verify-rating.ts",
+    "verify:billing": "bash scripts/verify-billing-chain.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1079.0",

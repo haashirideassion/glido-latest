@@ -23,7 +23,10 @@ const FOOTER_COLS = [
 export default function PublicLayout() {
   const { pathname } = useLocation()
   const isImmersive = false
-  const isDarkPage  = pathname === '/visitor-login' || pathname === '/login'
+  const isDarkPage  = pathname === '/visitor-login' || pathname === '/customer-login' || pathname === '/login'
+  // The full-screen login pages render their own edge-to-edge photo background that already
+  // fills the viewport — the marketing footer underneath just adds unwanted scroll.
+  const hideFooter  = isDarkPage
   const navigate = useNavigate()
   const outlet = useOutlet()
   const reduceMotionPage = useReducedMotion()
@@ -48,6 +51,7 @@ export default function PublicLayout() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
   useEffect(() => { setMobileOpen(false) }, [pathname])
+  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -368,7 +372,7 @@ export default function PublicLayout() {
       </main>
 
       {/* ── Footer ── */}
-      {!isImmersive && (
+      {!isImmersive && !hideFooter && (
       <footer style={{ borderTop: '1px solid #f0f0f0', background: '#fff', padding: '64px 24px 32px' }}>
         <div className="max-w-6xl mx-auto">
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 48, marginBottom: 48 }} className="footer-grid">
