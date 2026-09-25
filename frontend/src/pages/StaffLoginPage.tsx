@@ -124,6 +124,14 @@ export default function StaffLoginPage() {
         navigate('/compliance')
         return
       }
+      // A dedicated 'billing' account always lands on the module. reception_admin/staff and
+      // super_admin can also reach it (see BillingGuard's ALLOWED_ROLES) but default to Reception
+      // unless they explicitly signed in via the Billing tab (?role=billing) — otherwise every
+      // reception_admin login would skip Reception and land on Billing instead.
+      if (role === 'billing' || (roleParam === 'billing' && role !== 'planner' && role !== 'customer' && role !== 'super_admin')) {
+        navigate('/billing')
+        return
+      }
       navigate(role === 'super_admin' ? '/superadmin' : role === 'customer' ? '/customer' : role === 'planner' ? '/planner' : '/reception')
     } catch (err: any) {
       toast(err?.message ?? 'Sign in failed. Please try again.', 'error')
