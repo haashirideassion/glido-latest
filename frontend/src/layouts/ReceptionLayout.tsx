@@ -36,6 +36,7 @@ const NAV = [
     { to: '/reception/settings#payment',          label: 'Payment',        icon: ICONS.walletMoney },
     { to: '/reception/settings#doc-requirements', label: 'Documents',      icon: ICONS.document },
     { to: '/reception/settings#store-types',      label: 'Store Types',    icon: ICONS.container },
+    { to: '/reception/settings#service-fields',   label: 'Service Fields', icon: ICONS.layers },
     { to: '/reception/settings#user-management',  label: 'Team',           icon: ICONS.users },
     { to: '/reception/settings#visiting-persons', label: 'Visiting Persons', icon: ICONS.userCheck },
   ]},

@@ -10,6 +10,9 @@ import { getVisitReasons, addVisitReason, updateVisitReason, deleteVisitReason }
 import type { VisitReason } from '@/lib/db/visit-reasons'
 import { getStoreTypes, addStoreType, updateStoreType, deleteStoreType } from '@/lib/db/store-types'
 import type { StoreType } from '@/lib/db/store-types'
+import { getServiceFieldSettings, setServiceFieldSetting } from '@/lib/db/service-field-settings'
+import type { ServiceFieldConfig, CustomFieldType } from '@/lib/db/service-field-settings'
+import type { ServiceKey } from '@/data/types'
 
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { toast } from '@/lib/toast'
@@ -183,7 +186,7 @@ const DEFAULT_DOC_REQUIREMENTS: DocRequirement[] = COMBO_DEFAULTS
 
 const GROUPS = [
   { id: 'General',      label: 'General',      sections: ['General', 'Working Hours'] },
-  { id: 'Bookings',     label: 'Bookings',     sections: ['Slot Config', 'Pricing', 'Payment', 'Document Requirements', 'Store Types'] },
+  { id: 'Bookings',     label: 'Bookings',     sections: ['Slot Config', 'Pricing', 'Payment', 'Document Requirements', 'Store Types', 'Service Fields'] },
   { id: 'Team',         label: 'Team',         sections: ['User Management', 'Visiting Persons'] },
 ] as const
 type GroupId = typeof GROUPS[number]['id']
@@ -191,7 +194,7 @@ type GroupId = typeof GROUPS[number]['id']
 // Sections shown as jump-links in the left rail (labels must match GroupLabel text)
 const RAIL_SECTIONS: Record<string, string[]> = {
   General:      ['Business Profile', 'Working Hours', 'Kiosk Agreement', 'Kiosk Devices'],
-  Bookings:     ['Slot Config', 'Pricing', 'Payment', 'Document Requirements', 'Store Types'],
+  Bookings:     ['Slot Config', 'Pricing', 'Payment', 'Document Requirements', 'Store Types', 'Service Fields'],
   Team:         ['User Management', 'Visiting Persons'],
 }
 
@@ -555,6 +558,142 @@ function StoreTypesSection() {
   )
 }
 
+// ─── Service Fields — one admin-configurable extra field per FRD "Service Details" group.
+// A group can back more than one ServiceKey (Store = FCL + LCL Storage, Delivery = every
+// collection/delivery variant) — the same label/type is written to every key in the group so it
+// reads as one setting, matching how the FRD names these six groups.
+const SERVICE_FIELD_GROUPS: Array<{ title: string; keys: ServiceKey[]; standardFields: string[] }> = [
+  { title: 'Collection from Terminal', keys: ['fcl_collection_terminal'], standardFields: ['Terminal', 'Slot', 'Time Window', 'Contact'] },
+  { title: 'Inspection & Compliance',  keys: ['inspection_compliance'],   standardFields: ['Type', 'Authority', 'Reference', 'Requirements', 'Certificates'] },
+  { title: 'Store',                    keys: ['fcl_storage', 'lcl_storage'], standardFields: ['Location', 'Type', 'Capacity', 'Duration', 'Conditions'] },
+  { title: 'Delivery',                 keys: ['fcl_collection', 'lcl_collection', 'fcl_delivery', 'lcl_delivery'], standardFields: ['Address', 'Method', 'Drop Type', 'Access Hours', 'Contact', 'Special Instructions'] },
+  { title: 'Dehire',                   keys: ['dehire'],  standardFields: ['Location', 'Condition', 'Inspection', 'Documentation', 'Charges'] },
+  { title: 'Unpack',                   keys: ['unpack'],  standardFields: ['Location', 'Method', 'Cargo Type', 'Palletization', 'Segregation'] },
+]
+
+function ServiceFieldsSection() {
+  const [settings, setSettings] = useState<Partial<Record<ServiceKey, ServiceFieldConfig>>>({})
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    getServiceFieldSettings().then(setSettings).catch(() => setSettings({})).finally(() => setLoading(false))
+  }, [])
+
+  const save = async (keys: ServiceKey[], label: string, type: CustomFieldType) => {
+    await Promise.all(keys.map(k => setServiceFieldSetting(k, label, type)))
+    setSettings(prev => {
+      const next = { ...prev }
+      for (const k of keys) next[k] = { label: label || null, type }
+      return next
+    })
+  }
+
+  return (
+    <div>
+      <p style={{ fontSize: 18, fontWeight: 700, color: '#1C1917', marginBottom: 2 }}>Service Fields</p>
+      <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 18 }}>
+        Add one extra field to a service's "Service Details" section in the customer's request view. Standard fields are always shown and can't be removed.
+      </p>
+      {loading ? <Skeleton /> : SERVICE_FIELD_GROUPS.map(group => (
+        <ServiceFieldCard
+          key={group.title}
+          title={group.title}
+          standardFields={group.standardFields}
+          config={settings[group.keys[0]] ?? { label: null, type: 'text' }}
+          onSave={(label, type) => save(group.keys, label, type)}
+        />
+      ))}
+    </div>
+  )
+}
+
+function ServiceFieldCard({ title, standardFields, config, onSave }: {
+  title: string; standardFields: string[]; config: ServiceFieldConfig
+  onSave: (label: string, type: CustomFieldType) => Promise<void>
+}) {
+  const [adding, setAdding] = useState(false)
+  const [label, setLabel] = useState('')
+  const [type, setType] = useState<CustomFieldType>('text')
+  const [saving, setSaving] = useState(false)
+  const hasActive = !!config.label
+
+  const startAdd = () => { setLabel(''); setType('text'); setAdding(true) }
+  const startEdit = () => { setLabel(config.label ?? ''); setType(config.type); setAdding(true) }
+
+  const save = async () => {
+    if (!label.trim()) { toast('Field label is required', 'error'); return }
+    setSaving(true)
+    try { await onSave(label.trim(), type); setAdding(false); toast('Service field saved', 'success') }
+    catch { toast('Could not save service field', 'error') }
+    finally { setSaving(false) }
+  }
+  const remove = async () => {
+    setSaving(true)
+    try { await onSave('', 'text'); setAdding(false); toast('Service field removed', 'success') }
+    catch { toast('Could not remove service field', 'error') }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ ...CARD, marginTop: 16 }}>
+      <p style={{ fontSize: 15, fontWeight: 600, color: '#1C1917', marginBottom: 3 }}>{title}</p>
+
+      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Standard fields (always shown)</p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+        {standardFields.map(f => (
+          <span key={f} style={{ fontSize: 12.5, fontWeight: 500, padding: '5px 10px', borderRadius: 'var(--r-full)', background: '#F0F0EF', color: 'var(--text-secondary)' }}>{f}</span>
+        ))}
+      </div>
+
+      <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Custom field</p>
+
+      {!adding && hasActive && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(var(--brand-rgb),0.05)', border: '1px solid rgba(var(--brand-rgb),0.18)', borderRadius: 'var(--r-sm)' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#1C1917', flex: 1 }}>{config.label}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 'var(--r-full)', background: '#fff', color: 'var(--text-secondary)', textTransform: 'capitalize', border: '1px solid rgba(0,0,0,0.08)' }}>{config.type}</span>
+          <button type="button" onClick={startEdit}
+            style={{ fontSize: 13, fontWeight: 600, color: 'var(--brand-color)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', padding: '4px 6px' }}>
+            Edit
+          </button>
+          <button type="button" onClick={remove} disabled={saving}
+            style={{ fontSize: 13, fontWeight: 600, color: '#DC2626', background: 'none', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', padding: '4px 6px' }}>
+            Remove
+          </button>
+        </div>
+      )}
+
+      {!adding && !hasActive && (
+        <button type="button" onClick={startAdd}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 38, padding: '0 16px', fontSize: 13.5, fontWeight: 600, color: 'var(--brand-color)', background: 'none', border: '1.5px dashed rgba(var(--brand-rgb),0.35)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+          + Add Field
+        </button>
+      )}
+
+      {adding && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>Field Label</p>
+            <input value={label} onChange={e => setLabel(e.target.value)} placeholder="e.g. Reference Number" className="wizard-field" />
+          </div>
+          <div style={{ width: 150 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 5 }}>Data Type</p>
+            <CustomSelect value={type} onChange={v => setType(v as CustomFieldType)}
+              options={[{ value: 'text', label: 'Text' }, { value: 'number', label: 'Number' }, { value: 'date', label: 'Date' }]} />
+          </div>
+          <button type="button" onClick={() => setAdding(false)} disabled={saving}
+            style={{ height: 38, padding: '0 14px', fontSize: 13.5, fontWeight: 600, color: '#374151', background: '#F7F6F5', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Cancel
+          </button>
+          <button type="button" onClick={save} disabled={saving}
+            style={{ height: 38, padding: '0 16px', fontSize: 13.5, fontWeight: 600, color: 'var(--brand-text)', background: 'var(--brand-color)', border: 'none', borderRadius: 'var(--r-sm)', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Visiting Persons + Reason for Visit — all configurable kiosk lists ───
 function VisitingPersonsSection() {
   const [people,       setPeople]       = useState<VisitablePerson[]>([])
@@ -690,7 +829,7 @@ export default function SettingsPage() {
   const HASH_TO_GROUP: Record<string, GroupId> = {
     '#general': 'General', '#working-hours': 'General',
     '#slot-config': 'Bookings', '#pricing': 'Bookings', '#payment': 'Bookings',
-    '#doc-requirements': 'Bookings', '#store-types': 'Bookings',
+    '#doc-requirements': 'Bookings', '#store-types': 'Bookings', '#service-fields': 'Bookings',
     '#user-management': 'Team', '#visiting-persons': 'Team',
   }
   const GROUP_TO_HASH: Record<GroupId, string> = {
@@ -705,7 +844,7 @@ export default function SettingsPage() {
   const HASH_TO_SECTION: Record<string, string> = {
     '#general': 'general', '#working-hours': 'working-hours',
     '#slot-config': 'slot-config', '#pricing': 'pricing', '#payment': 'payment',
-    '#doc-requirements': 'doc-requirements', '#store-types': 'store-types',
+    '#doc-requirements': 'doc-requirements', '#store-types': 'store-types', '#service-fields': 'service-fields',
     '#user-management': 'user-management',
     '#visiting-persons': 'visiting-persons',
   }
@@ -2641,6 +2780,10 @@ export default function SettingsPage() {
           {/* Store Types — customer portal Service Request wizard's "Store" pop-up options */}
           {section === 'store-types' && <GroupLabel first>Store Types</GroupLabel>}
           {section === 'store-types' && <StoreTypesSection />}
+
+          {/* Service Fields — one admin-configurable extra field per Service Details group */}
+          {section === 'service-fields' && <GroupLabel first>Service Fields</GroupLabel>}
+          {section === 'service-fields' && <ServiceFieldsSection />}
 
           {/* User Management */}
           {section === 'user-management' && (() => {

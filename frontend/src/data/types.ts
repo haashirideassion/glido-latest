@@ -110,13 +110,15 @@ export type ShipmentMode = 'sea' | 'air'
 export type RequestStage = 'received' | 'in_transit' | 'arrived' | 'completed'
 // Request-level status badge (FR 2.3) — distinct from the progress `stage` above.
 export type RequestStatus = 'pending' | 'approved' | 'in_progress' | 'completed' | 'rejected'
-// FR 1.1.4.2 "Selected Services" list — matched 1:1: FCL Collection from Terminal, FCL Storage,
-// FCL Collection, Dehire (empty container collection), LCL Collection, LCL Storage, Pack
-// (Unpack), Inspection & Compliance. FCL/LCL Delivery are no longer tile options.
+// FR 1.1.4.2 "Selected Services" list for Import, matched 1:1: FCL Collection from Terminal, FCL
+// Storage, FCL Collection, Dehire (empty container collection), LCL Collection, LCL Storage, Pack
+// (Unpack), Inspection & Compliance. Export uses its own Data Flow tile set instead, swapping the
+// Collection tiles for Delivery ones (FCL/LCL Delivery) — see Step2ServiceSelection.
 export type ServiceKey =
   | 'fcl_collection_terminal' | 'fcl_storage' | 'fcl_collection'
   | 'lcl_collection' | 'lcl_storage'
   | 'inspection_compliance' | 'unpack' | 'dehire'
+  | 'fcl_delivery' | 'lcl_delivery'
 export type ServiceStatus = 'pending' | 'in_progress' | 'completed'
 // Admin-configurable from Reception Settings → Store Types (was a fixed union; now free text).
 export type StoreSubType = string

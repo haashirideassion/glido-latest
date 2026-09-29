@@ -10,13 +10,14 @@ import storeImg from '@/assets/Store.png'
 import unpackImg from '@/assets/unpack.png'
 import inspectionImg from '@/assets/Inspection.png'
 import packageImg from '@/assets/package.png'
+import deliveryImg from '@/assets/Delivery.png'
 
 interface ServiceDef { key: ServiceKey; label: string; icon: string; image?: string }
 
-// FR 1.1.4.2 "Selected Services" list, matched 1:1. Note the FRD names these tiles differently in
-// FR 1.1.2.2 ("FCL Delivery", "Unpack", "Dehire") than in FR 1.1.4.2 ("FCL collection", "Pack",
-// "Empty container collection"); the 1.1.4.2 naming is what ships.
-const BASE_SERVICES: ServiceDef[] = [
+// FR 1.1.4.2 "Selected Services" list for Import, matched 1:1. Note the FRD names these tiles
+// differently in FR 1.1.2.2 ("FCL Delivery", "Unpack", "Dehire") than in FR 1.1.4.2 ("FCL
+// collection", "Pack", "Empty container collection"); the 1.1.4.2 naming is what ships for Import.
+const IMPORT_SERVICES: ServiceDef[] = [
   { key: 'fcl_collection_terminal', label: 'FCL run into Terminal',        icon: ICONS.truck,     image: collectionImg },
   { key: 'fcl_storage',             label: 'FCL Storage',                  icon: ICONS.container, image: storeImg },
   { key: 'fcl_collection',          label: 'FCL collection',               icon: ICONS.truck,     image: collectionImg },
@@ -27,14 +28,29 @@ const BASE_SERVICES: ServiceDef[] = [
   { key: 'inspection_compliance',   label: 'Inspection & compliance',      icon: ICONS.shield,    image: inspectionImg },
 ]
 
+// Export's own Data Flow tile set — cargo moves toward the terminal here (Delivery), not away
+// from it (Collection), so the FRD swaps FCL/LCL Collection for FCL/LCL Delivery and drops the
+// plain "Empty container collection" tile (Dehire still appears once unlocked, see below).
+const EXPORT_SERVICES: ServiceDef[] = [
+  { key: 'fcl_collection_terminal', label: 'FCL Collection from Terminal', icon: ICONS.truck,     image: collectionImg },
+  { key: 'fcl_storage',             label: 'FCL Storage',                  icon: ICONS.container, image: storeImg },
+  { key: 'fcl_delivery',            label: 'FCL Delivery',                 icon: ICONS.truck,     image: deliveryImg },
+  { key: 'dehire',                  label: 'Empty container collection',   icon: ICONS.truck },
+  { key: 'unpack',                  label: 'Unpack',                       icon: ICONS.layers,    image: unpackImg },
+  { key: 'lcl_storage',             label: 'LCL storage',                  icon: ICONS.container, image: storeImg },
+  { key: 'lcl_delivery',            label: 'LCL Delivery',                 icon: ICONS.truck,     image: deliveryImg },
+  { key: 'inspection_compliance',   label: 'Inspection and Compliance',    icon: ICONS.shield,    image: inspectionImg },
+]
+
 const STORAGE_KEYS: ServiceKey[] = ['fcl_storage', 'lcl_storage']
 
 // FR 1.1.2.2 — "When the user clicks on the service selection 'FCL Delivery' and/or 'Unpack' then
-// the user will be displayed with another service selection tile card – 'Dehire'." In this naming
-// FCL Delivery is fcl_collection, Unpack is unpack, and Dehire is dehire. The tile stays hidden
-// until one of its triggers is picked, and deselects itself if every trigger is removed.
+// the user will be displayed with another service selection tile card – 'Dehire'." In Import's
+// 1.1.4.2 naming, that "FCL Delivery" trigger is the fcl_collection tile; Export has an actual
+// fcl_delivery tile, which triggers it just as literally. The tile stays hidden until one of its
+// triggers is picked, and deselects itself if every trigger is removed.
 const DEHIRE_KEY: ServiceKey = 'dehire'
-const DEHIRE_TRIGGERS: ServiceKey[] = ['fcl_collection', 'unpack']
+const DEHIRE_TRIGGERS: ServiceKey[] = ['fcl_collection', 'fcl_delivery', 'unpack']
 
 // Fallback shown only if the CFS admin hasn't configured any Store Types yet (Settings → Store Types).
 const FALLBACK_STORE_SUBTYPES: Array<{ value: StoreSubType; label: string }> = [
@@ -71,10 +87,11 @@ export function Step2ServiceSelection() {
   }, [dehireUnlocked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const services = useMemo(() => {
-    const visible = dehireUnlocked ? BASE_SERVICES : BASE_SERVICES.filter(s => s.key !== DEHIRE_KEY)
+    const base = state.serviceCategory === 'export' ? EXPORT_SERVICES : IMPORT_SERVICES
+    const visible = dehireUnlocked ? base : base.filter(s => s.key !== DEHIRE_KEY)
     if (!search.trim()) return visible
     return visible.filter(s => s.label.toLowerCase().includes(search.trim().toLowerCase()))
-  }, [search, dehireUnlocked])
+  }, [search, dehireUnlocked, state.serviceCategory])
 
   const selectedMap = new Map(state.selectedServices.map(s => [s.serviceKey, s]))
 

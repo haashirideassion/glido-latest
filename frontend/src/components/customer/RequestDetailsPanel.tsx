@@ -24,20 +24,24 @@ const STAGE_LABEL: Record<RequestStage, string> = { received: 'Received', in_tra
 // and one not started, which the request-level stage above cannot express.
 const SERVICE_STAGES: ServiceStatus[] = ['pending', 'in_progress', 'completed']
 
-const SERVICE_META: Record<ServiceKey, { label: string; icon: string; description: string; fields: string[]; duration: string }> = {
-  fcl_collection_terminal: { label: 'FCL run into Terminal',        icon: ICONS.truck,      description: 'Full container load collection from port terminal', fields: ['Terminal', 'Slot', 'Time Window', 'Contact'], duration: '2-4 hours' },
-  inspection_compliance:   { label: 'Inspection & compliance',      icon: ICONS.shield,     description: 'Customs and quarantine compliance checks',           fields: ['Type', 'Authority', 'Reference', 'Requirements', 'Certificates'], duration: '1-3 days' },
-  fcl_storage:             { label: 'FCL Storage',                  icon: ICONS.container, description: 'Full container load storage at the depot',           fields: ['Location', 'Type', 'Capacity', 'Duration', 'Conditions'], duration: 'Ongoing' },
-  lcl_storage:             { label: 'LCL storage',                  icon: ICONS.container, description: 'Less than container load storage at the depot',      fields: ['Location', 'Type', 'Capacity', 'Duration', 'Conditions'], duration: 'Ongoing' },
-  fcl_collection:          { label: 'FCL collection',                icon: ICONS.truck,     description: 'Full container load collection',                    fields: ['Location', 'Method', 'Contact'], duration: '2-4 hours' },
-  lcl_collection:          { label: 'LCL collection',                icon: ICONS.truck,     description: 'Less than container load collection',               fields: ['Location', 'Method', 'Contact'], duration: '2-4 hours' },
-  dehire:                  { label: 'Empty container collection',    icon: ICONS.truck,      description: 'Empty container return / dehire',                    fields: ['Location', 'Condition', 'Inspection', 'Documentation', 'Charges'], duration: '1-2 hours' },
-  unpack:                  { label: 'Pack',                          icon: ICONS.layers,    description: 'Container pack/unpack and cargo segregation',        fields: ['Location', 'Method', 'Cargo Type', 'Palletization', 'Segregation'], duration: '3-6 hours' },
+// FRD common detail vi — "the list of requirements applicable to that service". Kept identical to
+// RequestDetailPage.tsx's SERVICE_META so the panel and the full detail page never disagree.
+const SERVICE_META: Record<ServiceKey, { label: string; icon: string; description: string; requirements: string[]; duration: string }> = {
+  fcl_collection_terminal: { label: 'FCL run into Terminal',        icon: ICONS.truck,      description: 'Full container load collection from port terminal', requirements: ['Terminal release', 'Booking reference', 'Driver and vehicle details'], duration: '2-4 hours' },
+  inspection_compliance:   { label: 'Inspection & compliance',      icon: ICONS.shield,     description: 'Customs and quarantine compliance checks',           requirements: ['Customs entry', 'Quarantine declaration', 'Supporting certificates'], duration: '1-3 days' },
+  fcl_storage:             { label: 'FCL Storage',                  icon: ICONS.container, description: 'Full container load storage at the depot',           requirements: ['Storage type confirmed', 'Expected dwell time', 'Special handling notes'], duration: 'Ongoing' },
+  lcl_storage:             { label: 'LCL storage',                  icon: ICONS.container, description: 'Less than container load storage at the depot',      requirements: ['Storage type confirmed', 'Expected dwell time', 'Special handling notes'], duration: 'Ongoing' },
+  fcl_collection:          { label: 'FCL collection',                icon: ICONS.truck,     description: 'Full container load delivery to the nominated address', requirements: ['Delivery address', 'Site access hours', 'Receiving contact'], duration: '2-4 hours' },
+  lcl_collection:          { label: 'LCL collection',                icon: ICONS.truck,     description: 'Less than container load delivery to the nominated address', requirements: ['Delivery address', 'Site access hours', 'Receiving contact'], duration: '2-4 hours' },
+  dehire:                  { label: 'Empty container collection',    icon: ICONS.truck,      description: 'Empty container return / dehire',                    requirements: ['Dehire location', 'Container condition report', 'Release documentation'], duration: '1-2 hours' },
+  unpack:                  { label: 'Pack',                          icon: ICONS.layers,    description: 'Container pack/unpack and cargo segregation',        requirements: ['Packing list', 'Cargo handling notes', 'Segregation requirements'], duration: '3-6 hours' },
+  fcl_delivery:            { label: 'FCL Delivery',                  icon: ICONS.truck,     description: 'Full container load delivery to the terminal',      requirements: ['Delivery booking reference'], duration: '2-4 hours' },
+  lcl_delivery:            { label: 'LCL Delivery',                  icon: ICONS.truck,     description: 'Less than container load delivery to the depot',    requirements: ['Delivery booking reference'], duration: '2-4 hours' },
 }
 
 // Fallback for legacy service_key values from before services were split into fcl_/lcl_ variants
 // (older rows may still have e.g. 'delivery', 'store', 'collection_terminal').
-const FALLBACK_META = { label: 'Service', icon: ICONS.cargo, description: '', fields: [] as string[], duration: '—' }
+const FALLBACK_META = { label: 'Service', icon: ICONS.cargo, description: '', requirements: [] as string[], duration: '—' }
 
 // Shared by both the per-service status badge and the request-level Status badge (FR 2.3) —
 // the latter adds 'approved'/'rejected', which per-service status never uses.
@@ -180,7 +184,7 @@ export function RequestDetailsPanel({ requestId, docked, onClose }: Props) {
                       )}
                       <div style={{ display: 'flex', gap: 12, fontSize: 12.5, color: 'var(--text-tertiary)' }}>
                         <span>Duration: {svc.durationLabel ?? meta.duration}</span>
-                        <span>Requirements: {meta.fields.join(', ')}</span>
+                        <span>Requirements: {meta.requirements.join(', ')}</span>
                       </div>
                     </div>
                   )

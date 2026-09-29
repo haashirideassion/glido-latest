@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { usePageTitle } from '@/lib/usePageTitle'
 import { Icon, ICONS } from '@/lib/Icon'
 import { getServiceRequest } from '@/lib/db/service-requests'
+import { getServiceFieldSettings } from '@/lib/db/service-field-settings'
+import type { ServiceFieldConfig } from '@/lib/db/service-field-settings'
 import type { ServiceRequest, ServiceKey, RequestStage, ServiceStatus, StoreDetailEntry } from '@/data/types'
 
 // Full-page request detail (FRD 2.4.1.3). The FRD describes this as a pop-up; it is a dedicated
@@ -98,6 +100,20 @@ const SERVICE_META: Record<ServiceKey, ServiceMeta> = {
     requirements: ['Packing list', 'Cargo handling notes', 'Segregation requirements'],
     duration: '3-6 hours',
   },
+  fcl_delivery: {
+    label: 'FCL Delivery', icon: ICONS.truck,
+    description: 'Full container load delivery to the terminal',
+    fields: ['Terminal', 'Slot', 'Time Window', 'Contact'],
+    requirements: ['Delivery booking reference'],
+    duration: '2-4 hours',
+  },
+  lcl_delivery: {
+    label: 'LCL Delivery', icon: ICONS.truck,
+    description: 'Less than container load delivery to the depot',
+    fields: ['Location', 'Method', 'Contact'],
+    requirements: ['Delivery booking reference'],
+    duration: '2-4 hours',
+  },
 }
 
 const FALLBACK_META: ServiceMeta = { label: 'Service', icon: ICONS.cargo, description: '', fields: [], requirements: [], duration: '—' }
@@ -136,8 +152,16 @@ export default function RequestDetailPage() {
   const navigate = useNavigate()
   const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [loading, setLoading] = useState(true)
+  // CFS-admin-configured extra "Service Details" field per service (Reception Settings → Service
+  // Fields) — merged into each card's standard field list below, alongside its own value ('Not
+  // set' until captured, same as every standard field).
+  const [fieldSettings, setFieldSettings] = useState<Partial<Record<ServiceKey, ServiceFieldConfig>>>({})
 
   usePageTitle(request ? `Glido | Request ${request.requestId}` : 'Glido | Request')
+
+  useEffect(() => {
+    getServiceFieldSettings().then(setFieldSettings).catch(() => setFieldSettings({}))
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -311,7 +335,9 @@ export default function RequestDetailPage() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {services.map(svc => {
-                  const meta        = SERVICE_META[svc.serviceKey] ?? FALLBACK_META
+                  const baseMeta    = SERVICE_META[svc.serviceKey] ?? FALLBACK_META
+                  const extraField  = fieldSettings[svc.serviceKey]?.label
+                  const meta        = extraField ? { ...baseMeta, fields: [...baseMeta.fields, extraField] } : baseMeta
                   const statusStyle = STATUS_STYLE[svc.status] ?? STATUS_STYLE.pending
                   const running     = svc.status === 'in_progress'
                   const entries     = parseStoreEntries(svc.details)

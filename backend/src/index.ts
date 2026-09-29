@@ -18,6 +18,7 @@ import visitablePersonsRoutes from './routes/visitable-persons'
 import visitReasonsRoutes from './routes/visit-reasons'
 import storeTypesRoutes from './routes/store-types'
 import truckCustomFieldRoutes from './routes/truck-custom-field'
+import serviceFieldSettingsRoutes from './routes/service-field-settings'
 import tripCustomFieldRoutes from './routes/trip-custom-field'
 import maintenanceCustomFieldRoutes from './routes/maintenance-custom-field'
 import carriersRoutes from './routes/carriers'
@@ -87,6 +88,7 @@ app.use('/api/visitable-persons', visitablePersonsRoutes)
 app.use('/api/visit-reasons', visitReasonsRoutes)
 app.use('/api/store-types', storeTypesRoutes)
 app.use('/api/truck-custom-field', truckCustomFieldRoutes)
+app.use('/api/service-field-settings', serviceFieldSettingsRoutes)
 app.use('/api/trip-custom-field', tripCustomFieldRoutes)
 app.use('/api/maintenance-custom-field', maintenanceCustomFieldRoutes)
 app.use('/api/carriers', carriersRoutes)

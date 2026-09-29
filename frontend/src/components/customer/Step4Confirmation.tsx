@@ -26,6 +26,8 @@ const SERVICE_LABEL: Record<ServiceKey, { label: string; icon: string }> = {
   lcl_collection:          { label: 'LCL collection',             icon: ICONS.truck },
   dehire:                  { label: 'Empty container collection', icon: ICONS.truck },
   unpack:                  { label: 'Pack',                       icon: ICONS.layers },
+  fcl_delivery:            { label: 'FCL Delivery',                icon: ICONS.truck },
+  lcl_delivery:            { label: 'LCL Delivery',                icon: ICONS.truck },
 }
 
 export function Step4Confirmation() {

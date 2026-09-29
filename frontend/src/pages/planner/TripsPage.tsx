@@ -97,6 +97,12 @@ export default function TripsPage() {
   // repeated one-click action a planner works through a list with, so it sits on the card face;
   // the rarer actions stay behind the '...'.
   const [advancingId, setAdvancingId] = useState<string | null>(null)
+  const [actionsMenuId, setActionsMenuId] = useState<string | null>(null)
+
+  // FRD 2.4.2.2 — '...' actions menu → 'Send to Contractor'. No contractor-management backend
+  // exists yet (same gap as Allocator Maintenance's identical stub), so this is a placeholder
+  // exactly like that one rather than a half-built feature with nowhere to send the request.
+  const sendToContractor = () => toast('Contractor will be notified by email — coming soon', 'info')
 
   // Cards are edited in place — no menu, no panel. Each cell saves itself and patches the row,
   // so the list keeps its scroll position, tab and filters instead of refetching.
@@ -264,6 +270,30 @@ export default function TripsPage() {
                       {advancingId === t.id ? 'Updating…' : `Advance to ${STAGE_LABEL[NEXT_STAGE[t.stage]!]}`}
                     </button>
                   )}
+
+                  {/* '...' actions menu — 'Send to Contractor' */}
+                  <div style={{ position: 'relative' }}>
+                    <button type="button" onClick={e => { e.stopPropagation(); setActionsMenuId(v => v === t.id ? null : t.id) }} aria-label="Trip actions" aria-haspopup="true" aria-expanded={actionsMenuId === t.id}
+                      style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', border: 'none', background: actionsMenuId === t.id ? 'rgba(0,0,0,0.06)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                    </button>
+                    {actionsMenuId === t.id && (
+                      <>
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 100 }} onClick={e => { e.stopPropagation(); setActionsMenuId(null) }} />
+                        <div onClick={e => e.stopPropagation()}
+                          style={{ position: 'absolute', top: 30, right: 0, zIndex: 101, width: 200, background: '#fff', border: '1px solid rgba(0,0,0,0.09)', borderRadius: 'var(--r-md)', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', padding: 6, overflow: 'hidden' }}>
+                          <button type="button"
+                            onClick={e => { e.stopPropagation(); setActionsMenuId(null); sendToContractor() }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 10px', fontSize: 14, fontWeight: 500, color: '#1C1917', background: 'transparent', border: 'none', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
+                            <Icon name={ICONS.truck} size={15} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+                            Send to Contractor
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   <button type="button" onClick={e => { e.stopPropagation(); navigate(`/planner/trips/${t.id}`) }} aria-label="View trip details"
                     style={{ width: 26, height: 26, borderRadius: 'var(--r-sm)', border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--brand-color)' }}>
