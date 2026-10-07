@@ -7,7 +7,7 @@ import { clearAllClientState } from '@/lib/state-cleanup'
  * Bearer-only — no cookies anywhere.
  */
 
-export type UserRole = 'reception_admin' | 'reception_staff' | 'visitor_registered' | 'super_admin' | 'customer' | 'planner' | 'allocator' | 'billing' | 'compliance_officer' | 'compliance_admin'
+export type UserRole = 'reception_admin' | 'reception_staff' | 'visitor_registered' | 'super_admin' | 'customer' | 'planner' | 'allocator' | 'billing' | 'compliance_officer' | 'compliance_admin' | 'packing'
 
 interface User {
   id: string
@@ -22,7 +22,8 @@ interface AuthContextType {
   isAdmin: boolean
   isLoading: boolean
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>
-  logout: () => void
+  /** Clears the session and sends the user to the home page ('/'). Pass { redirect: false } to stay on the current screen. */
+  logout: (opts?: { redirect?: boolean }) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -133,11 +134,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  const logout = () => {
-    const wasCustomer = user?.role === 'customer'
+  // Signing out of ANY module lands on the home page. (Layouts pass this straight to onClick, so the argument
+  // may be a click event — only an explicit { redirect: false } opts out.)
+  const logout = (opts?: { redirect?: boolean }) => {
     clearAllClientState()
     setUser(null)
-    window.location.href = wasCustomer ? '/customer-login' : '/login'
+    if (opts?.redirect === false) return
+    window.location.href = '/'
   }
 
   return (

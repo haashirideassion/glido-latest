@@ -6,6 +6,7 @@ import { MyBookingsList } from '@/components/portal/MyBookingsList'
 import { CustomSelect } from '@/components/ui/CustomSelect'
 import { findBooking, getBookingsByUserId } from '@/lib/db/bookings'
 import { useAuth } from '@/contexts/AuthContext'
+import { toast } from '@/lib/toast'
 import type { Booking } from '@/data/types'
 
 const PAGE_SIZE = 10
@@ -37,6 +38,29 @@ export default function MyBookingsPage() {
     setViewMode(v)
     try { localStorage.setItem('glido_bookings_view', v) } catch { /* noop */ }
   }
+
+  // Stripe redirects here after Checkout (see success_url/cancel_url in
+  // backend/src/routes/payments.ts). The booking's actual payment_status is set by
+  // the webhook, not this redirect — this is just a one-time UI acknowledgement, so
+  // strip the query param immediately to avoid re-showing it on refresh.
+  useEffect(() => {
+    const payment = params.get('payment')
+    if (!payment) return
+    if (payment === 'success') {
+      toast('Payment successful! Your booking is confirmed.', 'success')
+    } else if (payment === 'cancelled') {
+      toast('Payment was cancelled. Your booking is still saved as pending — you can pay again anytime.', 'info')
+      // The bookings already exist — drop the saved wizard snapshot so the customer can't
+      // re-submit the same wizard and create duplicates.
+      try {
+        sessionStorage.removeItem('glido_card_return')
+        sessionStorage.removeItem('glido_wizard_v2')
+      } catch { /* noop */ }
+    }
+    const next = new URLSearchParams(params)
+    next.delete('payment')
+    setParams(next, { replace: true })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!ref && !user) return

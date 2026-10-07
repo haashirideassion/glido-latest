@@ -8,6 +8,7 @@ import { getVisitablePersons, addVisitablePerson, updateVisitablePerson, deleteV
 import type { VisitablePerson } from '@/lib/db/visitable-persons'
 import { getVisitReasons, addVisitReason, updateVisitReason, deleteVisitReason } from '@/lib/db/visit-reasons'
 import type { VisitReason } from '@/lib/db/visit-reasons'
+import { API_BASE } from '@/lib/api-client'
 import { getStoreTypes, addStoreType, updateStoreType, deleteStoreType } from '@/lib/db/store-types'
 import type { StoreType } from '@/lib/db/store-types'
 import { getServiceFieldSettings, setServiceFieldSetting } from '@/lib/db/service-field-settings'
@@ -887,7 +888,14 @@ export default function SettingsPage() {
 
   // Payment state
   const [eft,             setEft]             = useState({ bankName: '', accountName: '', bsb: '', accountNumber: '' })
-  const [stripe,          setStripe]          = useState({ publishableKey: '', secretKey: '' })
+  const [stripe,          setStripe]          = useState({ publishableKey: '', secretKey: '', webhookSecret: '' })
+  // The API never echoes stripe_secret_key / stripe_webhook_secret back — GET
+  // /api/tenants/:id/full only reports whether each is currently set (as
+  // `${col}_set`), never the raw value. These track that so the fields can show
+  // "configured, enter a new one to replace it" instead of loading blank and
+  // looking unconfigured when a value already exists.
+  const [stripeSecretKeySet,    setStripeSecretKeySet]    = useState(false)
+  const [stripeWebhookSecretSet, setStripeWebhookSecretSet] = useState(false)
   const [compay,          setCompay]          = useState({ clientNumber: '' })
   const [requirePayment,  setRequirePayment]  = useState(false)
   const [paymentLoading,  setPaymentLoading]  = useState(true)
@@ -895,6 +903,8 @@ export default function SettingsPage() {
   const [stripeSaving,    setStripeSaving]    = useState(false)
   const [compaySaving,    setCompaySaving]    = useState(false)
   const [showSecretKey,   setShowSecretKey]   = useState(false)
+  const [showWebhookSecret, setShowWebhookSecret] = useState(false)
+  const [webhookUrlCopied, setWebhookUrlCopied] = useState(false)
 
   // Pricing state
   const [pricing,        setPricing]        = useState<PricingState>(DEFAULT_PRICING)
@@ -1122,8 +1132,12 @@ export default function SettingsPage() {
         })
         setStripe({
           publishableKey: tenant.stripe_public_key ?? '',
-          secretKey:      tenant.stripe_secret_key ?? '',
+          // Secrets are never returned by the API — only presence booleans.
+          secretKey:      '',
+          webhookSecret:  '',
         })
+        setStripeSecretKeySet(!!tenant.stripe_secret_key_set)
+        setStripeWebhookSecretSet(!!tenant.stripe_webhook_secret_set)
         setRequirePayment(tenant.require_payment_to_confirm ?? false)
         setCompay({ clientNumber: (tenant as any).compay_client_number ?? '' })
       })
@@ -1152,10 +1166,18 @@ export default function SettingsPage() {
   const saveStripe = async () => {
     setStripeSaving(true)
     try {
+      // Only send secret fields when the user actually typed a new value — an
+      // unconditional send here would overwrite (wipe) the real stored secret
+      // with an empty string every time this field is left blank on save, since
+      // the API never loads the real value back into it (see the load effect
+      // above). stripe_public_key isn't a secret, so it's always safe to send.
       await updateTenant(DEFAULT_TENANT_ID, {
         stripe_public_key: stripe.publishableKey || null,
-        stripe_secret_key: stripe.secretKey      || null,
+        ...(stripe.secretKey     ? { stripe_secret_key:     stripe.secretKey }     : {}),
+        ...(stripe.webhookSecret ? { stripe_webhook_secret: stripe.webhookSecret } : {}),
       })
+      if (stripe.secretKey) setStripeSecretKeySet(true)
+      if (stripe.webhookSecret) setStripeWebhookSecretSet(true)
       toast('Stripe settings saved', 'success')
       setStripeDirty(false)
     } catch (err: any) {
@@ -2594,7 +2616,7 @@ export default function SettingsPage() {
 
               {/* Stripe */}
               <div style={CARD}>
-                <SectionHead title="Stripe (Card Payments)" desc="Configure your Stripe account for card payment processing." />
+                <SectionHead title="Stripe (Card Payments)" desc="Configure your Stripe account for card payment processing. Each tenant connects their own Stripe account." />
                 {paymentLoading ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     {[0,1].map(i => <div key={i} style={{ height: 44, borderRadius: 'var(--r-sm)', background: 'rgba(0,0,0,0.06)' }} />)}
@@ -2602,20 +2624,66 @@ export default function SettingsPage() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                     <Field label="Stripe Publishable Key">
-                      <FocusInput type="text" value={stripe.publishableKey} onChange={e => { setStripe(v => ({ ...v, publishableKey: e.target.value })); setStripeDirty(true) }} placeholder="pk_live_…" />
+                      <FocusInput type="text" name="stripe-publishable-key" autoComplete="off" value={stripe.publishableKey} onChange={e => { setStripe(v => ({ ...v, publishableKey: e.target.value })); setStripeDirty(true) }} placeholder="pk_live_…" />
                     </Field>
                     <Field label="Stripe Secret Key">
                       <div style={{ position: 'relative' }}>
                         <FocusInput
                           type={showSecretKey ? 'text' : 'password'}
+                          name="stripe-secret-key"
+                          autoComplete="new-password"
                           value={stripe.secretKey}
                           onChange={e => { setStripe(v => ({ ...v, secretKey: e.target.value })); setStripeDirty(true) }}
-                          placeholder="sk_live_…"
+                          placeholder={stripeSecretKeySet ? 'Key configured — enter a new one to replace it' : 'sk_live_…'}
                           style={{ paddingRight: 44 }}
                         />
                         <button type="button" onClick={() => setShowSecretKey(v => !v)}
                           style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500, fontFamily: 'inherit' }}>
                           {showSecretKey ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
+                    </Field>
+
+                    <Field label="Webhook Endpoint URL" hint="Register this exact URL in the Stripe Dashboard under Developers > Webhooks for this Stripe account, listening for these events: checkout.session.completed, checkout.session.expired and charge.refunded. Then paste the whsec_… signing secret it gives you below.">
+                      <div style={{ position: 'relative' }}>
+                        <FocusInput
+                          type="text"
+                          readOnly
+                          value={`${API_BASE}/api/payments/webhook/${DEFAULT_TENANT_ID}`}
+                          style={{ paddingRight: 72, color: 'var(--text-secondary)' }}
+                        />
+                        <button type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${API_BASE}/api/payments/webhook/${DEFAULT_TENANT_ID}`)
+                            setWebhookUrlCopied(true)
+                            toast('Webhook URL copied', 'success')
+                            setTimeout(() => setWebhookUrlCopied(false), 2000)
+                          }}
+                          style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', padding: '5px 10px', fontSize: 12, fontWeight: 600, borderRadius: 'var(--r-full)', border: '1px solid rgba(0,0,0,0.12)', background: webhookUrlCopied ? 'rgba(34,197,94,0.1)' : '#fff', color: webhookUrlCopied ? '#16A34A' : 'var(--text-secondary)', cursor: 'pointer', fontFamily: 'inherit' }}>
+                          {webhookUrlCopied ? '✓ Copied' : 'Copy'}
+                        </button>
+                      </div>
+                      {!API_BASE && (
+                        <p style={{ fontSize: 12.5, color: 'var(--text-tertiary)', marginTop: 6 }}>
+                          Local dev: run <code>stripe listen --forward-to localhost:3001/api/payments/webhook/{DEFAULT_TENANT_ID}</code> instead of registering a URL in the Stripe Dashboard.
+                        </p>
+                      )}
+                    </Field>
+
+                    <Field label="Webhook Signing Secret">
+                      <div style={{ position: 'relative' }}>
+                        <FocusInput
+                          type={showWebhookSecret ? 'text' : 'password'}
+                          name="stripe-webhook-secret"
+                          autoComplete="new-password"
+                          value={stripe.webhookSecret}
+                          onChange={e => { setStripe(v => ({ ...v, webhookSecret: e.target.value })); setStripeDirty(true) }}
+                          placeholder={stripeWebhookSecretSet ? 'Secret configured — enter a new one to replace it' : 'whsec_…'}
+                          style={{ paddingRight: 44 }}
+                        />
+                        <button type="button" onClick={() => setShowWebhookSecret(v => !v)}
+                          style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)', fontWeight: 500, fontFamily: 'inherit' }}>
+                          {showWebhookSecret ? 'Hide' : 'Show'}
                         </button>
                       </div>
                     </Field>

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useWizard } from '@/contexts/WizardContext'
+import { useWizard, isDocRequired, tenantDocsForCombo } from '@/contexts/WizardContext'
 import type { DocumentFile } from '@/contexts/WizardContext'
 import { Icon, ICONS } from '@/lib/Icon'
 import documentsImg from '@/assets/documents.png'
@@ -11,6 +11,11 @@ import { todaySydney } from '@/lib/time'
 // ─── Document slot definitions per combination ────────────────────────────────
 
 interface DocSlot { docType: string; label: string; required: boolean; badge?: string; acceptAttr?: string; helpText?: string }
+
+// Matches the backend's multer limit in backend/src/routes/uploads.ts — checked client-side
+// too so an oversized file is rejected instantly instead of uploading (slowly, or not at all
+// through Cloud Run's own request-size limits) only to fail server-side with no clear error.
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 // Convert "PDF, JPG, PNG" → ".pdf,.jpg,.jpeg,.png"
 function toAccept(fileTypes: string): string {
@@ -52,22 +57,17 @@ export function Step6ContactVehicle() {
   const multi = state.slotCount > 1
 
   // ── Resolve doc slots for a given combo ──────────────────────────────────────
-  const ALWAYS_REQUIRED = ['interim_receipt', 'interim receipt', 'delivery_order', 'delivery order', 'booking_confirmation', 'booking confirmation', 'cartage_advice', 'cartage advice']
-
+  // Required-ness and combo filtering come from WizardContext (isDocRequired /
+  // tenantDocsForCombo) — the same helpers the Continue button uses — so what the
+  // screen marks "Required" is exactly what blocks Continue.
   function resolveDocSlots(serviceType: string, loadType: string): DocSlot[] {
     const comboCode = `${serviceType}_${loadType}`
     const comboKey  = `${serviceType}-${loadType}`
     if (state.tenantDocs && state.tenantDocs.length > 0) {
-      // 1. Filter to combo first
-      const filtered = state.tenantDocs.filter(d => !d.appliesTo || d.appliesTo.length === 0 || d.appliesTo.includes(comboCode))
-      const list = filtered.length > 0 ? filtered : state.tenantDocs
-      // 2. Deduplicate AFTER filtering, keeping first occurrence per id
-      const uniqueDocs = list.filter(
-        (doc, index, self) => index === self.findIndex(d => d.id === doc.id)
-      )
-      // 3. Map to DocSlot, overriding required for known doc types
+      const uniqueDocs = tenantDocsForCombo(state.tenantDocs, comboCode)
+      // Map to DocSlot
       return uniqueDocs.map(d => {
-        const isRequired = ALWAYS_REQUIRED.includes(d.id?.toLowerCase()) || ALWAYS_REQUIRED.includes(d.name?.toLowerCase()) || d.required
+        const isRequired = isDocRequired(d)
         return {
           docType:    d.id,
           label:      d.name,
@@ -108,6 +108,10 @@ export function Step6ContactVehicle() {
         toast(`Invalid file type. Allowed: ${slot.acceptAttr.replace(/\./g, '').toUpperCase()}`, 'error')
         return
       }
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast('File exceeds the 10 MB limit. Please choose a smaller file.', 'error')
+      return
     }
     const date = todaySydney()
     const sanitizeFilename = (name: string) =>
@@ -237,7 +241,7 @@ export function Step6ContactVehicle() {
                   {uploading[slot.docType] ? 'Uploading…' : 'Upload'}
                   <input type="file" multiple accept={slot.acceptAttr ?? '.pdf,.jpg,.jpeg,.png'} style={{ display: 'none' }} disabled={uploading[slot.docType]}
                     ref={el => { slotInputRefs.current[slot.docType] = el }}
-                    onChange={e => { if (!e.target.files) return; Array.from(e.target.files).forEach(f => uploadFileSingle(f, slot.docType)) }} />
+                    onChange={e => { if (!e.target.files) return; Array.from(e.target.files).forEach(f => uploadFileSingle(f, slot.docType)); e.target.value = '' }} />
                 </label>
               </div>
               {uploaded.length > 0 && (
@@ -284,7 +288,7 @@ export function Step6ContactVehicle() {
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 14 }}>Drag &amp; drop or click to browse — PDF, JPG, PNG, max 10 MB</p>
         <label className="btn-ghost" style={{ padding: '8px 16px', fontSize: 14, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }} onClick={e => e.stopPropagation()}>
           <Icon name={ICONS.upload} size={13} />Browse files
-          <input ref={generalInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={e => { if (e.target.files) Array.from(e.target.files).forEach(f => uploadFileSingle(f, 'general')) }} />
+          <input ref={generalInputRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={e => { if (e.target.files) Array.from(e.target.files).forEach(f => uploadFileSingle(f, 'general')); e.target.value = '' }} />
         </label>
       </div>
 
@@ -339,6 +343,10 @@ function SlotDocSection({ slotIndex, docFiles, docSlots, onAdd, onRemove }: {
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
 
   const uploadFile = async (file: File, docType: string) => {
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast('File exceeds the 10 MB limit. Please choose a smaller file.', 'error')
+      return
+    }
     const date = todaySydney()
     const safeName = file.name
       .normalize('NFC')
@@ -401,7 +409,7 @@ function SlotDocSection({ slotIndex, docFiles, docSlots, onAdd, onRemove }: {
                   <Icon name={ICONS.upload} size={12} />
                   {uploading[slot.docType] ? 'Uploading…' : 'Upload'}
                   <input type="file" multiple accept={slot.acceptAttr ?? '.pdf,.jpg,.jpeg,.png'} style={{ display: 'none' }} disabled={uploading[slot.docType]}
-                    onChange={e => { if (e.target.files) Array.from(e.target.files).forEach(f => uploadFile(f, slot.docType)) }} />
+                    onChange={e => { if (e.target.files) Array.from(e.target.files).forEach(f => uploadFile(f, slot.docType)); e.target.value = '' }} />
                 </label>
               </div>
               {uploaded.length > 0 && (

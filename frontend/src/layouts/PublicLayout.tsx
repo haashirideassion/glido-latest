@@ -273,6 +273,16 @@ export default function PublicLayout() {
                       My Bookings
                     </Link>
                     <Link
+                      to="/requests"
+                      onClick={() => setVisitorMenuOpen(false)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', borderRadius: 'var(--r-sm)', fontSize: 15, fontWeight: 500, color: '#1C1917', textDecoration: 'none', transition: 'background 0.12s ease' }}
+                      onMouseOver={e => (e.currentTarget.style.background = 'rgba(0,0,0,0.04)')}
+                      onMouseOut={e  => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <Icon name={ICONS.container} size={14} style={{ opacity: 0.55, flexShrink: 0 }} />
+                      My Pack / Unpack Requests
+                    </Link>
+                    <Link
                       to="/drivers"
                       onClick={() => setVisitorMenuOpen(false)}
                       style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', borderRadius: 'var(--r-sm)', fontSize: 15, fontWeight: 500, color: '#1C1917', textDecoration: 'none', transition: 'background 0.12s ease' }}

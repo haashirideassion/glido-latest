@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { flushSync } from 'react-dom'
-import { useWizard, useHoldTimer, calcCharges } from '@/contexts/WizardContext'
+import { useWizard, useHoldTimer, calcCharges, CARD_RETURN_KEY } from '@/contexts/WizardContext'
 import { Icon, ICONS } from '@/lib/Icon'
 import timerImg from '@/assets/timer.png'
 import { createBooking } from '@/lib/db/bookings'
 import { postFetcher } from '@/lib/fetcher'
+import { createCheckoutSession } from '@/lib/payments'
 const DEFAULT_TENANT_ID = 'a0000000-0000-0000-0000-000000000001'
 import { useTenantInfo } from '@/lib/useTenantInfo'
 import { useAuth } from '@/contexts/AuthContext'
@@ -88,6 +89,7 @@ export function Step7Confirmation() {
       }
 
       const refs: Array<{ ref: string; slotLabel: string; date: string }> = []
+      const createdBookingIds: string[] = []
       for (const cfg of state.slotConfigs) {
         // Per-slot: use per-slot fields if multi-slot, else top-level fields
         const slotDate        = multi ? cfg.selectedDate      : state.selectedDate
@@ -164,6 +166,7 @@ export function Step7Confirmation() {
         console.log('[Submit Debug] booking.referenceNumber:', booking?.referenceNumber)
         const resolvedRef = booking?.referenceNumber || slotRef
         refs.push({ ref: resolvedRef, slotLabel, date: slotDate })
+        if (booking?.id) createdBookingIds.push(booking.id)
         console.log('[Submit Debug] refs so far:', refs)
 
         // Slot confirmed count is managed by the backend on booking creation — no-op here
@@ -199,6 +202,35 @@ export function Step7Confirmation() {
       const _seenRefs = new Set<string>()
       const uniqueRefs = refs.filter(r => !!r.ref).filter(r => { if (_seenRefs.has(r.ref)) return false; _seenRefs.add(r.ref); return true })
       console.log('[Submit Debug] final refs:', uniqueRefs)
+
+      // Card payments: the booking(s) above were created with paymentStatus 'pending',
+      // same as EFT. Now hand off to a Stripe-hosted Checkout page to actually collect
+      // card details and take payment — Glido's servers never see raw card data. Stripe
+      // redirects back to My Bookings afterward; the webhook (not this browser tab)
+      // is what flips payment_status to 'paid' once Stripe confirms the charge.
+      if (state.paymentMethod === 'card') {
+        try {
+          const checkoutUrl = await createCheckoutSession(createdBookingIds)
+          // Stripe returns the customer to /book?payment=success in a brand-new page load,
+          // so stash a snapshot of the wizard + the created refs now. WizardContext uses it
+          // to rebuild the normal confirmation screen on return.
+          try {
+            sessionStorage.setItem(CARD_RETURN_KEY, JSON.stringify({ refs: uniqueRefs, state }))
+          } catch { /* storage unavailable — customer lands on an empty wizard; bookings still exist */ }
+          // Drop the "leave this page?" prompt before navigating away: the bookings are
+          // already created, so this is a deliberate hand-off, not an abandoned wizard.
+          flushSync(() => {
+            dispatch({ type: 'SET', field: 'bookingConfirmed', value: true })
+          })
+          window.location.href = checkoutUrl
+          return // leaving the SPA — don't fall through to the EFT/ComPay confirm-and-advance below
+        } catch (err: any) {
+          dispatch({ type: 'SET', field: 'submitError', value: err?.message ?? 'Your booking was created, but we could not start the Stripe checkout. You can complete payment later from My Bookings.' })
+          dispatch({ type: 'SET', field: 'submitting', value: false })
+          return
+        }
+      }
+
       // flushSync forces React to commit these dispatches synchronously before any
       // user interaction can fire. Without this, React 18's async batching means
       // useBlocker in BookingWizard is still registered (shouldBlock=true from the
@@ -606,192 +638,21 @@ function Spinner() {
   </svg>
 }
 
-// ─── Card type detection ──────────────────────────────────────────────────────
-function detectCard(digits: string): 'visa' | 'mastercard' | 'amex' | null {
-  if (!digits) return null
-  if (digits.startsWith('4')) return 'visa'
-  const n = parseInt(digits.substring(0, 2))
-  if (n >= 51 && n <= 55) return 'mastercard'
-  if (digits.startsWith('34') || digits.startsWith('37')) return 'amex'
-  return null
-}
-
-const CARD_LOGOS: Record<string, React.ReactNode> = {
-  visa:       <span style={{ fontSize: 13, fontWeight: 800, color: '#1a1f71', letterSpacing: '-0.02em', fontStyle: 'italic' }}>VISA</span>,
-  mastercard: <span style={{ fontSize: 10, fontWeight: 700, color: '#eb001b' }}>MC</span>,
-  amex:       <span style={{ fontSize: 10, fontWeight: 700, color: '#007bc1' }}>AMEX</span>,
-}
-
-// ─── Validated card panel ─────────────────────────────────────────────────────
+// ─── Card payment panel — Stripe Checkout ─────────────────────────────────────
+// No card details are collected or stored by Glido. Clicking "Confirm & Pay" below
+// creates the booking, then redirects the browser to a Stripe-hosted Checkout page
+// to collect card details directly — Glido's own servers never see raw card data.
 function CardPaymentPanel() {
-  const { state, dispatch } = useWizard()
-  const [touched, setTouched] = useState<Record<string, boolean>>({})
-  const [errors, setErrors]   = useState<Record<string, string>>({})
-
-  const set = (f: string, v: string) => dispatch({ type: 'SET', field: f as any, value: v })
-  const touch = (f: string) => setTouched(p => ({ ...p, [f]: true }))
-
-  const digits   = state.cardNumber.replace(/\s/g, '')
-  const cardType = detectCard(digits)
-  const isAmex   = cardType === 'amex'
-
-  // ── Formatters ──────────────────────────────────────────────────────────────
-
-  const handleCardNumber = (raw: string) => {
-    const d = raw.replace(/\D/g, '')
-    let formatted: string
-    if (isAmex || d.startsWith('34') || d.startsWith('37')) {
-      // Amex: 4-6-5
-      const p1 = d.slice(0, 4)
-      const p2 = d.slice(4, 10)
-      const p3 = d.slice(10, 15)
-      formatted = [p1, p2, p3].filter(Boolean).join(' ')
-    } else {
-      // Standard: 4-4-4-4
-      formatted = d.slice(0, 16).replace(/(.{4})/g, '$1 ').trim()
-    }
-    set('cardNumber', formatted)
-  }
-
-  const handleExpiry = (raw: string) => {
-    const d    = raw.replace(/\D/g, '').slice(0, 4)
-    let result = d
-    if (d.length > 2) result = d.slice(0, 2) + '/' + d.slice(2)
-    set('cardExpiry', result)
-  }
-
-  const handleCvv = (raw: string) => {
-    const d = raw.replace(/\D/g, '').slice(0, isAmex ? 4 : 3)
-    set('cardCvv', d)
-  }
-
-  const handleName = (raw: string) => {
-    const cleaned = raw.replace(/[^a-zA-Z \-']/g, '').slice(0, 60)
-    set('cardName', cleaned)
-  }
-
-  // ── Validators ──────────────────────────────────────────────────────────────
-
-  const validateCard = () => {
-    const d = state.cardNumber.replace(/\s/g, '')
-    const ct = detectCard(d)
-    const expected = ct === 'amex' ? 15 : 16
-    const err = d.length !== expected ? 'Please enter a valid ' + expected + '-digit card number' : ''
-    setErrors(p => ({ ...p, cardNumber: err }))
-  }
-
-  const validateExpiry = () => {
-    const parts = state.cardExpiry.split('/')
-    if (parts.length !== 2 || parts[0].length !== 2 || parts[1].length !== 2) {
-      setErrors(p => ({ ...p, cardExpiry: 'Invalid expiry date' })); return
-    }
-    const mm = parseInt(parts[0]), yy = parseInt(parts[1])
-    if (mm < 1 || mm > 12) { setErrors(p => ({ ...p, cardExpiry: 'Invalid expiry date' })); return }
-    const now = new Date()
-    const expMs = new Date(2000 + yy, mm, 1).getTime()
-    if (expMs < now.getTime()) { setErrors(p => ({ ...p, cardExpiry: 'Card has expired' })); return }
-    setErrors(p => ({ ...p, cardExpiry: '' }))
-  }
-
-  const validateCvv = () => {
-    const expected = isAmex ? 4 : 3
-    const err = state.cardCvv.length !== expected ? 'Invalid CVV' : ''
-    setErrors(p => ({ ...p, cardCvv: err }))
-  }
-
-  const validateName = () => {
-    const err = state.cardName.trim().length < 2 ? 'Please enter the cardholder name as it appears on the card' : ''
-    setErrors(p => ({ ...p, cardName: err }))
-  }
-
-  // ── Shared label style (matching existing wizard style) ──────────────────────
-  const LBL: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 6 }
-  const ERR: React.CSSProperties = { fontSize: 13, color: '#EF4444', marginTop: 4 }
-  const fieldStyle = (hasErr: boolean): React.CSSProperties => ({
-    borderColor: hasErr ? '#EF4444' : undefined,
-    boxShadow:   hasErr ? '0 0 0 2px rgba(239,68,68,0.15)' : undefined,
-  })
-
   return (
     <div style={{ background: '#fff', border: '1.5px solid rgba(0,0,0,0.08)', borderRadius: 'var(--r-lg)', padding: 20, marginBottom: 20 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <Icon name={ICONS.shield} size={15} style={{ color: '#22C55E' }} />
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', fontWeight: 500 }}>Secure card payment powered by Stripe</p>
       </div>
-
-      {/* Cardholder name */}
-      <div style={{ marginBottom: 14 }}>
-        <label style={LBL}>Cardholder Name</label>
-        <input
-          type="text"
-          placeholder="As it appears on the card"
-          maxLength={60}
-          className="wizard-field"
-          value={state.cardName}
-          onChange={e => handleName(e.target.value)}
-          onBlur={() => { touch('cardName'); validateName() }}
-          style={touched.cardName && errors.cardName ? fieldStyle(true) : {}}
-        />
-        {touched.cardName && errors.cardName && <p style={ERR}>{errors.cardName}</p>}
-      </div>
-
-      {/* Card number */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-          <label style={{ ...LBL, marginBottom: 0 }}>Card Number</label>
-          {cardType && CARD_LOGOS[cardType] && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 6px', border: '1px solid rgba(0,0,0,0.12)', borderRadius: 'var(--r-xs)', background: '#fff' }}>
-              {CARD_LOGOS[cardType]}
-            </span>
-          )}
-        </div>
-        <input
-          type="text"
-          inputMode="numeric"
-          placeholder={isAmex ? '3782 822463 10005' : '•••• •••• •••• ••••'}
-          maxLength={isAmex ? 17 : 19}
-          className="wizard-field"
-          value={state.cardNumber}
-          onChange={e => handleCardNumber(e.target.value)}
-          onBlur={() => { touch('cardNumber'); validateCard() }}
-          style={{ letterSpacing: '0.08em', fontFamily: 'ui-monospace,monospace', ...(touched.cardNumber && errors.cardNumber ? fieldStyle(true) : {}) }}
-        />
-        {touched.cardNumber && errors.cardNumber && <p style={ERR}>{errors.cardNumber}</p>}
-      </div>
-
-      {/* Expiry + CVV */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div>
-          <label style={LBL}>Expiry</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            placeholder="MM/YY"
-            maxLength={5}
-            className="wizard-field"
-            value={state.cardExpiry}
-            onChange={e => handleExpiry(e.target.value)}
-            onBlur={() => { touch('cardExpiry'); validateExpiry() }}
-            style={touched.cardExpiry && errors.cardExpiry ? fieldStyle(true) : {}}
-          />
-          {touched.cardExpiry && errors.cardExpiry && <p style={ERR}>{errors.cardExpiry}</p>}
-        </div>
-        <div>
-          <label style={LBL}>CVV</label>
-          <input
-            type="password"
-            inputMode="numeric"
-            placeholder={isAmex ? '••••' : '•••'}
-            maxLength={isAmex ? 4 : 3}
-            className="wizard-field"
-            value={state.cardCvv}
-            onChange={e => handleCvv(e.target.value)}
-            onBlur={() => { touch('cardCvv'); validateCvv() }}
-            style={touched.cardCvv && errors.cardCvv ? fieldStyle(true) : {}}
-          />
-          {touched.cardCvv && errors.cardCvv && <p style={ERR}>{errors.cardCvv}</p>}
-        </div>
-      </div>
+      <p style={{ fontSize: 14, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+        You'll be redirected to Stripe's secure checkout page to enter your card details.
+        Glido never sees or stores your card number.
+      </p>
     </div>
   )
 }

@@ -34,6 +34,7 @@ export type NotifType =
   | 'walkin'
   | 'booking_cancelled'
   | 'new_booking'
+  | 'cfs_module'   // Packing & Unpacking module events
 
 export async function createNotification(
   type: NotifType,

@@ -8,6 +8,7 @@ import { useTenantInfo, DEFAULT_TENANT_ID } from '@/lib/useTenantInfo'
 import { Icon, ICONS } from '@/lib/Icon'
 import { loadPublicTenantLogo, glidoLogoPng } from '@/lib/pdfBranding'
 import { postFetcher } from '@/lib/fetcher'
+import { verifyPayment } from '@/lib/payments'
 import { toast } from '@/lib/toast'
 import { Confetti } from '@/components/Confetti'
 
@@ -62,11 +63,63 @@ function buildGoogleCalendarUrl(e: { ref: string; date: string; slotLabel: strin
 
 // EFT details fetched live — see useTenantInfo() inside ConfirmedScreen
 
+// Module-level so it survives React StrictMode's dev double-mount (and any remount of
+// the confirmation screen): the "Payment received" toast fires once per confirmation.
+let paymentToastShownFor: string | null = null
+
 function ConfirmedScreen() {
   const tenant = useTenantInfo()
   const { state, dispatch } = useWizard()
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [])
+  // Returning from Stripe Checkout (see WizardContext loadCardReturn). Stripe only sends the
+  // customer to the success URL after the card was charged, so we show the confirmation
+  // straight away — but the booking only flips to "paid" when Stripe's webhook reaches our
+  // server, which can lag or (misconfigured endpoint) never arrive. So we also ask the
+  // backend to check the session with Stripe directly; it marks the booking paid itself if
+  // the webhook hasn't. Runs once per session (module guard also covers StrictMode's
+  // double-mount, which previously fired the toast twice).
+  const [verifying, setVerifying] = useState(
+    !!(state.paymentReceived && state.paymentSessionId && state.paymentTenantId)
+  )
+  useEffect(() => {
+    if (!state.paymentReceived) return
+    const key = state.paymentSessionId || state.confirmationRef || 'paid'
+    if (paymentToastShownFor === key) return
+    paymentToastShownFor = key
+
+    const sessionId = state.paymentSessionId
+    const tenantId  = state.paymentTenantId
+    if (!sessionId || !tenantId) {
+      toast('Payment received — your booking is confirmed.', 'success')
+      return
+    }
+    const run = async () => {
+      let answered = false   // true once the server gave a definite answer (even "not paid")
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const r = await verifyPayment(sessionId, tenantId)
+        if (r) answered = true
+        if (r?.paid) {
+          setVerifying(false)
+          toast('Payment received — your booking is confirmed.', 'success')
+          return
+        }
+        if (r?.status === 'expired') break
+        await new Promise(res => setTimeout(res, 2500))
+      }
+      setVerifying(false)
+      if (answered) {
+        // Stripe itself says this session is not paid — don't claim it is.
+        dispatch({ type: 'SET', field: 'paymentReceived', value: false })
+        toast('We could not confirm your payment yet. If you were charged, your booking will update shortly — check My Bookings.', 'info')
+      } else {
+        // Couldn't reach our server to double-check; Stripe only redirects here after a
+        // successful charge, so keep the optimistic confirmation.
+        toast('Payment received — your booking is confirmed.', 'success')
+      }
+    }
+    void run()
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
   // Normalise confirmationRefs to object shape (fall back to legacy string confirmationRef)
   const _rawConfRefs = state.confirmationRefs ?? []
   const rawRefs: Array<{ ref: string; slotLabel: string; date: string }> = _rawConfRefs.length
@@ -101,7 +154,7 @@ function ConfirmedScreen() {
   const handleResendEmail = async () => {
     setResendLoading(true)
     try {
-      await postFetcher('/api/v2/bookings/resend-confirmation', { refs })
+      await postFetcher('/api/bookings/resend-confirmation', { refs })
       toast('Confirmation email sent!', 'success')
     } catch {
       toast('Failed to resend email. Please try again.', 'error')
@@ -614,7 +667,7 @@ function ConfirmedScreen() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748B' }}>
                     <span>{state.paymentMethod?.toUpperCase()}</span>
-                    <span style={{ color: isEft ? '#FBBF24' : '#22C55E', fontWeight: 500 }}>{isEft ? 'EFT Pending' : 'Pending'}</span>
+                    <span style={{ color: isEft ? '#FBBF24' : '#22C55E', fontWeight: 500 }}>{verifying ? 'Confirming…' : state.paymentReceived ? 'Paid' : isEft ? 'EFT Pending' : 'Pending'}</span>
                   </div>
                 </div>
               </div>

@@ -85,10 +85,13 @@ export default function StaffLoginPage() {
   const [showPassword, setShowPassword] = useState(false)
 
   const handleToggleView = (view: RoleView) => {
+    const keep: Record<string, string> = {}
+    const redirect = searchParams.get('redirect')
+    if (redirect) keep.redirect = redirect
     if (view === 'reception') {
-      setSearchParams({}, { replace: true })
+      setSearchParams(keep, { replace: true })
     } else {
-      setSearchParams({ role: view }, { replace: true })
+      setSearchParams({ ...keep, role: view }, { replace: true })
     }
   }
 
@@ -185,7 +188,7 @@ export default function StaffLoginPage() {
           </div>
 
           {/* Role Switcher Tab — Planner/Allocator are URL-driven only (no manual picker);
-              Reception Staff and Super Admin can still toggle between each other. */}
+              Reception Staff and Super Admin can toggle between each other. */}
           {(roleView === 'reception' || roleView === 'super_admin') && (
             <div style={{
               display: 'flex',

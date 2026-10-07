@@ -824,8 +824,8 @@ export default function BookingDetailPage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: 'var(--text-tertiary)', marginTop: 2 }}>
                   <span>{(b.paymentMethod ?? '—').toUpperCase()}</span>
-                  <span style={{ color: b.paymentStatus === 'paid' ? '#22C55E' : '#FBBF24', fontWeight: 600 }}>
-                    {b.paymentStatus === 'paid' ? '✓ Paid' : b.paymentStatus === 'pending_eft' ? 'EFT Pending' : b.paymentStatus}
+                  <span style={{ color: b.paymentStatus === 'paid' ? '#22C55E' : (b.paymentStatus === 'failed' || b.paymentStatus === 'refunded') ? '#EF4444' : '#FBBF24', fontWeight: 600 }}>
+                    {b.paymentStatus === 'paid' ? '✓ Paid' : b.paymentStatus === 'pending_eft' ? 'EFT Pending' : b.paymentStatus === 'refunded' ? 'Refunded' : b.paymentStatus === 'failed' ? 'Payment failed' : b.paymentStatus}
                   </span>
                 </div>
                 {b.paymentStatus === 'pending_eft' && perms.can_confirm_eft && (

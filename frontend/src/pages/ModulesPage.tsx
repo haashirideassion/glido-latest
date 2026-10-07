@@ -98,6 +98,14 @@ const MODULES = [
     iconBg:      'rgba(13,148,136,0.09)',
     iconFg:      '#0D9488',
   },
+  {
+    label:       'Packing & Unpacking',
+    route:       '/packing-unpacking',
+    description: 'Plan and validate CFS container unpacking and packing jobs',
+    icon:        ICONS.container,
+    iconBg:      'rgba(245,158,11,0.10)',
+    iconFg:      '#D97706',
+  },
 ]
 
 export default function ModulesPage() {

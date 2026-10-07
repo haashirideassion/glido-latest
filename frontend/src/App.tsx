@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useLocation } from 'react-router-dom'
 import PublicLayout    from './layouts/PublicLayout'
 import ReceptionLayout from './layouts/ReceptionLayout'
 import LandingPage     from './pages/LandingPage'
@@ -7,6 +7,8 @@ import MyBookingsPage    from './pages/MyBookingsPage'
 import VisitorLoginPage  from './pages/VisitorLoginPage'
 import CustomerLoginPage from './pages/CustomerLoginPage'
 import StaffLoginPage    from './pages/StaffLoginPage'
+import BillingLoginPage  from './pages/BillingLoginPage'
+import PackingLoginPage  from './pages/PackingLoginPage'
 import DashboardPage   from './pages/reception/DashboardPage'
 import BookingsPage    from './pages/reception/BookingsPage'
 import WalkInsPage     from './pages/reception/WalkInsPage'
@@ -31,6 +33,14 @@ import SuperAdminGuard  from './components/SuperAdminGuard'
 import SuperAdminLayout from './layouts/SuperAdminLayout'
 import AdminIntegrationsPage from './pages/admin/AdminIntegrationsPage'
 import AdminAccessPage         from './pages/admin/AdminAccessPage'
+import CfsGuard            from './components/cfs/CfsGuard'
+import CfsLayout           from './layouts/CfsLayout'
+import StagePage           from './pages/cfs/StagePage'
+import ContainerPage       from './pages/cfs/ContainerPage'
+import CfsNewRequestPage   from './pages/cfs/CfsNewRequestPage'
+import CfsSettingsPage     from './pages/cfs/CfsSettingsPage'
+// Packing & Unpacking customer pages — aliased: the Customer Portal already has its own MyRequestsPage (service requests)
+import { CustomerNewRequestPage as PuNewRequestPage, MyRequestsPage as PuMyRequestsPage, MyRequestDetailPage as PuRequestDetailPage } from './pages/cfs/CustomerRequestPages'
 import CustomerGuard         from './components/CustomerGuard'
 import CustomerPortalLayout  from './layouts/CustomerPortalLayout'
 import CustomerDashboardPage    from './pages/customer/CustomerDashboardPage'
@@ -74,17 +84,36 @@ import MyActivitiesPage            from './pages/compliance/MyActivitiesPage'
 import CompletedActivitiesPage     from './pages/compliance/CompletedActivitiesPage'
 import SiteInspectionPage          from './pages/compliance/SiteInspectionPage'
 
+/** /login is the staff sign-in, except ?role=billing and ?role=packing, which are each their own dedicated screen. */
+function LoginRoute() {
+  const role = new URLSearchParams(useLocation().search).get('role')
+  if (role === 'billing') return <BillingLoginPage />
+  if (role === 'packing') return <PackingLoginPage />
+  return <StaffLoginPage />
+}
+
+// The module used to live at /cfs; keep old bookmarks and links working.
+function LegacyCfsRedirect() {
+  const { pathname, search, hash } = useLocation()
+  return <Navigate to={pathname.replace(/^\/cfs/, '/packing-unpacking') + search + hash} replace />
+}
+
 export const router = createBrowserRouter([
   {
     /* Public — shared nav + footer */
     element: <PublicLayout />,
     children: [
       { path: '/',              element: <LandingPage /> },
-      { path: '/login',         element: <StaffLoginPage /> },
+      { path: '/login',         element: <LoginRoute /> },
+      { path: '/billing-login', element: <BillingLoginPage /> },
+      { path: '/packing-unpacking-login', element: <PackingLoginPage /> },
       { path: '/visitor-login', element: <VisitorLoginPage /> },
       { path: '/customer-login', element: <CustomerLoginPage /> },
       { path: '/bookings',      element: <MyBookingsPage /> },
       { path: '/book',          element: <BookPage /> },
+      { path: '/requests',      element: <PuMyRequestsPage /> },
+      { path: '/requests/new',  element: <PuNewRequestPage /> },
+      { path: '/requests/:id',  element: <PuRequestDetailPage /> },
       { path: '/modules',       element: <ModulesPage /> },
       { path: '/profile',       element: <ProfilePage /> },
       { path: '/drivers',         element: <SavedDriversPage /> },
@@ -236,6 +265,24 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  {
+    /* Packing & Unpacking — independent staff module, own layout */
+    path: '/packing-unpacking',
+    element: <CfsGuard />,
+    children: [
+      {
+        element: <CfsLayout />,
+        children: [
+          { index: true,                      element: <Navigate to="/packing-unpacking/unpacking/new" replace /> },
+          { path: 'settings',                 element: <CfsSettingsPage /> },
+          { path: 'requests/new',             element: <CfsNewRequestPage /> },
+          { path: ':mode/containers/:id',     element: <ContainerPage /> },
+          { path: ':mode/:stage',             element: <StagePage /> },
+        ],
+      },
+    ],
+  },
+  { path: '/cfs/*', element: <LegacyCfsRedirect /> },   // old /cfs links keep working
   {
     /* Kiosk — fullscreen standalone */
     path: '/kiosk',

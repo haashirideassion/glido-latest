@@ -38,7 +38,7 @@ export interface Booking {
   gstAmount?: number
   totalAmount?: number
   paymentMethod?: 'card' | 'eft'
-  paymentStatus?: 'pending' | 'pending_eft' | 'paid' | 'failed'
+  paymentStatus?: 'pending' | 'pending_eft' | 'paid' | 'failed' | 'refunded'
   icsStatus?: IcsStatus
   icsLastCheckedAt?: string
   checkedInAt?: string

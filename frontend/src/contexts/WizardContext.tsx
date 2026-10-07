@@ -178,6 +178,9 @@ export interface WizardState {
   confirmationRef: string | null        // first ref (backward compat)
   confirmationRefs: Array<{ ref: string; slotLabel: string; date: string }>  // one per slot, carries time info
   bookingConfirmed: boolean             // true after successful submission — suppresses leave-page blocker
+  paymentReceived: boolean              // true when restored after a successful Stripe Checkout redirect
+  paymentSessionId: string | null       // Stripe Checkout session id from the return URL — used to double-check the payment server-side
+  paymentTenantId: string | null        // tenant whose Stripe account owns that session
   // Step 5 — active slot tab index (lifted so BookingWizard footer can react to it)
   step5ActiveSlot: number
   // Steps 2-4 — active slot tab index (lifted so the 3D scene can focus on the slot being edited)
@@ -239,6 +242,9 @@ export const INITIAL_STATE: WizardState = {
   confirmationRef: null,
   confirmationRefs: [],
   bookingConfirmed: false,
+  paymentReceived: false,
+  paymentSessionId: null,
+  paymentTenantId: null,
   step5ActiveSlot: 0,
   step2ActiveSlot: 0,
   step3ActiveSlot: 0,
@@ -339,7 +345,47 @@ function reducer(state: WizardState, action: WizardAction): WizardState {
 
 const STORAGE_KEY = 'glido_wizard_v2'
 
+// Written by Step7Confirmation right before it redirects to Stripe Checkout: a snapshot of
+// the wizard plus the created booking refs. Stripe sends the customer back to
+// /book?payment=success in a fresh page load, where this lets us rebuild the confirmation
+// screen instead of dropping them on an empty wizard. Removed in an effect below (not here)
+// because React StrictMode runs initializers twice in dev.
+export const CARD_RETURN_KEY = 'glido_card_return'
+
+function loadCardReturn(): WizardState | null {
+  try {
+    const qs = new URLSearchParams(window.location.search)
+    if (qs.get('payment') !== 'success') return null
+    const raw = sessionStorage.getItem(CARD_RETURN_KEY)
+    if (!raw) return null
+    const marker = JSON.parse(raw) as {
+      refs?: Array<{ ref: string; slotLabel: string; date: string }>
+      state?: Partial<WizardState>
+    }
+    const refs = marker.refs ?? []
+    if (refs.length === 0) return null
+    return {
+      ...INITIAL_STATE,
+      ...marker.state,
+      confirmationRef: refs[0]?.ref ?? null,
+      confirmationRefs: refs,
+      bookingConfirmed: true,
+      paymentReceived: true,
+      paymentSessionId: qs.get('session_id'),
+      paymentTenantId: qs.get('t'),
+      submitting: false,
+      submitError: null,
+      holdSeconds: -1,   // same as STOP_HOLD_TIMER — no countdown on the confirmation screen
+      step: 8,
+    }
+  } catch {
+    return null
+  }
+}
+
 function load(): WizardState {
+  const afterCard = loadCardReturn()
+  if (afterCard) return afterCard
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY)
     if (!raw) return INITIAL_STATE
@@ -370,6 +416,19 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch { /* noop */ }
   }, [state])
+
+  // Returning from Stripe Checkout — /book?payment=success. The confirmation state was
+  // already rebuilt by load(); here we just consume the one-shot marker and tidy the URL so
+  // a refresh doesn't replay it.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('payment') !== 'success') return
+    try { sessionStorage.removeItem(CARD_RETURN_KEY) } catch { /* noop */ }
+    url.searchParams.delete('payment')
+    url.searchParams.delete('session_id')
+    url.searchParams.delete('t')
+    window.history.replaceState({}, '', url.toString())
+  }, [])
 
   // Resume from a saved draft link — /book?resume=<token>
   useEffect(() => {
@@ -411,6 +470,29 @@ export function useWizard() {
   const ctx = useContext(WizardContext)
   if (!ctx) throw new Error('useWizard must be used inside WizardProvider')
   return ctx
+}
+
+// ─── Required-document rules (single source of truth) ────────────────────────
+// Used by BOTH the Documents step UI (which docs to show / mark Required) and
+// deriveCanProceed (whether Continue is allowed) so the two can never disagree.
+// Core cargo documents are always mandatory regardless of how the tenant configured
+// the `required` flag in Settings.
+const ALWAYS_REQUIRED_DOCS = [
+  'interim_receipt', 'interim receipt', 'delivery_order', 'delivery order',
+  'booking_confirmation', 'booking confirmation', 'cartage_advice', 'cartage advice',
+]
+
+export function isDocRequired(d: TenantDoc): boolean {
+  return ALWAYS_REQUIRED_DOCS.includes(d.id?.toLowerCase()) ||
+         ALWAYS_REQUIRED_DOCS.includes(d.name?.toLowerCase()) ||
+         !!d.required
+}
+
+/** Tenant docs that apply to a service/load combo, de-duplicated by id. */
+export function tenantDocsForCombo(tenantDocs: TenantDoc[], comboCode: string): TenantDoc[] {
+  const filtered = tenantDocs.filter(d => !d.appliesTo || d.appliesTo.length === 0 || d.appliesTo.includes(comboCode))
+  const list = filtered.length > 0 ? filtered : tenantDocs
+  return list.filter((doc, i, self) => i === self.findIndex(d => d.id === doc.id))
 }
 
 function deriveCanProceed(s: WizardState): boolean {
@@ -460,9 +542,7 @@ function deriveCanProceed(s: WizardState): boolean {
         const uploaded = new Set(safeFiles.map(d => d.docType).filter(Boolean))
         const comboCode = `${serviceType}_${loadType}`
         if (s.tenantDocs && s.tenantDocs.length > 0) {
-          const required = s.tenantDocs.filter(d =>
-            d.required && (!d.appliesTo || d.appliesTo.length === 0 || d.appliesTo.includes(comboCode))
-          )
+          const required = tenantDocsForCombo(s.tenantDocs, comboCode).filter(isDocRequired)
           return required.every(d => uploaded.has(d.id))
         }
         const has = (t: string) => uploaded.has(t)

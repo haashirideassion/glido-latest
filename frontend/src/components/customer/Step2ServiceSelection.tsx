@@ -8,6 +8,8 @@ import type { ServiceKey, StoreSubType, StoreDetailEntry } from '@/data/types'
 import collectionImg from '@/assets/Collection.png'
 import storeImg from '@/assets/Store.png'
 import unpackImg from '@/assets/unpack.png'
+import packImg from '@/assets/pack.png'
+import emptyImg from '@/assets/empty.png'
 import inspectionImg from '@/assets/Inspection.png'
 import packageImg from '@/assets/package.png'
 import deliveryImg from '@/assets/Delivery.png'
@@ -76,6 +78,7 @@ export function Step2ServiceSelection() {
   }, [])
 
   const selectedKeys = state.selectedServices.map(s => s.serviceKey)
+  const isExport = state.serviceCategory === 'export'
   const dehireUnlocked = DEHIRE_TRIGGERS.some(k => selectedKeys.includes(k))
 
   // Deselecting every trigger has to take Dehire with it — otherwise a request keeps a service the
@@ -87,11 +90,24 @@ export function Step2ServiceSelection() {
   }, [dehireUnlocked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const services = useMemo(() => {
-    const base = state.serviceCategory === 'export' ? EXPORT_SERVICES : IMPORT_SERVICES
+    const base = isExport ? EXPORT_SERVICES : IMPORT_SERVICES
     const visible = dehireUnlocked ? base : base.filter(s => s.key !== DEHIRE_KEY)
-    if (!search.trim()) return visible
-    return visible.filter(s => s.label.toLowerCase().includes(search.trim().toLowerCase()))
-  }, [search, dehireUnlocked, state.serviceCategory])
+    // The 'unpack' service is "Unpack" under Export and "Pack" under Import, so its picture follows
+    // the label; Empty container collection (dehire) has its own picture in both.
+    const withImages = visible.map(s =>
+      s.key === 'unpack' ? { ...s, image: isExport ? unpackImg : packImg }
+      : s.key === DEHIRE_KEY ? { ...s, image: emptyImg }
+      : s)
+    if (!search.trim()) return withImages
+    return withImages.filter(s => s.label.toLowerCase().includes(search.trim().toLowerCase()))
+  }, [search, dehireUnlocked, isExport])
+
+  // Going Back and switching Import ⇄ Export must not leave a selected service the new list doesn't
+  // show — the customer couldn't see it, let alone remove it. (Dehire is handled by its own effect.)
+  useEffect(() => {
+    const allowed: ServiceKey[] = (isExport ? EXPORT_SERVICES : IMPORT_SERVICES).map(s => s.key)
+    selectedKeys.filter(k => !allowed.includes(k)).forEach(k => dispatch({ type: 'REMOVE_SERVICE', serviceKey: k }))
+  }, [isExport]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedMap = new Map(state.selectedServices.map(s => [s.serviceKey, s]))
 

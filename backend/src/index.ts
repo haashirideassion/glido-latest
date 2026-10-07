@@ -49,6 +49,8 @@ import billingSettingsRoutes from './routes/billing-settings'
 import complianceDashboardRoutes from './routes/compliance-dashboard'
 import complianceActivitiesRoutes from './routes/compliance-activities'
 import complianceInspectionsRoutes from './routes/compliance-inspections'
+import paymentsRoutes, { stripeWebhookHandler } from './routes/payments'
+import packingUnpackingRoutes from './routes/packing-unpacking'
 
 dotenv.config()
 
@@ -68,6 +70,18 @@ const corsOptions = {
 // Handle preflight requests explicitly
 app.options('*', cors(corsOptions))
 app.use(cors(corsOptions))
+
+// Stripe webhook — MUST be registered before express.json() below. Stripe signs the
+// exact raw request bytes, so this route uses express.raw() instead of the global
+// JSON parser; once this handler responds, Express never passes the request on to
+// express.json() for it. Moving this after express.json() (or folding it into
+// paymentsRoutes, which is mounted after express.json()) would break every webhook
+// signature check.
+// :tenantId — each tenant has their own Stripe account, so each one registers their
+// OWN webhook endpoint (in their own Stripe dashboard) pointing at this URL with
+// their own tenant id, and is verified against that tenant's own webhook secret.
+app.post('/api/payments/webhook/:tenantId', express.raw({ type: 'application/json' }), stripeWebhookHandler)
+
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
@@ -81,6 +95,8 @@ app.use('/api/tenants', tenantsRoutes)
 app.use('/api/checkin-records', checkinRecordsRoutes)
 app.use('/api/shipments', shipmentsRoutes)
 app.use('/api/uploads', uploadsRoutes)
+app.use('/api/payments', paymentsRoutes)
+app.use('/api/packing-unpacking', packingUnpackingRoutes)   // Packing & Unpacking module
 app.use('/api/users', usersRoutes)
 app.use('/api/booking-documents', bookingDocumentsRoutes)
 app.use('/api/saved-drivers', savedDriversRoutes)
