@@ -10,16 +10,16 @@ import storeImg from '@/assets/Store.png'
 import unpackImg from '@/assets/unpack.png'
 import packImg from '@/assets/pack.png'
 import emptyImg from '@/assets/empty.png'
+import dehireImg from '@/assets/dehire.png'
 import inspectionImg from '@/assets/Inspection.png'
 import packageImg from '@/assets/package.png'
-import deliveryImg from '@/assets/Delivery.png'
 
 interface ServiceDef { key: ServiceKey; label: string; icon: string; image?: string }
 
-// FR 1.1.4.2 "Selected Services" list for Import, matched 1:1. Note the FRD names these tiles
-// differently in FR 1.1.2.2 ("FCL Delivery", "Unpack", "Dehire") than in FR 1.1.4.2 ("FCL
-// collection", "Pack", "Empty container collection"); the 1.1.4.2 naming is what ships for Import.
-const IMPORT_SERVICES: ServiceDef[] = [
+// FR 1.1.4.2 "Selected Services" list, matched 1:1. Note the FRD names these tiles differently in
+// FR 1.1.2.2 ("FCL Delivery", "Unpack", "Dehire") than in FR 1.1.4.2 ("FCL collection", "Pack",
+// "Empty container collection"); the 1.1.4.2 naming is what ships.
+const BASE_SERVICES: ServiceDef[] = [
   { key: 'fcl_collection_terminal', label: 'FCL run into Terminal',        icon: ICONS.truck,     image: collectionImg },
   { key: 'fcl_storage',             label: 'FCL Storage',                  icon: ICONS.container, image: storeImg },
   { key: 'fcl_collection',          label: 'FCL collection',               icon: ICONS.truck,     image: collectionImg },
@@ -30,29 +30,28 @@ const IMPORT_SERVICES: ServiceDef[] = [
   { key: 'inspection_compliance',   label: 'Inspection & compliance',      icon: ICONS.shield,    image: inspectionImg },
 ]
 
-// Export's own Data Flow tile set — cargo moves toward the terminal here (Delivery), not away
-// from it (Collection), so the FRD swaps FCL/LCL Collection for FCL/LCL Delivery and drops the
-// plain "Empty container collection" tile (Dehire still appears once unlocked, see below).
-const EXPORT_SERVICES: ServiceDef[] = [
-  { key: 'fcl_collection_terminal', label: 'FCL Collection from Terminal', icon: ICONS.truck,     image: collectionImg },
-  { key: 'fcl_storage',             label: 'FCL Storage',                  icon: ICONS.container, image: storeImg },
-  { key: 'fcl_delivery',            label: 'FCL Delivery',                 icon: ICONS.truck,     image: deliveryImg },
-  { key: 'dehire',                  label: 'Empty container collection',   icon: ICONS.truck },
-  { key: 'unpack',                  label: 'Unpack',                       icon: ICONS.layers,    image: unpackImg },
-  { key: 'lcl_storage',             label: 'LCL storage',                  icon: ICONS.container, image: storeImg },
-  { key: 'lcl_delivery',            label: 'LCL Delivery',                 icon: ICONS.truck,     image: deliveryImg },
-  { key: 'inspection_compliance',   label: 'Inspection and Compliance',    icon: ICONS.shield,    image: inspectionImg },
+// Import and Export show different tile sets and use their own names for the same underlying services
+// (service keys are unchanged). Empty container collection (Dehire) is not in either base list: it
+// appears after Unpack under Import, and after FCL collection or Pack under Export — see DEHIRE_* below.
+const IMPORT_KEYS: ServiceKey[] = [
+  'fcl_collection_terminal', 'fcl_storage', 'fcl_collection', 'unpack', 'lcl_storage', 'lcl_collection', 'inspection_compliance',
 ]
+const IMPORT_LABELS: Partial<Record<ServiceKey, string>> = {
+  fcl_collection_terminal: 'FCL Collection from Terminal',
+  fcl_collection:          'FCL Delivery',
+  unpack:                  'Unpack',
+  lcl_collection:          'LCL Delivery',
+  inspection_compliance:   'Inspection and Compliance',
+  dehire:                  'Dehire',
+}
 
 const STORAGE_KEYS: ServiceKey[] = ['fcl_storage', 'lcl_storage']
 
-// FR 1.1.2.2 — "When the user clicks on the service selection 'FCL Delivery' and/or 'Unpack' then
-// the user will be displayed with another service selection tile card – 'Dehire'." In Import's
-// 1.1.4.2 naming, that "FCL Delivery" trigger is the fcl_collection tile; Export has an actual
-// fcl_delivery tile, which triggers it just as literally. The tile stays hidden until one of its
-// triggers is picked, and deselects itself if every trigger is removed.
+// Dehire (key 'dehire') differs by type:
+//  - Import: an add-on. The tile stays hidden until Unpack is picked, and deselects itself if Unpack is removed.
+//  - Export: "Empty container collection" is an independent service, always shown, never tied to another tile.
 const DEHIRE_KEY: ServiceKey = 'dehire'
-const DEHIRE_TRIGGERS: ServiceKey[] = ['fcl_collection', 'fcl_delivery', 'unpack']
+const IMPORT_DEHIRE_TRIGGERS: ServiceKey[] = ['unpack']
 
 // Fallback shown only if the CFS admin hasn't configured any Store Types yet (Settings → Store Types).
 const FALLBACK_STORE_SUBTYPES: Array<{ value: StoreSubType; label: string }> = [
@@ -78,36 +77,38 @@ export function Step2ServiceSelection() {
   }, [])
 
   const selectedKeys = state.selectedServices.map(s => s.serviceKey)
-  const isExport = state.serviceCategory === 'export'
-  const dehireUnlocked = DEHIRE_TRIGGERS.some(k => selectedKeys.includes(k))
+  const isImport = state.serviceCategory === 'import'
+  const dehireUnlocked = IMPORT_DEHIRE_TRIGGERS.some(k => selectedKeys.includes(k))
 
-  // Deselecting every trigger has to take Dehire with it — otherwise a request keeps a service the
-  // customer can no longer see, let alone remove.
+  // Import only: deselecting Unpack has to take Dehire with it — otherwise a request keeps a service the
+  // customer can no longer see, let alone remove. (Export's Empty container collection is independent.)
   useEffect(() => {
-    if (!dehireUnlocked && selectedKeys.includes(DEHIRE_KEY)) {
+    if (isImport && !dehireUnlocked && selectedKeys.includes(DEHIRE_KEY)) {
       dispatch({ type: 'REMOVE_SERVICE', serviceKey: DEHIRE_KEY })
     }
-  }, [dehireUnlocked]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dehireUnlocked, isImport]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The tiles for the chosen type, in display order.
   const services = useMemo(() => {
-    const base = isExport ? EXPORT_SERVICES : IMPORT_SERVICES
-    const visible = dehireUnlocked ? base : base.filter(s => s.key !== DEHIRE_KEY)
-    // The 'unpack' service is "Unpack" under Export and "Pack" under Import, so its picture follows
-    // the label; Empty container collection (dehire) has its own picture in both.
-    const withImages = visible.map(s =>
-      s.key === 'unpack' ? { ...s, image: isExport ? unpackImg : packImg }
-      : s.key === DEHIRE_KEY ? { ...s, image: emptyImg }
+    const forType: ServiceDef[] = isImport
+      ? [...IMPORT_KEYS, ...(dehireUnlocked ? [DEHIRE_KEY] : [])]
+          .map(k => BASE_SERVICES.find(s => s.key === k)!).map(s => ({ ...s, label: IMPORT_LABELS[s.key] ?? s.label }))
+      : BASE_SERVICES
+    // The 'unpack' service is "Unpack" under Import and "Pack" under Export, so its picture follows the label.
+    // Likewise 'dehire' is "Dehire" under Import and "Empty container collection" under Export.
+    const withImages = forType.map(s =>
+      s.key === 'unpack' ? { ...s, image: isImport ? unpackImg : packImg }
+      : s.key === DEHIRE_KEY ? { ...s, image: isImport ? dehireImg : emptyImg }
       : s)
     if (!search.trim()) return withImages
     return withImages.filter(s => s.label.toLowerCase().includes(search.trim().toLowerCase()))
-  }, [search, dehireUnlocked, isExport])
+  }, [search, dehireUnlocked, isImport])
 
-  // Going Back and switching Import ⇄ Export must not leave a selected service the new list doesn't
-  // show — the customer couldn't see it, let alone remove it. (Dehire is handled by its own effect.)
+  // Going Back and switching Import ⇄ Export must not leave a selected service the new list doesn't show.
   useEffect(() => {
-    const allowed: ServiceKey[] = (isExport ? EXPORT_SERVICES : IMPORT_SERVICES).map(s => s.key)
-    selectedKeys.filter(k => !allowed.includes(k)).forEach(k => dispatch({ type: 'REMOVE_SERVICE', serviceKey: k }))
-  }, [isExport]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!isImport) return
+    selectedKeys.filter(k => !IMPORT_KEYS.includes(k) && k !== DEHIRE_KEY).forEach(k => dispatch({ type: 'REMOVE_SERVICE', serviceKey: k }))
+  }, [isImport]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedMap = new Map(state.selectedServices.map(s => [s.serviceKey, s]))
 
